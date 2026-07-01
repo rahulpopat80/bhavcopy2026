@@ -397,7 +397,7 @@ async function saveMasterToCloud() {
             const chunkRows = state.masterData.slice(start, end);
             
             await db.collection('chunks').doc(`chunk_${i}`).set({
-                rows: chunkRows
+                rowsJson: JSON.stringify(chunkRows)
             });
             log(`- Synced chunk ${i + 1} of ${chunkCount} (${chunkRows.length} rows)`, 'info');
         }
@@ -449,7 +449,13 @@ async function loadMasterFromCloud() {
             if (!chunkDoc.exists) {
                 throw new Error(`Missing chunk data for chunk_${i}`);
             }
-            const chunkRows = chunkDoc.data().rows || [];
+            const chunkData = chunkDoc.data();
+            let chunkRows = [];
+            if (chunkData.rowsJson) {
+                chunkRows = JSON.parse(chunkData.rowsJson);
+            } else {
+                chunkRows = chunkData.rows || [];
+            }
             assembledRows = assembledRows.concat(chunkRows);
             log(`- Loaded chunk ${i + 1} of ${chunkCount} (${chunkRows.length} rows)`, 'info');
         }
