@@ -1513,18 +1513,19 @@ function parseCSVFile(file) {
             const rawCSVData = XLSX.utils.sheet_to_json(sheet, { defval: "" });
             
             if (rawCSVData.length > 0) {
-                const keys = Object.keys(rawCSVData[0]);
-                const seriesKey = keys.find(k => k.toUpperCase().trim() === 'SERIES');
-                
-                if (seriesKey) {
-                    // Filter EQ series only
-                    state.csvData = rawCSVData.filter(row => String(row[seriesKey] || '').trim().toUpperCase() === 'EQ');
-                    log(`Bhavcopy CSV file loaded: ${file.name}`, 'info');
-                    log(`Applied SERIES 'EQ' filter. Total rows: ${state.csvData.length} (from original ${rawCSVData.length})`, 'success');
-                } else {
-                    state.csvData = rawCSVData;
-                    log(`Bhavcopy CSV file loaded: ${file.name} (SERIES column not found, no filtering applied)`, 'warning');
-                }
+                 const keys = Object.keys(rawCSVData[0]);
+                 const seriesCandidates = ['SERIES', 'SCTYSRS', 'SERIES_NAME', 'GROUP'];
+                 const seriesKey = keys.find(k => seriesCandidates.includes(k.toUpperCase().trim()));
+                 
+                 if (seriesKey) {
+                     // Filter EQ series only
+                     state.csvData = rawCSVData.filter(row => String(row[seriesKey] || '').trim().toUpperCase() === 'EQ');
+                     log(`Bhavcopy CSV file loaded: ${file.name}`, 'info');
+                     log(`Applied SERIES 'EQ' filter. Total rows: ${state.csvData.length} (from original ${rawCSVData.length})`, 'success');
+                 } else {
+                     state.csvData = rawCSVData;
+                     log(`Bhavcopy CSV file loaded: ${file.name} (SERIES column not found, no filtering applied)`, 'warning');
+                 }
             } else {
                 state.csvData = rawCSVData;
             }
@@ -1815,7 +1816,8 @@ async function processFiles() {
             let csvData = [];
             if (rawCSVData.length > 0) {
                 csvKeys = Object.keys(rawCSVData[0]);
-                const seriesKey = csvKeys.find(k => k.toUpperCase().trim() === 'SERIES');
+                const seriesCandidates = ['SERIES', 'SCTYSRS', 'SERIES_NAME', 'GROUP'];
+                const seriesKey = csvKeys.find(k => seriesCandidates.includes(k.toUpperCase().trim()));
                 if (seriesKey) {
                     csvData = rawCSVData.filter(row => String(row[seriesKey] || '').trim().toUpperCase() === 'EQ');
                 } else {
@@ -1836,7 +1838,7 @@ async function processFiles() {
             let closePriceKey = null;
             let prevCloseKey = null;
             
-            const symbolCandidates = ['SYMBOL', 'SC_NAME', 'SC_CODE', 'NAME', 'COMPANY_NAME', 'COMPANY'];
+            const symbolCandidates = ['SYMBOL', 'TCKRSYMB', 'SC_NAME', 'SC_CODE', 'NAME', 'COMPANY_NAME', 'COMPANY'];
             for (let candidate of symbolCandidates) {
                 const found = csvKeys.find(k => k.toUpperCase().trim() === candidate);
                 if (found) {
@@ -1846,7 +1848,7 @@ async function processFiles() {
             }
             if (!symbolKey) symbolKey = csvKeys[0];
             
-            const priceCandidates = ['CLOSE', 'LAST', 'RATE', 'PRICE', 'CLOSE_PRICE', 'LAST_PRICE'];
+            const priceCandidates = ['CLOSE', 'CLSGPRIC', 'LAST', 'RATE', 'PRICE', 'CLOSE_PRICE', 'LAST_PRICE'];
             for (let candidate of priceCandidates) {
                 const found = csvKeys.find(k => k.toUpperCase().trim() === candidate);
                 if (found) {
@@ -1856,7 +1858,7 @@ async function processFiles() {
             }
             if (!closePriceKey) closePriceKey = csvKeys[csvKeys.length - 1];
             
-            const prevCandidates = ['PREVCLOSE', 'PREV_CLOSE', 'PREVCLOSEPRICE', 'PREV_CLOSE_PRICE', 'PREV_CLOSE_RATE'];
+            const prevCandidates = ['PREVCLOSE', 'PRVSCLSGPRIC', 'PREV_CLOSE', 'PREVCLOSEPRICE', 'PREV_CLOSE_PRICE', 'PREV_CLOSE_RATE'];
             for (let candidate of prevCandidates) {
                 const found = csvKeys.find(k => k.toUpperCase().trim() === candidate);
                 if (found) {
