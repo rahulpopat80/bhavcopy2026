@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Market Research & Investment Software</title>
+    <!-- Google Fonts for premium typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- CSS stylesheet -->
+    <link rel="stylesheet" href="style.css">
+    <!-- SheetJS and ChartJS for processing and visualization -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Firebase SDK (Compat Version) -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script>
+        window.onerror = function(message, source, lineno, colno, error) {
+            alert("Browser Error:\n" + message + "\nLine: " + lineno + ":" + colno + "\nSource: " + source);
+            console.error(error);
+            return false;
+        };
+    </script>
+</head>
+<body>
+    <div class="background-decor">
+        <div class="circle circle-1"></div>
+        <div class="circle circle-2"></div>
+    </div>
+
+    <div class="app-container hidden" id="main-app">
+        <header class="app-header">
+            <div class="header-main-row">
+                <div class="logo">
+                    <i class="fa-solid fa-chart-line-up logo-icon"></i>
+                    <h1>Investment & Research Dashboard</h1>
+                </div>
+                <div class="cloud-sync-badge sync-connecting" id="cloud-sync-status">
+                    <i class="fa-solid fa-cloud-arrow-up sync-icon spin"></i>
+                    <span id="cloud-sync-text">Connecting Firebase...</span>
+                </div>
+                <div class="creator-title">Created By : Rahul Popat</div>
+            </div>
+            <p class="subtitle">Upload your Master Excel file and daily Bhavcopy (CSV) files to process and update stock prices.</p>
+        </header>
+
+        <!-- Step 1 & 2: File Uploads -->
+        <main class="dashboard-grid">
+            <!-- Upload Card 1: Master Excel File -->
+            <div class="card upload-card" id="master-card">
+                <div class="card-header">
+                    <span class="step-badge">Step 1</span>
+                    <h2>Master Excel File</h2>
+                </div>
+                <p class="card-desc">Upload your Master Excel file containing company symbols. This file will be saved in browser storage.</p>
+                
+                <div class="drop-zone" id="master-dropzone">
+                    <div class="drop-zone-content">
+                        <i class="fa-regular fa-file-excel drop-icon"></i>
+                        <p class="drop-text">Drag & drop Master file here or <span>Browse</span></p>
+                        <p class="file-limit">Max size: 25MB</p>
+                    </div>
+                    <input type="file" id="master-file" accept=".xlsx, .xls" class="file-input">
+                </div>
+
+                <div class="file-status hidden" id="master-status">
+                    <div class="file-info">
+                        <i class="fa-solid fa-circle-check success-icon" id="master-status-icon"></i>
+                        <div class="file-details">
+                            <span class="file-name" id="master-filename">Master.xlsx</span>
+                            <span class="file-size" id="master-filesize">2.4 MB</span>
+                            <span class="storage-badge" id="master-storage-status">Saved in Storage</span>
+                        </div>
+                    </div>
+                    <button class="remove-btn" id="master-remove" title="Remove Master File from storage"><i class="fa-solid fa-trash"></i></button>
+                </div>
+
+                <div class="data-preview hidden" id="master-preview-container">
+                    <h3>Master File Data (Preview - EQ Series)</h3>
+                    <div class="table-wrapper">
+                        <table id="master-table">
+                            <thead>
+                                <!-- Dynamic headers -->
+                            </thead>
+                            <tbody>
+                                <!-- Dynamic rows -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="row-count" id="master-row-count">Total Rows: 0</div>
+                </div>
+            </div>
+
+            <!-- Upload Card 2: Daily Bhavcopy CSV -->
+            <div class="card upload-card" id="csv-card">
+                <div class="card-header">
+                    <span class="step-badge">Step 2</span>
+                    <h2>Daily Bhavcopy (CSV)</h2>
+                </div>
+                <p class="card-desc">Upload one or more daily Bhavcopy CSV files downloaded from BSE or NSE.</p>
+                
+                <div class="drop-zone" id="csv-dropzone">
+                    <div class="drop-zone-content">
+                        <i class="fa-solid fa-file-csv drop-icon"></i>
+                        <p class="drop-text">Drag & drop CSV files here or <span>Browse</span></p>
+                        <p class="file-limit">Max size: 25MB per file</p>
+                    </div>
+                    <input type="file" id="csv-file" accept=".csv" class="file-input" multiple>
+                </div>
+
+                <div class="file-status hidden" id="csv-status">
+                    <div class="file-info">
+                        <i class="fa-solid fa-circle-check success-icon"></i>
+                        <div class="file-details">
+                            <span class="file-name" id="csv-filename">Bhavcopy.csv</span>
+                            <span class="file-size" id="csv-filesize">1.8 MB</span>
+                        </div>
+                    </div>
+                    <button class="remove-btn" id="csv-remove" title="Remove uploaded CSV files"><i class="fa-solid fa-trash"></i></button>
+                </div>
+
+                <div class="data-preview hidden" id="csv-preview-container">
+                    <h3>Bhavcopy File Data (Sample Preview - EQ Series)</h3>
+                    <div class="table-wrapper">
+                        <table id="csv-table">
+                            <thead>
+                                <!-- Dynamic headers -->
+                            </thead>
+                            <tbody>
+                                <!-- Dynamic rows -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="row-count" id="csv-row-count">Total Rows: 0</div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Actions Section -->
+        <section class="actions-section">
+            <div class="card actions-card">
+                <h2>Data Processing & Updates</h2>
+                <p>After uploading both files, click the button below to update the Master file with CLOSE prices and compute differences (DIFF = CLOSE - PREVCLOSE) dynamically.</p>
+                
+                <div class="actions-btn-group">
+                    <button class="btn btn-primary" id="process-btn" disabled>
+                        <i class="fa-solid fa-arrows-rotate"></i> Process Data
+                    </button>
+                    <button class="btn btn-success" id="download-btn" disabled>
+                        <i class="fa-solid fa-file-arrow-download"></i> Download Updated Master
+                    </button>
+                    <button class="btn btn-danger" id="clear-storage-btn" style="margin-left: auto;">
+                        <i class="fa-solid fa-circle-xmark"></i> Clear Local Storage
+                    </button>
+                </div>
+
+                <div class="process-log hidden" id="process-log-container">
+                    <h3>Processing Log Messages</h3>
+                    <div class="log-console" id="log-console">
+                        <!-- Log messages go here -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Interactive Research & Search Filters (Visible only after processing) -->
+        <section class="research-section hidden" id="research-section">
+            <div class="card filters-card">
+                <div class="filters-header">
+                    <i class="fa-solid fa-sliders filter-icon"></i>
+                    <h2>Search Filters & Advanced Research</h2>
+                </div>
+                <p class="card-desc">Filter processed stock list by symbol, closing price range, or net difference values.</p>
+
+                <div class="filters-grid">
+                    <div class="filter-group">
+                        <label for="search-company"><i class="fa-solid fa-search"></i> Company Symbol (SYMBOL)</label>
+                        <input type="text" id="search-company" placeholder="e.g. RELIANCE">
+                    </div>
+                    <div class="filter-group">
+                        <label><i class="fa-solid fa-indian-rupee-sign"></i> Latest Price Range</label>
+                        <div class="range-inputs">
+                            <input type="number" id="price-min" placeholder="Min Price">
+                            <span class="range-separator">to</span>
+                            <input type="number" id="price-max" placeholder="Max Price">
+                        </div>
+                    </div>
+                    <div class="filter-group" id="diff-filter-group">
+                        <label><i class="fa-solid fa-arrows-left-right"></i> Net Change (DIFF) Range</label>
+                        <div class="range-inputs">
+                            <input type="number" id="diff-min" step="0.01" placeholder="Min Change">
+                            <span class="range-separator">to</span>
+                            <input type="number" id="diff-max" step="0.01" placeholder="Max Change">
+                        </div>
+                    </div>
+                </div>
+                <div class="filter-actions">
+                    <button class="btn btn-secondary" id="reset-filters-btn">
+                        <i class="fa-solid fa-rotate-left"></i> Reset Filters
+                    </button>
+                </div>
+            </div>
+
+            <!-- Results Grid: Filtered Table + Volatility Highlights -->
+            <div class="results-grid">
+                <!-- Filtered Table -->
+                <div class="card results-table-card">
+                    <div class="results-table-header">
+                        <h2>Updated Master File Data (All EQ Series Companies)</h2>
+                        <span class="results-badge" id="results-count">Found Stocks: 0 / 0</span>
+                    </div>
+                    <div class="table-wrapper results-table-wrapper">
+                        <table id="results-table">
+                            <thead>
+                                <!-- Dynamic -->
+                            </thead>
+                            <tbody>
+                                <!-- Dynamic -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Right Side: Top Performer + Gainers List -->
+                <div class="movement-column-wrapper">
+                    <!-- Top Performer Widget -->
+                    <div class="card top-performer-card hidden" id="top-performer-card">
+                        <div class="performer-header">
+                            <i class="fa-solid fa-trophy gold-trophy"></i>
+                            <h2>5-Day Performance Leader</h2>
+                        </div>
+                        <div class="performer-body">
+                            <div class="performer-symbol" id="performer-symbol">-</div>
+                            <div class="performer-stats">
+                                <div>Latest Close: <span id="performer-today-price">₹0.00</span></div>
+                                <div>Price 5 Days Ago: <span id="performer-old-price">₹0.00</span></div>
+                                <div>Net Gain: <span id="performer-gain-val" style="color:var(--success-color); font-weight:bold;">+₹0.00</span></div>
+                                <div>Gain Percentage: <span id="performer-gain-pct" class="volatility-pct">+0.00%</span></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Top 5 Days Gainers Highlight -->
+                    <div class="card movement-card">
+                        <div class="movement-header">
+                            <i class="fa-solid fa-chart-line movement-icon"></i>
+                            <h2>Top 10 Gainers (Last 5 Days)</h2>
+                        </div>
+                        <p class="card-desc">Companies showing the highest net positive close-to-close change over the last 5 active trading days.</p>
+                        <div class="table-wrapper movement-table-wrapper">
+                            <table id="movement-table">
+                                <thead>
+                                    <tr>
+                                        <th>Symbol</th>
+                                        <th>Price 5 Days Ago</th>
+                                        <th>Latest Price</th>
+                                        <th>Net Gain (₹)</th>
+                                        <th>Gain (%)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- Dynamic -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- Notification system -->
+    <div class="notification-container" id="notification-container"></div>
+
+    <!-- Price History Chart Modal -->
+    <div class="modal-overlay hidden" id="chart-modal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <div>
+                    <h2 id="modal-company-title">COMPANY</h2>
+                    <span id="modal-company-isin">ISIN</span>
+                </div>
+                <button class="modal-close" id="modal-close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="chart-container">
+                    <canvas id="price-chart"></canvas>
+                </div>
+                <div class="modal-stats-grid">
+                    <div class="modal-stat-box">
+                        <span class="stat-label">Highest Price (HIGH)</span>
+                        <span class="stat-value" id="modal-high-price">₹0.00</span>
+                    </div>
+                    <div class="modal-stat-box">
+                        <span class="stat-label">Latest Close Price</span>
+                        <span class="stat-value" id="modal-latest-price">₹0.00</span>
+                    </div>
+                    <div class="modal-stat-box">
+                        <span class="stat-label">Price 5 Days Ago</span>
+                        <span class="stat-value" id="modal-old-price">₹0.00</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Login Screen Overlay -->
+    <div id="login-screen" class="login-overlay">
+        <div class="login-card">
+            <div class="login-header">
+                <i class="fa-solid fa-shield-halved login-icon"></i>
+                <h2>Security Login</h2>
+                <p>Please enter your credentials to access the dashboard.</p>
+            </div>
+            <form id="login-form">
+                <div class="form-group">
+                    <label for="username">Username (ID)</label>
+                    <div class="input-wrapper">
+                        <i class="fa-solid fa-user"></i>
+                        <input type="text" id="username" placeholder="Enter username..." required autocomplete="username">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <div class="input-wrapper">
+                        <i class="fa-solid fa-lock"></i>
+                        <input type="password" id="password" placeholder="Enter password..." required autocomplete="current-password">
+                    </div>
+                </div>
+                <div id="login-error" class="login-error hidden">
+                    <i class="fa-solid fa-triangle-exclamation"></i> Invalid username or password!
+                </div>
+                <button type="submit" class="login-btn">
+                    Log In <i class="fa-solid fa-arrow-right-to-bracket"></i>
+                </button>
+            </form>
+            <div class="login-footer">
+                Created By : Rahul Popat
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
