@@ -321,6 +321,15 @@ function detectColumnIndexes(headers) {
         if (hStr === 'ISIN') state.isinColIndex = idx;
     });
     
+    // Automatically set latestDateColIndex as the first column after HIGH or DIFF
+    if (state.highColIndex !== -1) {
+        state.latestDateColIndex = state.highColIndex + 1;
+    } else if (state.diffColIndex !== -1) {
+        state.latestDateColIndex = state.diffColIndex + 1;
+    } else {
+        state.latestDateColIndex = -1;
+    }
+    
     // Show/hide DIFF filter
     const diffFilterGroup = document.getElementById('diff-filter-group');
     if (diffFilterGroup) {
@@ -489,6 +498,7 @@ async function loadMasterFromCloud() {
         
         renderPreview(state.masterData, masterTable, masterRowCount, masterPreviewContainer);
         checkReadyState();
+        autoRenderIfProcessed();
         
         updateCloudSyncUI('success', 'Cloud Synced');
         return true;
@@ -529,6 +539,38 @@ async function deleteMasterFromCloud() {
     } catch (err) {
         console.error('Error deleting from Firestore:', err);
         updateCloudSyncUI('error', 'Delete Failed');
+    }
+}
+
+// Auto render results and analysis dashboard if loaded data is already processed
+function autoRenderIfProcessed() {
+    if (state.masterData && state.masterData.length > 0) {
+        const headers = state.masterData[0];
+        const metadataEndIndex = Math.max(state.highColIndex, state.diffColIndex, state.symbolColIndex);
+        
+        if (headers.length > metadataEndIndex + 1) {
+            log('Detected already processed data. Initializing research dashboard view...', 'info');
+            state.processedMasterData = state.masterData;
+            
+            // Build processed workbook for download
+            const wb = state.masterWorkbook || XLSX.utils.book_new();
+            const wsName = state.masterSheetName || 'Sheet1';
+            const newSheet = XLSX.utils.aoa_to_sheet(state.masterData);
+            if (!state.masterWorkbook) {
+                XLSX.utils.book_append_sheet(wb, newSheet, wsName);
+                state.masterWorkbook = wb;
+            } else {
+                wb.Sheets[wsName] = newSheet;
+            }
+            state.processedWorkbook = wb;
+
+            // Render components
+            renderFilteredResults();
+            renderGainersAnalysis();
+            
+            researchSection.classList.remove('hidden');
+            downloadBtn.disabled = false;
+        }
     }
 }
 
@@ -605,6 +647,7 @@ function loadMasterFromLocalStorage() {
             log(`Master data auto-loaded from browser storage. (Total EQ companies: ${state.masterData.length - 1})`, 'success');
             
             renderPreview(state.masterData, masterTable, masterRowCount, masterPreviewContainer);
+            autoRenderIfProcessed();
             checkReadyState();
         } catch (err) {
             console.error('Local Storage load error:', err);
@@ -660,6 +703,14 @@ function resetFile(type) {
         removeLocalStorageItem('master_excel_filesize');
         log('Master file removed from storage and dashboard.', 'warning');
         deleteMasterFromCloud();
+
+        // Clear processed results
+        state.processedWorkbook = null;
+        state.processedMasterData = null;
+        downloadBtn.disabled = true;
+        researchSection.classList.add('hidden');
+        processLogContainer.classList.add('hidden');
+        logConsole.innerHTML = '';
     } else if (type === 'csv') {
         state.csvFile = null;
         state.csvWorkbook = null;
@@ -669,14 +720,11 @@ function resetFile(type) {
         csvStatus.classList.add('hidden');
         csvDropzone.classList.remove('hidden');
         csvPreviewContainer.classList.add('hidden');
+        log('Daily CSV file selection cleared.', 'info');
     }
-    state.processedWorkbook = null;
-    state.processedMasterData = null;
+    
+    // Always disable process button since one of the files is missing
     processBtn.disabled = true;
-    downloadBtn.disabled = true;
-    processLogContainer.classList.add('hidden');
-    researchSection.classList.add('hidden');
-    logConsole.innerHTML = '';
 }
 
 // Parse Master Excel File
@@ -697,6 +745,12 @@ function parseMasterFile(file) {
             // Filter to keep ONLY SERIES == "EQ"
             state.masterData = filterMasterForEQOnly(rawData);
             
+            // Reset processed state for new master file
+            state.processedWorkbook = null;
+            state.processedMasterData = null;
+            downloadBtn.disabled = true;
+            researchSection.classList.add('hidden');
+
             // Detect column indexes and adjust UI filters
             if (state.masterData && state.masterData.length > 0) {
                 detectColumnIndexes(state.masterData[0]);
@@ -717,6 +771,10 @@ function parseMasterFile(file) {
             log(`Filtered only 'EQ' series records. (Total EQ companies: ${state.masterData.length - 1})`, 'success');
             
             renderPreview(state.masterData, masterTable, masterRowCount, masterPreviewContainer);
+            
+            // If the uploaded file was already processed, display it!
+            autoRenderIfProcessed();
+            
             checkReadyState();
         } catch (err) {
             console.error(err);
