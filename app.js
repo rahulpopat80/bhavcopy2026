@@ -243,12 +243,22 @@ function initEvents() {
     setupPortfolioFormSubmit();
 
     // Gainers range toggles
+    const toggle3 = document.getElementById('gainer-toggle-3');
     const toggle5 = document.getElementById('gainer-toggle-5');
     const toggle30 = document.getElementById('gainer-toggle-30');
     
-    if (toggle5 && toggle30) {
+    if (toggle3 && toggle5 && toggle30) {
+        toggle3.addEventListener('click', () => {
+            toggle3.classList.add('active');
+            toggle5.classList.remove('active');
+            toggle30.classList.remove('active');
+            state.gainersWindow = 3;
+            renderGainersAnalysis();
+        });
+
         toggle5.addEventListener('click', () => {
             toggle5.classList.add('active');
+            toggle3.classList.remove('active');
             toggle30.classList.remove('active');
             state.gainersWindow = 5;
             renderGainersAnalysis();
@@ -256,6 +266,7 @@ function initEvents() {
 
         toggle30.addEventListener('click', () => {
             toggle30.classList.add('active');
+            toggle3.classList.remove('active');
             toggle5.classList.remove('active');
             state.gainersWindow = 30;
             renderGainersAnalysis();
@@ -1135,7 +1146,7 @@ async function fetchPortfolioLivePrices() {
     
     await Promise.all(activeSymbols.map(async (symbol) => {
         try {
-            const yahooSymbol = `${symbol}.NS`;
+            const yahooSymbol = encodeURIComponent(symbol.trim().toUpperCase() + '.NS');
             const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}`;
             
             let res = await fetch(yahooUrl);
@@ -2447,7 +2458,8 @@ function renderGainersAnalysis() {
     
     // Update card title and descriptions
     const cardTitle = document.getElementById('gainer-card-title');
-    if (cardTitle) cardTitle.textContent = `Top ${windowDays === 5 ? '10' : '50'} Gainers (${windowDays} Days)`;
+    const sliceLimit = windowDays === 30 ? 50 : 10;
+    if (cardTitle) cardTitle.textContent = `Top ${sliceLimit} Gainers (${windowDays} Days)`;
     
     const cardDesc = document.getElementById('gainer-card-desc');
     if (cardDesc) cardDesc.textContent = `Companies showing the highest net positive close-to-close change over the last ${windowDays} active trading days.`;
@@ -2456,7 +2468,6 @@ function renderGainersAnalysis() {
     if (tableHeaderOld) tableHeaderOld.textContent = `Price (${windowDays}d)`;
     
     // Select top 10 or 50 based on window
-    const sliceLimit = windowDays === 5 ? 10 : 50;
     const topGainers = gainersRows.slice(0, sliceLimit);
     
     // Render to table
@@ -2970,17 +2981,37 @@ window.showResearchModal = function(symbol) {
         });
         
     // 2. Fetch Yahoo Finance Stock Quote Data for Technical Sentiment
-    const yahooSymbol = `${symbol}.NS`;
-    const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}`;
+    const yahooSymbol = encodeURIComponent(symbol.trim().toUpperCase() + '.NS');
+    const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}?range=1y&interval=1d`;
     
-    const parseYahooData = (meta) => {
+    const parseYahooData = (data) => {
+        if (!data || !data.chart || !data.chart.result || !data.chart.result[0]) {
+            throw new Error("Invalid Yahoo Finance response structure");
+        }
+        
+        const result = data.chart.result[0];
+        const meta = result.meta;
         const currentPrice = meta.regularMarketPrice;
-        const high52 = meta.fiftyTwoWeekHigh;
-        const low52 = meta.fiftyTwoWeekLow;
         const longName = meta.longName || symbol;
         
         if (longName) {
             document.getElementById('research-company-title').textContent = longName.toUpperCase();
+        }
+        
+        // Dynamic client-side calculation of 52-week High and Low
+        let high52 = meta.fiftyTwoWeekHigh;
+        let low52 = meta.fiftyTwoWeekLow;
+        
+        try {
+            if (result.indicators && result.indicators.quote && result.indicators.quote[0]) {
+                const closePrices = result.indicators.quote[0].close.filter(x => x !== null && x !== undefined && !isNaN(x));
+                if (closePrices.length > 0) {
+                    high52 = Math.max(...closePrices);
+                    low52 = Math.min(...closePrices);
+                }
+            }
+        } catch (calcErr) {
+            console.warn("Dynamic calculation of 52W high/low failed, falling back to metadata:", calcErr);
         }
         
         if (high52 && low52 && currentPrice) {
@@ -3030,8 +3061,7 @@ window.showResearchModal = function(symbol) {
             return res.json();
         })
         .then(data => {
-            const meta = data.chart.result[0].meta;
-            parseYahooData(meta);
+            parseYahooData(data);
         })
         .catch(err => {
             console.warn("Direct Yahoo quoteSummary failed, trying proxy...", err);
@@ -3039,8 +3069,7 @@ window.showResearchModal = function(symbol) {
             fetch(proxyUrl)
                 .then(res => res.json())
                 .then(data => {
-                    const meta = data.chart.result[0].meta;
-                    parseYahooData(meta);
+                    parseYahooData(data);
                 })
                 .catch(proxyErr => {
                     console.error("Proxy fetch failed:", proxyErr);
