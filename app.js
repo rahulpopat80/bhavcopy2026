@@ -58,7 +58,8 @@ let state = {
     isinColIndex: -1,
     
     // Gainers Window Active Selection (5 or 30)
-    gainersWindow: 5
+    gainersWindow: 5,
+    portfolioLivePrices: new Map()
 };
 
 // UI Elements
@@ -182,7 +183,7 @@ function initEvents() {
             const symbolCell = row.cells[0]; // Symbol is first column in gainers
             if (symbolCell) {
                 const symbol = symbolCell.textContent.trim().toUpperCase();
-                showPriceChart(symbol);
+                showResearchModal(symbol);
             }
         }
     });
@@ -996,6 +997,7 @@ async function loadPortfolioFromCloud() {
         });
         console.log(`Loaded ${portfolioItems.length} portfolio items from Firestore.`);
         renderPortfolioTable();
+        fetchPortfolioLivePrices();
     } catch (e) {
         console.error("Error loading portfolio:", e);
         showNotification("Failed to load portfolio items.", "error");
@@ -1041,7 +1043,61 @@ async function deletePortfolioItem(id) {
             console.error("Error deleting portfolio item:", e);
             showNotification("Failed to delete transaction.", "error");
         }
+// Helper to get last known close price from master sheet data for a symbol
+function getLastKnownPrice(symbol) {
+    const data = state.processedMasterData;
+    if (!data || data.length < 2) return null;
+    
+    const symbolIndex = state.symbolColIndex;
+    const highIndex = state.highColIndex;
+    if (symbolIndex === -1) return null;
+    
+    const row = data.find((r, idx) => idx > 0 && String(r[symbolIndex] || '').trim().toUpperCase() === symbol);
+    if (!row) return null;
+    
+    // Scan backwards from the end of the row (most recent columns) to find the first valid number
+    const startIdx = highIndex !== -1 ? highIndex + 1 : (state.diffColIndex !== -1 ? state.diffColIndex + 1 : symbolIndex + 1);
+    for (let colIdx = row.length - 1; colIdx >= startIdx; colIdx--) {
+        const pVal = parseFloat(row[colIdx]);
+        if (!isNaN(pVal)) {
+            return pVal;
+        }
     }
+    return null;
+}
+
+// Fetch live prices for active portfolio holdings and re-render
+async function fetchPortfolioLivePrices() {
+    if (portfolioItems.length === 0) return;
+    
+    // Find unique active symbols
+    const activeSymbols = [...new Set(portfolioItems.filter(item => !(item.sellRate && item.sellDate)).map(item => item.companySymbol))];
+    if (activeSymbols.length === 0) return;
+    
+    console.log("Fetching live prices for active portfolio holdings:", activeSymbols);
+    
+    await Promise.all(activeSymbols.map(async (symbol) => {
+        try {
+            const yahooSymbol = `${symbol}.NS`;
+            const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}`;
+            
+            let res = await fetch(yahooUrl);
+            if (!res.ok) {
+                // Try proxy fallback
+                res = await fetch(`https://corsproxy.io/?url=${encodeURIComponent(yahooUrl)}`);
+            }
+            const data = await res.json();
+            const price = data.chart.result[0].meta.regularMarketPrice;
+            if (price !== undefined) {
+                state.portfolioLivePrices.set(symbol, price);
+            }
+        } catch (e) {
+            console.warn(`Failed to fetch live price for ${symbol}:`, e);
+        }
+    }));
+    
+    // Re-render table with live prices updated
+    renderPortfolioTable();
 }
 
 // Render portfolio entries list table and calculate summaries
@@ -1105,6 +1161,34 @@ function renderPortfolioTable() {
         } else {
             activeCount++;
             badgeHtml = `<span class="badge-active">ACTIVE</span>`;
+            
+            // Get live price (or last known EOD fallback)
+            let currentPrice = state.portfolioLivePrices.get(item.companySymbol);
+            let isRealTime = true;
+            
+            if (currentPrice === undefined) {
+                currentPrice = getLastKnownPrice(item.companySymbol);
+                isRealTime = false;
+            }
+            
+            if (currentPrice !== null && currentPrice !== undefined) {
+                livePriceStr = `₹${currentPrice.toFixed(2)}${isRealTime ? ' <span class="live-pulse" style="width:6px;height:6px;box-shadow:0 0 0 0 rgba(16,185,129,0.7);animation:pulse 1.5s infinite;margin-left:0.2rem;"></span>' : ' <span style="font-size:0.7rem;color:var(--text-secondary);">(EOD)</span>'}`;
+                
+                const liveVal = qty * currentPrice;
+                const profit = liveVal - buyAmt;
+                totalProfit += profit;
+                
+                profitStr = `${profit >= 0 ? '+' : ''}₹${profit.toFixed(2)}`;
+                profitClass = profit >= 0 ? 'profit-text' : 'loss-text';
+                ratioStr = `${profit >= 0 ? '+' : ''}${((profit / buyAmt) * 100).toFixed(2)}%`;
+            } else {
+                livePriceStr = '<span style="font-size:0.75rem;color:var(--text-secondary);">Loading...</span>';
+            }
+            
+            const d1 = new Date(item.buyDate);
+            const d2 = new Date();
+            const diffDays = Math.ceil((d2 - d1) / (1000 * 60 * 60 * 24));
+            daysStr = `${diffDays >= 0 ? diffDays : 0} days`;
         }
 
         const formatDate = (dateStr) => {
@@ -1127,6 +1211,7 @@ function renderPortfolioTable() {
                 <td>${formatDate(item.sellDate)}</td>
                 <td>${item.sellRate ? `₹${parseFloat(item.sellRate).toFixed(2)}` : '-'}</td>
                 <td>${sellAmtStr}</td>
+                <td>${livePriceStr}</td>
                 <td class="${profitClass}">${profitStr}</td>
                 <td>${daysStr}</td>
                 <td class="${profitClass}">${ratioStr}</td>
@@ -1161,6 +1246,7 @@ function renderPortfolioTable() {
                 <td>-</td>
                 <td>-</td>
                 <td>${totalSellAmount > 0 ? `₹${totalSellAmount.toFixed(2)}` : '-'}</td>
+                <td>-</td>
                 <td class="${profitClass}">${profitSign}₹${totalProfit.toFixed(2)}</td>
                 <td>${soldCount > 0 ? `${avgDaysSold} days (Avg)` : '-'}</td>
                 <td class="${profitClass}">${profitRatioSign}${totalProfitRatio.toFixed(2)}%</td>
