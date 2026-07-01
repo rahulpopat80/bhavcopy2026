@@ -1135,3 +1135,236 @@ tr.clickable-row:hover {
     animation: fa-spin 2s linear infinite;
 }
 
+/* Navigation Tabs */
+.app-nav {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    margin: 0.5rem 0 1rem 0;
+    border-bottom: 1px solid var(--card-border);
+    padding-bottom: 0.75rem;
+}
+
+.nav-btn {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--card-border);
+    color: var(--text-secondary);
+    padding: 0.6rem 1.25rem;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.nav-btn:hover {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.08);
+    transform: translateY(-1px);
+}
+
+.nav-btn.active {
+    background: linear-gradient(135deg, var(--accent-color) 0%, #0891b2 100%);
+    color: #ffffff;
+    border-color: var(--accent-color);
+    box-shadow: 0 4px 14px 0 rgba(6, 182, 212, 0.25);
+}
+
+/* Portfolio Summary Grid */
+.portfolio-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.summary-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 1rem;
+}
+
+.summary-label {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.summary-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--accent-color);
+}
+
+#portfolio-total-profit {
+    color: var(--success-color); /* will be updated dynamically via JS if negative */
+}
+
+/* Portfolio Grid */
+.portfolio-grid {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    gap: 0.75rem;
+    align-items: start;
+}
+
+@media (max-width: 1150px) {
+    .portfolio-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.portfolio-form-card {
+    border-color: rgba(6, 182, 212, 0.15);
+}
+
+.form-row {
+    display: flex;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+}
+
+.form-row .form-group {
+    flex: 1;
+}
+
+.optional-row {
+    border-top: 1px dashed var(--card-border);
+    padding-top: 0.75rem;
+    margin-top: 0.75rem;
+}
+
+/* Calculations Preview */
+.form-calculations {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.5rem;
+    margin: 1rem 0;
+    background: rgba(0, 0, 0, 0.2);
+    padding: 0.75rem;
+    border-radius: 8px;
+    border: 1px solid var(--card-border);
+}
+
+.form-calculations .calc-box:nth-child(5) {
+    grid-column: span 2;
+}
+
+.calc-box {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    align-items: center;
+    text-align: center;
+}
+
+.calc-label {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+}
+
+.calc-value {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.form-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.form-actions button {
+    flex: 1;
+}
+
+/* Portfolio List */
+.portfolio-list-card {
+    border-color: rgba(255, 255, 255, 0.08);
+}
+
+.portfolio-list-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.portfolio-table-wrapper {
+    max-height: 550px;
+}
+
+/* Row colors based on profit/loss */
+.profit-text {
+    color: var(--success-color) !important;
+    font-weight: 600;
+}
+
+.loss-text {
+    color: var(--danger-color) !important;
+    font-weight: 600;
+}
+
+/* Badges for status */
+.badge-active {
+    background: rgba(245, 158, 11, 0.15);
+    color: var(--warning-color);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: bold;
+}
+
+.badge-sold {
+    background: rgba(16, 185, 129, 0.15);
+    color: var(--success-color);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: bold;
+}
+
+/* Edit / Delete action buttons */
+.action-btn-group {
+    display: flex;
+    gap: 0.35rem;
+}
+
+.action-icon-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0.25rem 0.4rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    transition: var(--transition);
+}
+
+.action-icon-btn.edit-btn {
+    color: var(--accent-color);
+}
+
+.action-icon-btn.edit-btn:hover {
+    background: rgba(6, 182, 212, 0.1);
+}
+
+.action-icon-btn.delete-btn {
+    color: var(--danger-color);
+}
+
+.action-icon-btn.delete-btn:hover {
+    background: rgba(239, 68, 68, 0.1);
+}
+
+

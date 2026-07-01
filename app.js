@@ -209,6 +209,33 @@ function initEvents() {
             }
         });
     }
+
+    // Tab switching logic
+    const tabResearch = document.getElementById('tab-research');
+    const tabPortfolio = document.getElementById('tab-portfolio');
+    const researchTabContent = document.getElementById('research-tab-content');
+    const portfolioTabContent = document.getElementById('portfolio-tab-content');
+
+    if (tabResearch && tabPortfolio && researchTabContent && portfolioTabContent) {
+        tabResearch.addEventListener('click', () => {
+            tabResearch.classList.add('active');
+            tabPortfolio.classList.remove('active');
+            researchTabContent.classList.remove('hidden');
+            portfolioTabContent.classList.add('hidden');
+        });
+
+        tabPortfolio.addEventListener('click', () => {
+            tabPortfolio.classList.add('active');
+            tabResearch.classList.remove('active');
+            portfolioTabContent.classList.remove('hidden');
+            researchTabContent.classList.add('hidden');
+            loadPortfolioFromCloud(); // Fetch portfolio items on tab load
+        });
+    }
+
+    // Portfolio Form Initializations
+    setupPortfolioFormCalculations();
+    setupPortfolioFormSubmit();
 }
 
 // Drag & Drop Setup
@@ -499,6 +526,7 @@ async function loadMasterFromCloud() {
         renderPreview(state.masterData, masterTable, masterRowCount, masterPreviewContainer);
         checkReadyState();
         autoRenderIfProcessed();
+        populateCompanyDatalist();
         
         updateCloudSyncUI('success', 'Cloud Synced');
         return true;
@@ -571,6 +599,362 @@ function autoRenderIfProcessed() {
             researchSection.classList.remove('hidden');
             downloadBtn.disabled = false;
         }
+    }
+}
+
+// Portfolio Tracker State & Cloud Functions
+let portfolioItems = [];
+
+async function loadPortfolioFromCloud() {
+    if (!db) {
+        console.error("Firestore not initialized");
+        renderPortfolioTable();
+        return;
+    }
+
+    try {
+        const snap = await db.collection('portfolio').orderBy('buyDate', 'desc').get();
+        portfolioItems = [];
+        snap.forEach(doc => {
+            portfolioItems.push({
+                id: doc.id,
+                ...doc.data()
+            });
+        });
+        console.log(`Loaded ${portfolioItems.length} portfolio items from Firestore.`);
+        renderPortfolioTable();
+    } catch (e) {
+        console.error("Error loading portfolio:", e);
+        showNotification("Failed to load portfolio items.", "error");
+    }
+}
+
+async function savePortfolioItem(item) {
+    if (!db) {
+        showNotification("Firebase Offline. Cannot save transaction.", "error");
+        return;
+    }
+
+    try {
+        if (item.id) {
+            const docId = item.id;
+            const itemCopy = { ...item };
+            delete itemCopy.id;
+            await db.collection('portfolio').doc(docId).set(itemCopy);
+            showNotification("Transaction updated successfully!", "success");
+        } else {
+            await db.collection('portfolio').add(item);
+            showNotification("Transaction added successfully!", "success");
+        }
+        loadPortfolioFromCloud();
+    } catch (e) {
+        console.error("Error saving portfolio item:", e);
+        showNotification("Failed to save transaction.", "error");
+    }
+}
+
+async function deletePortfolioItem(id) {
+    if (!db) {
+        showNotification("Firebase Offline. Cannot delete transaction.", "error");
+        return;
+    }
+
+    if (confirm("Are you sure you want to delete this transaction?")) {
+        try {
+            await db.collection('portfolio').doc(id).delete();
+            showNotification("Transaction deleted successfully!", "success");
+            loadPortfolioFromCloud();
+        } catch (e) {
+            console.error("Error deleting portfolio item:", e);
+            showNotification("Failed to delete transaction.", "error");
+        }
+    }
+}
+
+// Render portfolio entries list table and calculate summaries
+function renderPortfolioTable() {
+    const tbody = document.querySelector('#portfolio-table tbody');
+    if (!tbody) return;
+
+    if (portfolioItems.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="12" style="text-align:center; padding: 2rem; color: var(--text-secondary);">No transactions logged yet. Add your first transaction on the left!</td></tr>`;
+        updatePortfolioSummary(0, 0, 0, 0);
+        document.getElementById('portfolio-count').textContent = 'Holdings: 0';
+        return;
+    }
+
+    let html = '';
+    let totalInvested = 0;
+    let totalProfit = 0;
+    let activeCount = 0;
+    let soldCount = 0;
+
+    portfolioItems.forEach(item => {
+        const qty = parseInt(item.quantity) || 0;
+        const buyRate = parseFloat(item.buyRate) || 0;
+        const buyAmt = qty * buyRate;
+        totalInvested += buyAmt;
+
+        const hasSold = item.sellRate && item.sellDate;
+        
+        let sellAmtStr = '-';
+        let profitStr = '-';
+        let profitClass = '';
+        let daysStr = '-';
+        let ratioStr = '-';
+        let badgeHtml = '';
+
+        if (hasSold) {
+            soldCount++;
+            const sellRate = parseFloat(item.sellRate);
+            const sellAmt = qty * sellRate;
+            const profit = sellAmt - buyAmt;
+            totalProfit += profit;
+            
+            sellAmtStr = `₹${sellAmt.toFixed(2)}`;
+            profitStr = `${profit >= 0 ? '+' : ''}₹${profit.toFixed(2)}`;
+            profitClass = profit >= 0 ? 'profit-text' : 'loss-text';
+            ratioStr = `${profit >= 0 ? '+' : ''}${((profit / buyAmt) * 100).toFixed(2)}%`;
+            
+            const d1 = new Date(item.buyDate);
+            const d2 = new Date(item.sellDate);
+            const diffDays = Math.ceil((d2 - d1) / (1000 * 60 * 60 * 24));
+            daysStr = `${diffDays >= 0 ? diffDays : 0} days`;
+            badgeHtml = `<span class="badge-sold">SOLD</span>`;
+        } else {
+            activeCount++;
+            badgeHtml = `<span class="badge-active">ACTIVE</span>`;
+        }
+
+        const formatDate = (dateStr) => {
+            if (!dateStr) return '-';
+            const d = new Date(dateStr);
+            if (isNaN(d.getTime())) return dateStr;
+            const dd = String(d.getDate()).padStart(2, '0');
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const yyyy = d.getFullYear();
+            return `${dd}-${mm}-${yyyy}`;
+        };
+
+        html += `
+            <tr>
+                <td><strong>${item.companySymbol}</strong> ${badgeHtml}</td>
+                <td>${formatDate(item.buyDate)}</td>
+                <td>${qty}</td>
+                <td>₹${buyRate.toFixed(2)}</td>
+                <td style="font-weight:600;">₹${buyAmt.toFixed(2)}</td>
+                <td>${formatDate(item.sellDate)}</td>
+                <td>${item.sellRate ? `₹${parseFloat(item.sellRate).toFixed(2)}` : '-'}</td>
+                <td>${sellAmtStr}</td>
+                <td class="${profitClass}">${profitStr}</td>
+                <td>${daysStr}</td>
+                <td class="${profitClass}">${ratioStr}</td>
+                <td>
+                    <div class="action-btn-group">
+                        <button class="action-icon-btn edit-btn" onclick="editPortfolioRow('${item.id}')" title="Edit Transaction"><i class="fa-solid fa-pen-to-square"></i></button>
+                        <button class="action-icon-btn delete-btn" onclick="deletePortfolioRow('${item.id}')" title="Delete Transaction"><i class="fa-solid fa-trash"></i></button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    });
+
+    tbody.innerHTML = html;
+    updatePortfolioSummary(totalInvested, totalProfit, activeCount, soldCount);
+    document.getElementById('portfolio-count').textContent = `Holdings: ${portfolioItems.length}`;
+}
+
+function updatePortfolioSummary(invested, profit, active, sold) {
+    document.getElementById('portfolio-total-invested').textContent = `₹${invested.toFixed(2)}`;
+    
+    const profitEl = document.getElementById('portfolio-total-profit');
+    profitEl.textContent = `${profit >= 0 ? '+' : ''}₹${profit.toFixed(2)}`;
+    profitEl.style.color = profit >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+
+    document.getElementById('portfolio-active-holdings').textContent = active;
+    document.getElementById('portfolio-sold-holdings').textContent = sold;
+}
+
+// Attach portfolio row action buttons to window scope
+window.editPortfolioRow = function(id) {
+    const item = portfolioItems.find(x => x.id === id);
+    if (!item) return;
+
+    document.getElementById('portfolio-edit-id').value = item.id;
+    document.getElementById('port-company').value = item.companySymbol;
+    document.getElementById('port-buy-date').value = item.buyDate;
+    document.getElementById('port-qty').value = item.quantity;
+    document.getElementById('port-buy-rate').value = item.buyRate;
+    document.getElementById('port-sell-date').value = item.sellDate || '';
+    document.getElementById('port-sell-rate').value = item.sellRate || '';
+
+    // Trigger preview recalculations
+    const qtyInput = document.getElementById('port-qty');
+    qtyInput.dispatchEvent(new Event('input'));
+
+    const submitBtn = document.getElementById('port-submit-btn');
+    submitBtn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Update Transaction';
+    
+    document.getElementById('port-cancel-btn').classList.remove('hidden');
+    document.querySelector('.portfolio-form-card').scrollIntoView({ behavior: 'smooth' });
+};
+
+window.deletePortfolioRow = function(id) {
+    deletePortfolioItem(id);
+};
+
+// Set up live form calculation previews
+function setupPortfolioFormCalculations() {
+    const form = document.getElementById('portfolio-form');
+    if (!form) return;
+
+    const qtyInput = document.getElementById('port-qty');
+    const buyRateInput = document.getElementById('port-buy-rate');
+    const sellDateInput = document.getElementById('port-sell-date');
+    const sellRateInput = document.getElementById('port-sell-rate');
+    const buyDateInput = document.getElementById('port-buy-date');
+
+    const calcBuyAmount = document.getElementById('calc-buy-amount');
+    const calcSellAmount = document.getElementById('calc-sell-amount');
+    const calcProfitAmount = document.getElementById('calc-profit-amount');
+    const calcProfitRatio = document.getElementById('calc-profit-ratio');
+    const calcDays = document.getElementById('calc-days');
+
+    function calculatePreview() {
+        const qty = parseInt(qtyInput.value) || 0;
+        const buyRate = parseFloat(buyRateInput.value) || 0;
+        const buyAmt = qty * buyRate;
+
+        calcBuyAmount.textContent = `₹${buyAmt.toFixed(2)}`;
+
+        const sellRate = parseFloat(sellRateInput.value) || 0;
+        const sellAmt = qty * sellRate;
+
+        const hasSellRate = sellRateInput.value.trim() !== "";
+        calcSellAmount.textContent = hasSellRate ? `₹${sellAmt.toFixed(2)}` : "₹0.00";
+
+        if (hasSellRate && qty > 0 && buyRate > 0) {
+            const profit = sellAmt - buyAmt;
+            const ratio = ((sellRate - buyRate) / buyRate) * 100;
+            
+            calcProfitAmount.textContent = `${profit >= 0 ? '+' : ''}₹${profit.toFixed(2)}`;
+            calcProfitAmount.className = `calc-value ${profit >= 0 ? 'profit-text' : 'loss-text'}`;
+            
+            calcProfitRatio.textContent = `${ratio >= 0 ? '+' : ''}${ratio.toFixed(2)}%`;
+            calcProfitRatio.className = `calc-value ${ratio >= 0 ? 'profit-text' : 'loss-text'}`;
+        } else {
+            calcProfitAmount.textContent = "₹0.00";
+            calcProfitAmount.className = "calc-value";
+            calcProfitRatio.textContent = "0.00%";
+            calcProfitRatio.className = "calc-value";
+        }
+
+        const buyDateVal = buyDateInput.value;
+        const sellDateVal = sellDateInput.value;
+
+        if (buyDateVal && sellDateVal) {
+            const d1 = new Date(buyDateVal);
+            const d2 = new Date(sellDateVal);
+            const diffTime = d2 - d1;
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            
+            calcDays.textContent = `${diffDays >= 0 ? diffDays : 0} Days`;
+        } else {
+            calcDays.textContent = "0 Days";
+        }
+    }
+
+    [qtyInput, buyRateInput, sellDateInput, sellRateInput, buyDateInput].forEach(input => {
+        input.addEventListener('input', calculatePreview);
+    });
+}
+
+// Set up portfolio transaction form submit
+function setupPortfolioFormSubmit() {
+    const form = document.getElementById('portfolio-form');
+    if (!form) return;
+
+    const cancelBtn = document.getElementById('port-cancel-btn');
+    if (cancelBtn) {
+        cancelBtn.addEventListener('click', () => {
+            form.reset();
+            document.getElementById('portfolio-edit-id').value = '';
+            document.getElementById('port-submit-btn').innerHTML = '<i class="fa-solid fa-plus"></i> Add Transaction';
+            cancelBtn.classList.add('hidden');
+            document.getElementById('port-qty').dispatchEvent(new Event('input'));
+        });
+    }
+
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const id = document.getElementById('portfolio-edit-id').value;
+        const companySymbol = document.getElementById('port-company').value.trim().toUpperCase();
+        const buyDate = document.getElementById('port-buy-date').value;
+        const quantity = parseInt(document.getElementById('port-qty').value);
+        const buyRate = parseFloat(document.getElementById('port-buy-rate').value);
+        const sellDate = document.getElementById('port-sell-date').value || null;
+        const sellRate = parseFloat(document.getElementById('port-sell-rate').value) || null;
+
+        if (!companySymbol || !buyDate || isNaN(quantity) || isNaN(buyRate)) {
+            showNotification('Please fill all required fields.', 'error');
+            return;
+        }
+
+        if (sellDate && !sellRate) {
+            showNotification('Please enter a Sell Rate if you entered a Sell Date.', 'error');
+            return;
+        }
+        if (sellRate && !sellDate) {
+            showNotification('Please enter a Sell Date if you entered a Sell Rate.', 'error');
+            return;
+        }
+
+        const item = {
+            companySymbol,
+            buyDate,
+            quantity,
+            buyRate
+        };
+
+        if (id) item.id = id;
+        if (sellDate) item.sellDate = sellDate;
+        if (sellRate) item.sellRate = sellRate;
+
+        await savePortfolioItem(item);
+        
+        form.reset();
+        document.getElementById('portfolio-edit-id').value = '';
+        document.getElementById('port-submit-btn').innerHTML = '<i class="fa-solid fa-plus"></i> Add Transaction';
+        if (cancelBtn) cancelBtn.classList.add('hidden');
+        document.getElementById('port-qty').dispatchEvent(new Event('input'));
+    });
+}
+
+// Populate company symbols suggestion list from master stock symbols
+function populateCompanyDatalist() {
+    const datalist = document.getElementById('company-suggestions');
+    if (!datalist) return;
+    
+    datalist.innerHTML = '';
+    
+    if (state.masterData && state.masterData.length > 1) {
+        const symbolIdx = state.symbolColIndex;
+        if (symbolIdx === -1) return;
+        
+        const symbols = new Set();
+        for (let i = 1; i < state.masterData.length; i++) {
+            const sym = String(state.masterData[i][symbolIdx] || '').trim().toUpperCase();
+            if (sym) symbols.add(sym);
+        }
+        
+        const sortedSymbols = Array.from(symbols).sort();
+        sortedSymbols.forEach(sym => {
+            const option = document.createElement('option');
+            option.value = sym;
+            datalist.appendChild(option);
+        });
+        console.log(`Populated datalist autocomplete with ${sortedSymbols.length} company symbols.`);
     }
 }
 
@@ -648,6 +1032,7 @@ function loadMasterFromLocalStorage() {
             
             renderPreview(state.masterData, masterTable, masterRowCount, masterPreviewContainer);
             autoRenderIfProcessed();
+            populateCompanyDatalist();
             checkReadyState();
         } catch (err) {
             console.error('Local Storage load error:', err);
@@ -774,6 +1159,7 @@ function parseMasterFile(file) {
             
             // If the uploaded file was already processed, display it!
             autoRenderIfProcessed();
+            populateCompanyDatalist();
             
             checkReadyState();
         } catch (err) {
@@ -1396,6 +1782,7 @@ async function processFiles() {
         downloadBtn.disabled = false;
         
         renderPreview(state.masterData, masterTable, masterRowCount, masterPreviewContainer);
+        populateCompanyDatalist();
         showNotification('Calculations updated and saved successfully!', 'success');
         
     } catch (err) {
@@ -1405,7 +1792,7 @@ async function processFiles() {
     }
 }
 
-// Analytical Section: Top 5 Days Gainers (Latest Close - 5 Days Ago Close)
+// Analytical Section: Top 50 30-Day Gainers (Latest Close - 30 Days Ago Close)
 function renderGainersAnalysis() {
     const data = state.processedMasterData;
     if (!data || data.length < 2) return;
@@ -1429,9 +1816,9 @@ function renderGainersAnalysis() {
         
         if (!symbol) continue;
         
-        // Collect prices from last 5 date columns going forward (since newest date is inserted next to HIGH)
+        // Collect prices from last 30 date columns going forward (since newest date is inserted next to HIGH)
         const prices = [];
-        const limit = Math.min(row.length, insertIdx + 5);
+        const limit = Math.min(row.length, insertIdx + 30);
         for (let colIdx = insertIdx; colIdx < limit; colIdx++) {
             const pVal = parseFloat(row[colIdx]);
             if (!isNaN(pVal)) {
@@ -1442,7 +1829,7 @@ function renderGainersAnalysis() {
         // Need today's price (prices[0]) and at least one older price to compute gain
         if (prices.length >= 2) {
             const todayPrice = prices[0];
-            const oldestPrice = prices[prices.length - 1]; // oldest available date in the last 5 days
+            const oldestPrice = prices[prices.length - 1]; // oldest available date in the last 30 days
             const gain = parseFloat((todayPrice - oldestPrice).toFixed(2));
             const gainPct = oldestPrice > 0 ? parseFloat(((gain / oldestPrice) * 100).toFixed(2)) : 0;
             
@@ -1483,8 +1870,8 @@ function renderGainersAnalysis() {
         topPerformerCard.classList.add('hidden');
     }
     
-    // Select top 10
-    const topGainers = gainersRows.slice(0, 10);
+    // Select top 50
+    const topGainers = gainersRows.slice(0, 50);
     
     // Render to table
     let html = '';
@@ -1676,9 +2063,13 @@ function showPriceChart(symbol) {
     document.getElementById('modal-company-isin').textContent = isinIndex !== -1 ? String(row[isinIndex] || '') : '';
     
     // Stats boxes
+    const latestPriceVal = prices[prices.length - 1];
+    const oldComparePriceIndex = Math.max(0, prices.length - 30);
+    const oldPriceVal = prices[oldComparePriceIndex];
+
     document.getElementById('modal-high-price').textContent = highIndex !== -1 && row[highIndex] ? `₹${parseFloat(row[highIndex]).toFixed(2)}` : 'N/A';
-    document.getElementById('modal-latest-price').textContent = `₹${prices[prices.length - 1].toFixed(2)}`; // Newest price (last index after reverse)
-    document.getElementById('modal-old-price').textContent = `₹${prices[0].toFixed(2)}`; // Oldest price (first index after reverse)
+    document.getElementById('modal-latest-price').textContent = `₹${latestPriceVal.toFixed(2)}`; // Newest price (last index after reverse)
+    document.getElementById('modal-old-price').textContent = `₹${oldPriceVal.toFixed(2)}`; // 30 days ago (or oldest available)
     
     // Destroy previous Chart instance
     if (state.chartInstance) {

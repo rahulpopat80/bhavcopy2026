@@ -48,8 +48,19 @@
             <p class="subtitle">Upload your Master Excel file and daily Bhavcopy (CSV) files to process and update stock prices.</p>
         </header>
 
-        <!-- Step 1 & 2: File Uploads -->
-        <main class="dashboard-grid">
+        <nav class="app-nav">
+            <button class="nav-btn active" id="tab-research">
+                <i class="fa-solid fa-chart-line"></i> Stock Research
+            </button>
+            <button class="nav-btn" id="tab-portfolio">
+                <i class="fa-solid fa-briefcase"></i> My Portfolio
+            </button>
+        </nav>
+
+        <!-- Tab 1: Stock Research Content -->
+        <div id="research-tab-content">
+            <!-- Step 1 & 2: File Uploads -->
+            <main class="dashboard-grid">
             <!-- Upload Card 1: Master Excel File -->
             <div class="card upload-card" id="master-card">
                 <div class="card-header">
@@ -231,32 +242,32 @@
                     <div class="card top-performer-card hidden" id="top-performer-card">
                         <div class="performer-header">
                             <i class="fa-solid fa-trophy gold-trophy"></i>
-                            <h2>5-Day Performance Leader</h2>
+                            <h2>30-Day Performance Leader</h2>
                         </div>
                         <div class="performer-body">
                             <div class="performer-symbol" id="performer-symbol">-</div>
                             <div class="performer-stats">
                                 <div>Latest Close: <span id="performer-today-price">₹0.00</span></div>
-                                <div>Price 5 Days Ago: <span id="performer-old-price">₹0.00</span></div>
+                                <div>Price 30 Days Ago: <span id="performer-old-price">₹0.00</span></div>
                                 <div>Net Gain: <span id="performer-gain-val" style="color:var(--success-color); font-weight:bold;">+₹0.00</span></div>
                                 <div>Gain Percentage: <span id="performer-gain-pct" class="volatility-pct">+0.00%</span></div>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Top 5 Days Gainers Highlight -->
+                    <!-- Top 30 Days Gainers Highlight -->
                     <div class="card movement-card">
                         <div class="movement-header">
                             <i class="fa-solid fa-chart-line movement-icon"></i>
-                            <h2>Top 10 Gainers (Last 5 Days)</h2>
+                            <h2>Top 50 Gainers (Last 30 Days)</h2>
                         </div>
-                        <p class="card-desc">Companies showing the highest net positive close-to-close change over the last 5 active trading days.</p>
+                        <p class="card-desc">Companies showing the highest net positive close-to-close change over the last 30 active trading days.</p>
                         <div class="table-wrapper movement-table-wrapper">
                             <table id="movement-table">
                                 <thead>
                                     <tr>
                                         <th>Symbol</th>
-                                        <th>Price 5 Days Ago</th>
+                                        <th>Price 30 Days Ago</th>
                                         <th>Latest Price</th>
                                         <th>Net Gain (₹)</th>
                                         <th>Gain (%)</th>
@@ -270,7 +281,148 @@
                     </div>
                 </div>
             </div>
-        </section>
+        </div>
+
+        <!-- Tab 2: My Portfolio Content (Hidden by default) -->
+        <div id="portfolio-tab-content" class="hidden">
+            <!-- Portfolio Summary Grid -->
+            <div class="portfolio-summary-grid">
+                <div class="card summary-card">
+                    <span class="summary-label">Total Invested</span>
+                    <span class="summary-value" id="portfolio-total-invested">₹0.00</span>
+                </div>
+                <div class="card summary-card">
+                    <span class="summary-label">Total Realized Profit/Loss</span>
+                    <span class="summary-value" id="portfolio-total-profit">₹0.00</span>
+                </div>
+                <div class="card summary-card">
+                    <span class="summary-label">Active Holdings</span>
+                    <span class="summary-value" id="portfolio-active-holdings">0</span>
+                </div>
+                <div class="card summary-card">
+                    <span class="summary-label">Sold Holdings</span>
+                    <span class="summary-value" id="portfolio-sold-holdings">0</span>
+                </div>
+            </div>
+
+            <div class="portfolio-grid">
+                <!-- Portfolio Entry Form Card -->
+                <div class="card portfolio-form-card">
+                    <div class="card-header">
+                        <h2>Add/Edit Share Transaction</h2>
+                    </div>
+                    <form id="portfolio-form">
+                        <input type="hidden" id="portfolio-edit-id">
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="port-company"><i class="fa-solid fa-search"></i> Company Name / Symbol</label>
+                                <input type="text" id="port-company" list="company-suggestions" placeholder="e.g. RELIANCE" required>
+                                <datalist id="company-suggestions">
+                                    <!-- Populated dynamically from Master symbols -->
+                                </datalist>
+                            </div>
+                            <div class="form-group">
+                                <label for="port-buy-date"><i class="fa-regular fa-calendar"></i> Buy Date</label>
+                                <input type="date" id="port-buy-date" required>
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="port-qty"><i class="fa-solid fa-calculator"></i> Quantity</label>
+                                <input type="number" id="port-qty" min="1" placeholder="e.g. 10" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="port-buy-rate"><i class="fa-solid fa-indian-rupee-sign"></i> Buy Rate</label>
+                                <input type="number" id="port-buy-rate" step="0.01" min="0.01" placeholder="e.g. 2400" required>
+                            </div>
+                        </div>
+
+                        <div class="form-row optional-row">
+                            <div class="form-group">
+                                <label for="port-sell-date"><i class="fa-regular fa-calendar-check"></i> Sell Date (Optional)</label>
+                                <input type="date" id="port-sell-date">
+                            </div>
+                            <div class="form-group">
+                                <label for="port-sell-rate"><i class="fa-solid fa-indian-rupee-sign"></i> Sell Rate (Optional)</label>
+                                <input type="number" id="port-sell-rate" step="0.01" min="0.01" placeholder="e.g. 2600">
+                            </div>
+                        </div>
+
+                        <!-- Auto-calculated previews -->
+                        <div class="form-calculations">
+                            <div class="calc-box">
+                                <span class="calc-label">Buy Amount</span>
+                                <span class="calc-value" id="calc-buy-amount">₹0.00</span>
+                            </div>
+                            <div class="calc-box">
+                                <span class="calc-label">Sell Amount</span>
+                                <span class="calc-value" id="calc-sell-amount">₹0.00</span>
+                            </div>
+                            <div class="calc-box">
+                                <span class="calc-label">Profit/Loss</span>
+                                <span class="calc-value" id="calc-profit-amount">₹0.00</span>
+                            </div>
+                            <div class="calc-box">
+                                <span class="calc-label">Profit Ratio (%)</span>
+                                <span class="calc-value" id="calc-profit-ratio">0.00%</span>
+                            </div>
+                            <div class="calc-box">
+                                <span class="calc-label">Days Held</span>
+                                <span class="calc-value" id="calc-days">0 Days</span>
+                            </div>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary" id="port-submit-btn">
+                                <i class="fa-solid fa-plus"></i> Add Transaction
+                            </button>
+                            <button type="button" class="btn btn-secondary hidden" id="port-cancel-btn">
+                                Cancel Edit
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Portfolio Entries List Card -->
+                <div class="card portfolio-list-card">
+                    <div class="portfolio-list-header">
+                        <h2>Logged Transactions</h2>
+                        <span class="results-badge" id="portfolio-count">Active Holdings: 0</span>
+                    </div>
+                    
+                    <div class="table-wrapper portfolio-table-wrapper">
+                        <table id="portfolio-table">
+                            <thead>
+                                <tr>
+                                    <th>Company</th>
+                                    <th>Buy Date</th>
+                                    <th>Quantity</th>
+                                    <th>Buy Rate</th>
+                                    <th>Buy Amt</th>
+                                    <th>Sell Date</th>
+                                    <th>Sell Rate</th>
+                                    <th>Sell Amt</th>
+                                    <th>Profit/Loss</th>
+                                    <th>Days</th>
+                                    <th>Ratio</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Loaded dynamically from Firestore -->
+                                <tr>
+                                    <td colspan="12" style="text-align:center; padding: 2rem; color: var(--text-secondary);">
+                                        <i class="fa-solid fa-spinner fa-spin"></i> Loading portfolio...
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Notification system -->
@@ -300,7 +452,7 @@
                         <span class="stat-value" id="modal-latest-price">₹0.00</span>
                     </div>
                     <div class="modal-stat-box">
-                        <span class="stat-label">Price 5 Days Ago</span>
+                        <span class="stat-label">Price 30 Days Ago</span>
                         <span class="stat-value" id="modal-old-price">₹0.00</span>
                     </div>
                 </div>
