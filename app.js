@@ -59,7 +59,8 @@ let state = {
     
     // Gainers Window Active Selection (5 or 30)
     gainersWindow: 5,
-    portfolioLivePrices: new Map()
+    portfolioLivePrices: new Map(),
+    researchChartInstance: null
 };
 
 // UI Elements
@@ -2771,6 +2772,113 @@ window.showResearchModal = function(symbol) {
     document.getElementById('link-screener').href = `https://www.screener.in/company/${symbol}/`;
     document.getElementById('link-tickertape').href = `https://www.tickertape.in/stocks/${symbol}`;
     document.getElementById('link-moneycontrol').href = `https://www.moneycontrol.com/userview/alerts/editorialSearch?str=${symbol}`;
+    
+    // Draw Historical Chart
+    let drawChart = false;
+    let dateLabels = [];
+    let prices = [];
+    
+    const masterData = state.processedMasterData;
+    if (masterData && masterData.length >= 2) {
+        const headers = masterData[0];
+        const symbolIndex = state.symbolColIndex;
+        const highIndex = state.highColIndex;
+        
+        if (symbolIndex !== -1) {
+            const row = masterData.find((r, idx) => idx > 0 && String(r[symbolIndex] || '').trim().toUpperCase() === symbol);
+            if (row) {
+                const startIdx = highIndex !== -1 ? highIndex + 1 : (state.diffColIndex !== -1 ? state.diffColIndex + 1 : symbolIndex + 1);
+                for (let colIdx = startIdx; colIdx < row.length; colIdx++) {
+                    const headerName = headers[colIdx];
+                    const pVal = parseFloat(row[colIdx]);
+                    if (headerName && !isNaN(pVal)) {
+                        dateLabels.push(headerName);
+                        prices.push(pVal);
+                    }
+                }
+                if (prices.length > 0) {
+                    dateLabels.reverse();
+                    prices.reverse();
+                    drawChart = true;
+                }
+            }
+        }
+    }
+    
+    // Destroy previous Chart instance
+    if (state.researchChartInstance) {
+        state.researchChartInstance.destroy();
+        state.researchChartInstance = null;
+    }
+    
+    if (drawChart) {
+        const ctx = document.getElementById('research-price-chart').getContext('2d');
+        state.researchChartInstance = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: dateLabels,
+                datasets: [{
+                    label: `${symbol} Close Price (₹)`,
+                    data: prices,
+                    borderColor: '#06b6d4',
+                    backgroundColor: 'rgba(6, 182, 212, 0.1)',
+                    borderWidth: 2,
+                    tension: 0.3,
+                    fill: true,
+                    pointBackgroundColor: '#06b6d4',
+                    pointRadius: 4,
+                    pointHoverRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                        backgroundColor: 'rgba(17, 24, 39, 0.95)',
+                        titleColor: '#ffffff',
+                        bodyColor: '#e5e7eb',
+                        borderColor: 'rgba(6, 182, 212, 0.3)',
+                        borderWidth: 1
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: {
+                            color: 'rgba(255, 255, 255, 0.05)'
+                        },
+                        ticks: {
+                            color: '#9ca3af',
+                            font: {
+                                family: 'Outfit',
+                                size: 11
+                            }
+                        }
+                    },
+                    y: {
+                        grid: {
+                            color: 'rgba(255, 255, 255, 0.05)'
+                        },
+                        ticks: {
+                            color: '#9ca3af',
+                            font: {
+                                family: 'Outfit',
+                                size: 11
+                            },
+                            callback: function(value) {
+                                return '₹' + value;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
     
     // Show Modal immediately
     document.getElementById('research-modal').classList.remove('hidden');
