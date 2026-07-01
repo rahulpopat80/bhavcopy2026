@@ -561,6 +561,59 @@ function initEvents() {
             }
         });
     }
+
+    // ----------------------------------------------------
+    // PWA Service Worker & Install Logic
+    // ----------------------------------------------------
+    // Register Service Worker
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('./sw.js')
+                .then(reg => console.log('Service Worker Registered Successfully!', reg.scope))
+                .catch(err => console.error('Service Worker Registration Failed:', err));
+        });
+    }
+
+    // PWA Custom Installation Prompt
+    let deferredPrompt;
+    const installBtn = document.getElementById('pwa-install-btn');
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+        // Prevent Chrome from automatically showing the prompt
+        e.preventDefault();
+        // Stash the event so it can be triggered later.
+        deferredPrompt = e;
+        // Update UI to show the install button
+        if (installBtn) {
+            installBtn.style.display = 'flex';
+        }
+    });
+
+    if (installBtn) {
+        installBtn.addEventListener('click', (e) => {
+            if (!deferredPrompt) return;
+            // Show the prompt
+            deferredPrompt.prompt();
+            // Wait for the user to respond to the prompt
+            deferredPrompt.userChoice.then((choiceResult) => {
+                if (choiceResult.outcome === 'accepted') {
+                    console.log('User accepted the install prompt');
+                } else {
+                    console.log('User dismissed the install prompt');
+                }
+                deferredPrompt = null;
+                installBtn.style.display = 'none';
+            });
+        });
+    }
+
+    // Hide button if app is already installed
+    window.addEventListener('appinstalled', (evt) => {
+        console.log('Rahul Finance App installed successfully!');
+        if (installBtn) {
+            installBtn.style.display = 'none';
+        }
+    });
 }
 
 // Drag & Drop Setup
