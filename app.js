@@ -1111,7 +1111,7 @@ function renderPortfolioTable() {
     if (!tbody) return;
 
     if (portfolioItems.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="12" style="text-align:center; padding: 2rem; color: var(--text-secondary);">No transactions logged yet. Add your first transaction on the left!</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="13" style="text-align:center; padding: 2rem; color: var(--text-secondary);">No transactions logged yet. Add your first transaction on the left!</td></tr>`;
         if (tfoot) tfoot.innerHTML = '';
         updatePortfolioSummary(0, 0, 0, 0);
         document.getElementById('portfolio-count').textContent = 'Holdings: 0';
@@ -1136,6 +1136,7 @@ function renderPortfolioTable() {
 
         const hasSold = item.sellRate && item.sellDate;
         
+        let livePriceStr = '-';
         let sellAmtStr = '-';
         let profitStr = '-';
         let profitClass = '';
