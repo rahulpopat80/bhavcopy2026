@@ -14,6 +14,7 @@
     <link rel="stylesheet" href="style.css">
     <!-- SheetJS and ChartJS for processing and visualization -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- Firebase SDK (Compat Version) -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
@@ -108,9 +109,14 @@
 
             <!-- Upload Card 2: Daily Bhavcopy CSV -->
             <div class="card upload-card" id="csv-card">
-                <div class="card-header">
-                    <span class="step-badge">Step 2</span>
-                    <h2>Daily Bhavcopy (CSV)</h2>
+                <div class="card-header" style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <span class="step-badge">Step 2</span>
+                        <h2>Daily Bhavcopy (CSV)</h2>
+                    </div>
+                    <button class="btn btn-secondary" id="btn-auto-fetch-trigger" style="padding: 0.35rem 0.65rem; font-size: 0.75rem; font-weight: 600; border-radius: 6px; border: 1px solid var(--accent-color); background: rgba(6, 182, 212, 0.15); color: #fff; cursor: pointer; display: flex; align-items: center; gap: 0.3rem;">
+                        <i class="fa-solid fa-cloud-arrow-down"></i> Auto Fetch
+                    </button>
                 </div>
                 <p class="card-desc">Upload one or more daily Bhavcopy CSV files downloaded from BSE or NSE.</p>
                 
@@ -427,6 +433,46 @@
                             </tfoot>
                         </table>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Auto Fetch Modal -->
+    <div class="modal-overlay hidden" id="fetch-modal">
+        <div class="modal-card" style="max-width: 500px;">
+            <div class="modal-header">
+                <div>
+                    <h2>Automated Daily Bhavcopy Fetch</h2>
+                    <span style="font-size: 0.8rem; color: var(--text-secondary);">Direct NSE archives download or cloud proxy fetch</span>
+                </div>
+                <button class="modal-close" id="fetch-modal-close">&times;</button>
+            </div>
+            <div class="modal-body" style="display: flex; flex-direction: column; gap: 1.2rem; padding: 1.5rem 0;">
+                <div class="form-group">
+                    <label for="fetch-date" style="font-weight: 600; margin-bottom: 0.5rem; display: block;">Select Trading Date</label>
+                    <input type="date" id="fetch-date" style="width: 100%; padding: 0.65rem; background: rgba(15,23,42,0.6); border: 1px solid var(--card-border); border-radius: 6px; color: #fff; font-family: var(--font-family);">
+                    <small style="color: var(--text-secondary); margin-top: 0.35rem; display: block;">Bhavcopy is typically published on trading days after 6:30 PM.</small>
+                </div>
+
+                <div style="border-top: 1px solid var(--card-border); padding-top: 1.2rem; display: flex; flex-direction: column; gap: 0.85rem;">
+                    <h3>Option A: Auto Cloud Fetch (Zero-Click)</h3>
+                    <p style="font-size: 0.82rem; color: var(--text-secondary); line-height: 1.4;">Attempts to fetch and parse the NSE Bhavcopy ZIP dynamically via a CORS-enabled proxy.</p>
+                    <button class="btn btn-primary" id="btn-cloud-fetch" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
+                        <i class="fa-solid fa-cloud-arrow-down"></i> Fetch via Cloud Proxy
+                    </button>
+                </div>
+
+                <div style="border-top: 1px solid var(--card-border); padding-top: 1.2rem; display: flex; flex-direction: column; gap: 0.85rem;">
+                    <h3>Option B: Samco Direct Download (1-Click)</h3>
+                    <p style="font-size: 0.82rem; color: var(--text-secondary); line-height: 1.4;">Bypasses CORS restrictions. Submits a secure form to Samco's portal to download the ZIP directly to your PC, then drag it into the uploader box.</p>
+                    <button class="btn btn-secondary" id="btn-direct-download" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 0.5rem; background: rgba(16, 185, 129, 0.15); border-color: var(--success-color); color: #fff;">
+                        <i class="fa-solid fa-download"></i> Download Zip from Samco
+                    </button>
+                </div>
+                
+                <div id="fetch-status" class="hidden" style="margin-top: 0.5rem;">
+                    <!-- Status message injected here -->
                 </div>
             </div>
         </div>

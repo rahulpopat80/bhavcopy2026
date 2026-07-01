@@ -259,6 +259,180 @@ function initEvents() {
             renderGainersAnalysis();
         });
     }
+
+    // Auto Fetch Modal Toggle
+    const autoFetchTrigger = document.getElementById('btn-auto-fetch-trigger');
+    const fetchModal = document.getElementById('fetch-modal');
+    const fetchModalClose = document.getElementById('fetch-modal-close');
+    
+    if (autoFetchTrigger && fetchModal) {
+        autoFetchTrigger.addEventListener('click', () => {
+            const dateInput = document.getElementById('fetch-date');
+            if (dateInput) {
+                const now = new Date();
+                const hour = now.getHours();
+                const minute = now.getMinutes();
+                // If before 18:30 (6:30 PM) set to yesterday
+                if (hour < 18 || (hour === 18 && minute < 30)) {
+                    now.setDate(now.getDate() - 1);
+                }
+                
+                // If weekend, set to Friday
+                if (now.getDay() === 0) { // Sunday
+                    now.setDate(now.getDate() - 2);
+                } else if (now.getDay() === 6) { // Saturday
+                    now.setDate(now.getDate() - 1);
+                }
+                
+                const yyyy = now.getFullYear();
+                const mm = String(now.getMonth() + 1).padStart(2, '0');
+                const dd = String(now.getDate()).padStart(2, '0');
+                dateInput.value = `${yyyy}-${mm}-${dd}`;
+            }
+            
+            fetchModal.classList.remove('hidden');
+            document.getElementById('fetch-status').classList.add('hidden');
+        });
+    }
+    
+    if (fetchModalClose && fetchModal) {
+        fetchModalClose.addEventListener('click', () => {
+            fetchModal.classList.add('hidden');
+        });
+        
+        fetchModal.addEventListener('click', (e) => {
+            if (e.target.id === 'fetch-modal') {
+                fetchModal.classList.add('hidden');
+            }
+        });
+    }
+
+    // Modal Option A: Cloud Fetch
+    const btnCloudFetch = document.getElementById('btn-cloud-fetch');
+    if (btnCloudFetch) {
+        btnCloudFetch.addEventListener('click', async () => {
+            const dateVal = document.getElementById('fetch-date').value;
+            if (!dateVal) {
+                showFetchStatus("Please select a date.", "error");
+                return;
+            }
+            
+            const dateParts = dateVal.split('-');
+            const yyyy = dateParts[0];
+            const mm = dateParts[1];
+            const dd = dateParts[2];
+            
+            const nseFilename = `BhavCopy_NSE_CM_0_0_0_${yyyy}${mm}${dd}_F_0000.csv.zip`;
+            const nseUrl = `https://nsearchives.nseindia.com/content/cm/${nseFilename}`;
+            
+            const proxies = [
+                `https://corsproxy.io/?url=${encodeURIComponent(nseUrl)}`,
+                `https://api.allorigins.win/raw?url=${encodeURIComponent(nseUrl)}`,
+                `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(nseUrl)}`
+            ];
+            
+            showFetchStatus("Contacting NSE archives via proxy...", "info", true);
+            
+            let success = false;
+            
+            for (let i = 0; i < proxies.length; i++) {
+                const proxyUrl = proxies[i];
+                try {
+                    console.log(`Trying proxy ${i + 1}: ${proxyUrl}`);
+                    const response = await fetch(proxyUrl);
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                    
+                    const arrayBuffer = await response.arrayBuffer();
+                    if (arrayBuffer.byteLength < 1000) {
+                        throw new Error("Response is too small (likely blocked page or error).");
+                    }
+                    
+                    showFetchStatus("Zip file downloaded! Extracting...", "info", true);
+                    
+                    const zip = await JSZip.loadAsync(arrayBuffer);
+                    const csvFileKey = Object.keys(zip.files).find(k => k.toLowerCase().endsWith('.csv'));
+                    if (!csvFileKey) throw new Error("No CSV file found inside the downloaded ZIP.");
+                    
+                    const csvFile = zip.files[csvFileKey];
+                    const csvText = await csvFile.async("string");
+                    
+                    showFetchStatus("Bhavcopy extracted successfully! Processing data...", "success");
+                    
+                    const blob = new Blob([csvText], { type: 'text/csv' });
+                    const fileObj = new File([blob], csvFileKey, { type: 'text/csv' });
+                    
+                    state.csvFiles = [fileObj];
+                    state.csvFile = fileObj;
+                    
+                    csvFilename.textContent = fileObj.name;
+                    csvFilesize.textContent = formatBytes(fileObj.size);
+                    csvDropzone.classList.add('hidden');
+                    csvStatus.classList.remove('hidden');
+                    
+                    parseCSVFile(fileObj);
+                    
+                    success = true;
+                    setTimeout(() => {
+                        fetchModal.classList.add('hidden');
+                    }, 1500);
+                    break;
+                } catch (err) {
+                    console.warn(`Proxy ${i + 1} failed:`, err);
+                }
+            }
+            
+            if (!success) {
+                showFetchStatus("Cloud Fetch failed or timed out. NSE blocks foreign proxy servers. Please try Option B below to download directly!", "error");
+            }
+        });
+    }
+
+    // Modal Option B: Samco Direct Download Form Submission
+    const btnDirectDownload = document.getElementById('btn-direct-download');
+    if (btnDirectDownload) {
+        btnDirectDownload.addEventListener('click', () => {
+            const dateVal = document.getElementById('fetch-date').value;
+            if (!dateVal) {
+                showFetchStatus("Please select a date.", "error");
+                return;
+            }
+            
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = 'https://www.samco.in/bse_nse_mcx/getBhavcopy';
+            form.target = '_blank';
+            
+            const startInput = document.createElement('input');
+            startInput.type = 'hidden';
+            startInput.name = 'start_date';
+            startInput.value = dateVal;
+            form.appendChild(startInput);
+            
+            const endInput = document.createElement('input');
+            endInput.type = 'hidden';
+            endInput.name = 'end_date';
+            endInput.value = dateVal;
+            form.appendChild(endInput);
+            
+            const segmentInput = document.createElement('input');
+            segmentInput.type = 'hidden';
+            segmentInput.name = 'bhavcopy_data[]';
+            segmentInput.value = 'NSE';
+            form.appendChild(segmentInput);
+            
+            const showDownInput = document.createElement('input');
+            showDownInput.type = 'hidden';
+            showDownInput.name = 'show_or_down';
+            showDownInput.value = '2'; // 2 = Download ZIP
+            form.appendChild(showDownInput);
+            
+            document.body.appendChild(form);
+            form.submit();
+            document.body.removeChild(form);
+            
+            showFetchStatus("Form submitted! Direct download started. Drag the downloaded ZIP file directly into the uploader box on the screen.", "success");
+        });
+    }
 }
 
 // Drag & Drop Setup
@@ -306,7 +480,7 @@ function formatBytes(bytes) {
 }
 
 // Handle selected file(s) processing
-function handleMultipleFiles(filesList, type) {
+async function handleMultipleFiles(filesList, type) {
     const files = Array.from(filesList);
     if (files.length === 0) return;
     
@@ -323,32 +497,46 @@ function handleMultipleFiles(filesList, type) {
         
         parseMasterFile(file);
     } else if (type === 'csv') {
-        const csvFiles = files.filter(f => f.name.split('.').pop().toLowerCase() === 'csv');
-        if (csvFiles.length === 0) {
-            showNotification('Please upload CSV files only (.csv).', 'error');
+        let finalCsvFiles = [];
+        
+        for (let file of files) {
+            const ext = file.name.split('.').pop().toLowerCase();
+            if (ext === 'csv') {
+                finalCsvFiles.push(file);
+            } else if (ext === 'zip') {
+                showNotification(`Unzipping ${file.name}...`, 'info');
+                const extracted = await extractCsvFromZip(file);
+                finalCsvFiles.push(...extracted);
+            } else {
+                showNotification(`Ignored file ${file.name} (unsupported format).`, 'warning');
+            }
+        }
+        
+        if (finalCsvFiles.length === 0) {
+            showNotification('Please upload CSV or ZIP files only.', 'error');
             return;
         }
         
-        state.csvFiles = csvFiles;
-        state.csvFile = csvFiles[0]; // Set as first sample file
+        state.csvFiles = finalCsvFiles;
+        state.csvFile = finalCsvFiles[0]; // Set first file as preview sample
         
-        if (csvFiles.length === 1) {
-            csvFilename.textContent = csvFiles[0].name;
-            csvFilesize.textContent = formatBytes(csvFiles[0].size);
+        if (finalCsvFiles.length === 1) {
+            csvFilename.textContent = finalCsvFiles[0].name;
+            csvFilesize.textContent = formatBytes(finalCsvFiles[0].size);
         } else {
-            csvFilename.textContent = `Selected ${csvFiles.length} CSV files`;
-            const totalSize = csvFiles.reduce((sum, f) => sum + f.size, 0);
+            csvFilename.textContent = `Selected ${finalCsvFiles.length} CSV files`;
+            const totalSize = finalCsvFiles.reduce((sum, f) => sum + f.size, 0);
             csvFilesize.textContent = `Total Size: ${formatBytes(totalSize)}`;
         }
         
         csvDropzone.classList.add('hidden');
         csvStatus.classList.remove('hidden');
         
-        log(`${csvFiles.length} CSV files uploaded.`, 'info');
-        csvFiles.forEach(f => log(`- ${f.name} (${formatBytes(f.size)})`, 'info'));
+        log(`${finalCsvFiles.length} CSV files loaded.`, 'info');
+        finalCsvFiles.forEach(f => log(`- ${f.name} (${formatBytes(f.size)})`, 'info'));
         
         // Parse and show preview of the first file as a sample
-        parseCSVFile(csvFiles[0]);
+        parseCSVFile(finalCsvFiles[0]);
     }
 }
 
@@ -623,6 +811,42 @@ function autoRenderIfProcessed() {
             downloadBtn.disabled = false;
         }
     }
+}
+
+// JSZip extraction helper
+async function extractCsvFromZip(zipFile) {
+    try {
+        const zip = await JSZip.loadAsync(zipFile);
+        const csvFilesExtracted = [];
+        
+        for (let filename of Object.keys(zip.files)) {
+            if (filename.toLowerCase().endsWith('.csv')) {
+                const fileData = zip.files[filename];
+                const contentText = await fileData.async('string');
+                const blob = new Blob([contentText], { type: 'text/csv' });
+                const file = new File([blob], filename, { type: 'text/csv' });
+                csvFilesExtracted.push(file);
+            }
+        }
+        return csvFilesExtracted;
+    } catch (e) {
+        console.error("Error extracting zip:", e);
+        showNotification(`Failed to extract zip file ${zipFile.name}.`, 'error');
+        return [];
+    }
+}
+
+// Fetch status renderer inside modal
+function showFetchStatus(msg, type, isSpinner = false) {
+    const statusEl = document.getElementById('fetch-status');
+    if (!statusEl) return;
+    
+    statusEl.className = `fetch-status-bar ${type}`;
+    statusEl.innerHTML = `
+        ${isSpinner ? '<i class="fa-solid fa-spinner fa-spin"></i>' : (type === 'success' ? '<i class="fa-solid fa-circle-check"></i>' : (type === 'error' ? '<i class="fa-solid fa-triangle-exclamation"></i>' : '<i class="fa-solid fa-circle-info"></i>'))}
+        <span>${msg}</span>
+    `;
+    statusEl.classList.remove('hidden');
 }
 
 // Portfolio Tracker State & Cloud Functions
@@ -1478,6 +1702,15 @@ function getFileDate(file) {
         const day = parseInt(matchBSE[1]);
         const month = parseInt(matchBSE[2]) - 1;
         const year = 2000 + parseInt(matchBSE[3]);
+        return new Date(year, month, day);
+    }
+    
+    // 4. Check NSE UDiFF Format: BhavCopy_NSE_CM_0_0_0_20260630_F_0000.csv
+    const matchUDiFF = filename.match(/BhavCopy_NSE_CM_0_0_0_(\d{4})(\d{2})(\d{2})/i);
+    if (matchUDiFF) {
+        const year = parseInt(matchUDiFF[1]);
+        const month = parseInt(matchUDiFF[2]) - 1;
+        const day = parseInt(matchUDiFF[3]);
         return new Date(year, month, day);
     }
     
