@@ -706,7 +706,7 @@ tr:hover {
 }
 
 /* Responsiveness */
-@media (max-width: 1150px) {
+@media (max-width: 1250px) {
     .results-grid {
         grid-template-columns: 1fr;
     }
@@ -1425,6 +1425,22 @@ tr.clickable-row:hover {
     padding: 0.55rem 0.5rem;
     color: #ffffff;
     font-size: 0.85rem;
+}
+
+/* Compact movement table styling to prevent screen cutoff */
+#movement-table {
+    table-layout: auto;
+    width: 100%;
+}
+
+#movement-table th, #movement-table td {
+    padding: 0.35rem 0.25rem !important;
+    font-size: 0.78rem !important;
+}
+
+.performer-stats div {
+    font-size: 0.8rem;
+    margin-bottom: 0.15rem;
 }
 
 

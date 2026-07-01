@@ -1927,11 +1927,11 @@ function renderGainersAnalysis() {
         
         // Update labels dynamically based on window selection
         const performerHeader = topPerformerCard.querySelector('.performer-header h2');
-        if (performerHeader) performerHeader.textContent = `${windowDays}-Day Performance Leader`;
+        if (performerHeader) performerHeader.textContent = `${windowDays}-Day Leader`;
         
         const oldPriceLabel = document.getElementById('performer-old-price').parentNode;
         if (oldPriceLabel) {
-            oldPriceLabel.childNodes[0].textContent = `Price ${windowDays} Days Ago: `;
+            oldPriceLabel.childNodes[0].textContent = `Old Price (${windowDays}d): `;
         }
         
         topPerformerCard.classList.remove('hidden');
@@ -1941,13 +1941,13 @@ function renderGainersAnalysis() {
     
     // Update card title and descriptions
     const cardTitle = document.getElementById('gainer-card-title');
-    if (cardTitle) cardTitle.textContent = `Top ${windowDays === 5 ? '10' : '50'} Gainers (Last ${windowDays} Days)`;
+    if (cardTitle) cardTitle.textContent = `Top ${windowDays === 5 ? '10' : '50'} Gainers (${windowDays} Days)`;
     
     const cardDesc = document.getElementById('gainer-card-desc');
     if (cardDesc) cardDesc.textContent = `Companies showing the highest net positive close-to-close change over the last ${windowDays} active trading days.`;
     
     const tableHeaderOld = document.getElementById('gainer-table-old-price-header');
-    if (tableHeaderOld) tableHeaderOld.textContent = `Price ${windowDays} Days Ago`;
+    if (tableHeaderOld) tableHeaderOld.textContent = `Price (${windowDays}d)`;
     
     // Select top 10 or 50 based on window
     const sliceLimit = windowDays === 5 ? 10 : 50;
