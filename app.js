@@ -1043,6 +1043,9 @@ async function deletePortfolioItem(id) {
             console.error("Error deleting portfolio item:", e);
             showNotification("Failed to delete transaction.", "error");
         }
+    }
+}
+
 // Helper to get last known close price from master sheet data for a symbol
 function getLastKnownPrice(symbol) {
     const data = state.processedMasterData;
