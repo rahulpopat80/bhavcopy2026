@@ -2833,6 +2833,14 @@ window.showResearchModal = function(symbol) {
     badgeEl.style.color = '#fff';
     adviceEl.textContent = 'ગણતરી કરી રહ્યા છીએ...';
     
+    // Reset chart stats
+    const chartLivePriceEl = document.getElementById('chart-live-price');
+    const chartDataHighEl = document.getElementById('chart-data-high');
+    const chartDataLowEl = document.getElementById('chart-data-low');
+    if (chartLivePriceEl) chartLivePriceEl.textContent = 'Loading...';
+    if (chartDataHighEl) chartDataHighEl.textContent = 'Loading...';
+    if (chartDataLowEl) chartDataLowEl.textContent = 'Loading...';
+    
     // Set external links
     document.getElementById('link-screener').href = `https://www.screener.in/company/${symbol}/`;
     document.getElementById('link-tickertape').href = `https://www.tickertape.in/stocks/${symbol}`;
@@ -2871,6 +2879,13 @@ window.showResearchModal = function(symbol) {
                     dateLabels.reverse();
                     prices.reverse();
                     drawChart = true;
+                    
+                    // Populate Data High / Data Low from master file prices
+                    const validPrices = prices.filter(p => p !== null && !isNaN(p));
+                    if (validPrices.length > 0 && chartDataHighEl && chartDataLowEl) {
+                        chartDataHighEl.textContent = `₹${Math.max(...validPrices).toFixed(2)}`;
+                        chartDataLowEl.textContent = `₹${Math.min(...validPrices).toFixed(2)}`;
+                    }
                 }
             }
         }
@@ -2996,6 +3011,16 @@ window.showResearchModal = function(symbol) {
         
         if (longName) {
             document.getElementById('research-company-title').textContent = longName.toUpperCase();
+        }
+        
+        // Populate Live Price in the chart stats strip
+        const liveEl = document.getElementById('chart-live-price');
+        if (liveEl) {
+            if (currentPrice) {
+                liveEl.textContent = `₹${currentPrice.toFixed(2)}`;
+            } else {
+                liveEl.textContent = 'N/A';
+            }
         }
         
         // Dynamic client-side calculation of 52-week High and Low

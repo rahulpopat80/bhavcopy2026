@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Stock Market Research & Investment Software</title>
+    <title>Rahul Finance – Stock Research & Portfolio Tracker</title>
     <!-- Google Fonts for premium typography -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -13,7 +13,7 @@
     <!-- Favicon and PWA support -->
     <link rel="icon" type="image/png" href="icon.png">
     <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#06b6d4">
+    <meta name="theme-color" content="#3b82f6">
     <!-- CSS stylesheet -->
     <link rel="stylesheet" href="style.css">
     <!-- SheetJS and ChartJS for processing and visualization -->
@@ -505,37 +505,52 @@
             <div class="modal-body" style="display: flex; flex-direction: column; gap: 0.8rem; padding: 0.8rem 0; max-height: 80vh; overflow-y: auto; padding-right: 0.3rem;">
                 
                 <!-- Section 0: Price History Chart -->
-                <div class="card" style="background: rgba(15,23,42,0.4); padding: 1rem; border: 1px solid var(--card-border); margin: 0;">
-                    <h3 style="color: var(--accent-color); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem; font-size: 0.95rem;">
+                <div class="card" style="background: rgba(13,21,38,0.6); padding: 1rem; border: 1px solid var(--card-border); margin: 0;">
+                    <h3 style="color: var(--accent-color); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem; font-size: 0.92rem;">
                         <i class="fa-solid fa-chart-area"></i> ભાવ ઇતિહાસ (Price History Chart)
                     </h3>
-                    <div class="chart-container" style="height: 160px; position: relative;">
+                    <div class="chart-container" style="height: 150px; position: relative;">
                         <canvas id="research-price-chart"></canvas>
+                    </div>
+                    <!-- Live Price / Data High / Data Low stats strip -->
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin-top: 0.65rem;">
+                        <div style="background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.2); border-radius: 6px; padding: 0.4rem 0.6rem; text-align: center;">
+                            <div style="font-size: 0.65rem; color: var(--text-secondary); margin-bottom: 0.15rem;">Live Price</div>
+                            <div id="chart-live-price" style="font-size: 0.95rem; font-weight: 700; color: #60a5fa;">-</div>
+                        </div>
+                        <div style="background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.2); border-radius: 6px; padding: 0.4rem 0.6rem; text-align: center;">
+                            <div style="font-size: 0.65rem; color: var(--text-secondary); margin-bottom: 0.15rem;">Data Highest</div>
+                            <div id="chart-data-high" style="font-size: 0.95rem; font-weight: 700; color: var(--success-color);">-</div>
+                        </div>
+                        <div style="background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.2); border-radius: 6px; padding: 0.4rem 0.6rem; text-align: center;">
+                            <div style="font-size: 0.65rem; color: var(--text-secondary); margin-bottom: 0.15rem;">Data Lowest</div>
+                            <div id="chart-data-low" style="font-size: 0.95rem; font-weight: 700; color: var(--danger-color);">-</div>
+                        </div>
                     </div>
                 </div>
                 
                 <!-- Section 1: Company Profile (Gujarati) -->
-                <div class="card" style="background: rgba(15,23,42,0.4); padding: 1rem; border: 1px solid var(--card-border); margin: 0;">
-                    <h3 style="color: var(--accent-color); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem; font-size: 0.95rem;">
+                <div class="card" style="background: rgba(13,21,38,0.6); padding: 1rem; border: 1px solid var(--card-border); margin: 0;">
+                    <h3 style="color: var(--accent-color); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem; font-size: 0.92rem;">
                         <i class="fa-solid fa-building"></i> કંપની વિશે માહિતી (Gujarati)
                     </h3>
                     <p id="research-description" style="font-size: 0.82rem; line-height: 1.45; color: #cbd5e1; min-height: 40px; margin: 0;">કંપનીની માહિતી મેળવી રહ્યા છીએ...</p>
                 </div>
                 
                 <!-- Side-by-Side Sections: Technical Sentiment & External Links -->
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem;">
+                <div class="modal-sidebar-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem;">
                     
                     <!-- Section 2: Technical Sentiment & Advice -->
-                    <div class="card" style="background: rgba(15,23,42,0.4); padding: 1rem; border: 1px solid var(--card-border); margin: 0;">
-                        <h3 style="color: var(--accent-color); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem; font-size: 0.95rem;">
+                    <div class="card" style="background: rgba(13,21,38,0.6); padding: 1rem; border: 1px solid var(--card-border); margin: 0;">
+                        <h3 style="color: var(--accent-color); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem; font-size: 0.92rem;">
                             <i class="fa-solid fa-chart-line"></i> રોકાણ વિશ્લેષણ (Technical Sentiment)
                         </h3>
                         <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem; margin-bottom: 0.6rem;">
-                            <div class="modal-stat-box" style="padding: 0.4rem 0.6rem; border-radius: 4px; background: rgba(15,23,42,0.5); border: 1px solid var(--card-border); display: flex; flex-direction: column;">
+                            <div class="modal-stat-box" style="padding: 0.4rem 0.6rem; border-radius: 4px; background: rgba(13,21,38,0.6); border: 1px solid var(--card-border); display: flex; flex-direction: column;">
                                 <span class="stat-label" style="font-size: 0.65rem; color: var(--text-secondary);">52W High</span>
                                 <span class="stat-value" id="research-52w-high" style="font-size: 0.95rem; color: #ffffff; font-weight: bold; margin-top: 0.15rem;">₹0.00</span>
                             </div>
-                            <div class="modal-stat-box" style="padding: 0.4rem 0.6rem; border-radius: 4px; background: rgba(15,23,42,0.5); border: 1px solid var(--card-border); display: flex; flex-direction: column;">
+                            <div class="modal-stat-box" style="padding: 0.4rem 0.6rem; border-radius: 4px; background: rgba(13,21,38,0.6); border: 1px solid var(--card-border); display: flex; flex-direction: column;">
                                 <span class="stat-label" style="font-size: 0.65rem; color: var(--text-secondary);">52W Low</span>
                                 <span class="stat-value" id="research-52w-low" style="font-size: 0.95rem; color: #ffffff; font-weight: bold; margin-top: 0.15rem;">₹0.00</span>
                             </div>
@@ -549,21 +564,21 @@
                     </div>
                     
                     <!-- Section 3: Expert Advice External Links -->
-                    <div class="card" style="background: rgba(15,23,42,0.4); padding: 1rem; border: 1px solid var(--card-border); margin: 0; display: flex; flex-direction: column; justify-content: space-between;">
+                    <div class="card" style="background: rgba(13,21,38,0.6); padding: 1rem; border: 1px solid var(--card-border); margin: 0; display: flex; flex-direction: column; justify-content: space-between;">
                         <div>
-                            <h3 style="color: var(--accent-color); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem; font-size: 0.95rem;">
+                            <h3 style="color: var(--accent-color); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem; font-size: 0.92rem;">
                                 <i class="fa-solid fa-users"></i> બાહ્ય નિષ્ણાત સલાહ (Links)
                             </h3>
                             <p style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.6rem; line-height: 1.35; margin-top: 0;">વિગતો અને એનાલિસિસ જોવા માટે ક્લિક કરો:</p>
                         </div>
                         <div style="display: flex; flex-direction: column; gap: 0.4rem;">
-                            <a id="link-screener" href="#" target="_blank" class="btn btn-secondary" style="font-size: 0.78rem; padding: 0.4rem; text-align: center; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 0.3rem; background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1); color: #fff; border-radius: 4px;">
+                            <a id="link-screener" href="#" target="_blank" class="btn btn-secondary" style="font-size: 0.78rem; padding: 0.4rem; text-align: center; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 0.3rem; background: rgba(59,130,246,0.08); border-color: rgba(59,130,246,0.2); color: #93c5fd; border-radius: 4px;">
                                 <i class="fa-solid fa-square-poll-vertical"></i> Screener.in
                             </a>
-                            <a id="link-tickertape" href="#" target="_blank" class="btn btn-secondary" style="font-size: 0.78rem; padding: 0.4rem; text-align: center; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 0.3rem; background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1); color: #fff; border-radius: 4px;">
+                            <a id="link-tickertape" href="#" target="_blank" class="btn btn-secondary" style="font-size: 0.78rem; padding: 0.4rem; text-align: center; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 0.3rem; background: rgba(59,130,246,0.08); border-color: rgba(59,130,246,0.2); color: #93c5fd; border-radius: 4px;">
                                 <i class="fa-solid fa-chart-pie"></i> Tickertape
                             </a>
-                            <a id="link-moneycontrol" href="#" target="_blank" class="btn btn-secondary" style="font-size: 0.78rem; padding: 0.4rem; text-align: center; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 0.3rem; background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1); color: #fff; border-radius: 4px;">
+                            <a id="link-moneycontrol" href="#" target="_blank" class="btn btn-secondary" style="font-size: 0.78rem; padding: 0.4rem; text-align: center; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 0.3rem; background: rgba(59,130,246,0.08); border-color: rgba(59,130,246,0.2); color: #93c5fd; border-radius: 4px;">
                                 <i class="fa-solid fa-newspaper"></i> Moneycontrol
                             </a>
                         </div>
