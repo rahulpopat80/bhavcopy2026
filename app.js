@@ -307,6 +307,20 @@ function initEvents() {
         });
     }
 
+    // Close Research Modal Button Click
+    const researchModal = document.getElementById('research-modal');
+    const researchModalClose = document.getElementById('research-modal-close');
+    if (researchModalClose && researchModal) {
+        researchModalClose.addEventListener('click', () => {
+            researchModal.classList.add('hidden');
+        });
+        researchModal.addEventListener('click', (e) => {
+            if (e.target.id === 'research-modal') {
+                researchModal.classList.add('hidden');
+            }
+        });
+    }
+
     // Modal Option A: Cloud Fetch
     const btnCloudFetch = document.getElementById('btn-cloud-fetch');
     if (btnCloudFetch) {
@@ -1118,6 +1132,7 @@ function renderPortfolioTable() {
                 <td class="${profitClass}">${ratioStr}</td>
                 <td>
                     <div class="action-btn-group">
+                        <button class="action-icon-btn research-btn" onclick="showResearchModal('${item.companySymbol}')" title="Research & Advice" style="background: rgba(6, 182, 212, 0.15); color: var(--accent-color); border-color: var(--accent-color);"><i class="fa-solid fa-robot"></i></button>
                         <button class="action-icon-btn edit-btn" onclick="editPortfolioRow('${item.id}')" title="Edit Transaction"><i class="fa-solid fa-pen-to-square"></i></button>
                         <button class="action-icon-btn delete-btn" onclick="deletePortfolioRow('${item.id}')" title="Delete Transaction"><i class="fa-solid fa-trash"></i></button>
                     </div>
@@ -2637,6 +2652,148 @@ function showPriceChart(symbol) {
     // Show Modal overlay
     document.getElementById('chart-modal').classList.remove('hidden');
 }
+
+// Fetch and Render Company Research Report in Modal
+window.showResearchModal = function(symbol) {
+    // Prevent event bubbling if triggered inside row click
+    if (window.event) {
+        window.event.stopPropagation();
+    }
+    
+    // Set titles
+    document.getElementById('research-company-title').textContent = `${symbol} RESEARCH`;
+    
+    // Reset contents to loading
+    const descEl = document.getElementById('research-description');
+    const highEl = document.getElementById('research-52w-high');
+    const lowEl = document.getElementById('research-52w-low');
+    const badgeEl = document.getElementById('research-sentiment-badge');
+    const adviceEl = document.getElementById('research-sentiment-text');
+    
+    descEl.textContent = 'કંપનીની માહિતી મેળવી રહ્યા છીએ...';
+    highEl.textContent = '₹0.00';
+    lowEl.textContent = '₹0.00';
+    badgeEl.textContent = 'Calculating...';
+    badgeEl.style.background = '#64748b';
+    badgeEl.style.color = '#fff';
+    adviceEl.textContent = 'ગણતરી કરી રહ્યા છીએ...';
+    
+    // Set external links
+    document.getElementById('link-screener').href = `https://www.screener.in/company/${symbol}/`;
+    document.getElementById('link-tickertape').href = `https://www.tickertape.in/stocks/${symbol}`;
+    document.getElementById('link-moneycontrol').href = `https://www.moneycontrol.com/userview/alerts/editorialSearch?str=${symbol}`;
+    
+    // Show Modal immediately
+    document.getElementById('research-modal').classList.remove('hidden');
+    
+    // 1. Fetch Company Summary from DuckDuckGo Instant Answers API
+    const ddgUrl = `https://api.duckduckgo.com/?q=${encodeURIComponent(symbol)}+company&format=json`;
+    fetch(ddgUrl)
+        .then(res => res.json())
+        .then(data => {
+            const rawDescription = data.AbstractText || data.Definition || `${symbol} is an Indian company engaged in commercial and business activities, listed on the National Stock Exchange (NSE).`;
+            
+            // Translate to Gujarati using Google Translate's free API
+            const translateUrl = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=gu&dt=t&q=${encodeURIComponent(rawDescription)}`;
+            fetch(translateUrl)
+                .then(res => res.json())
+                .then(transData => {
+                    // Google translate single API returns array of sentences in transData[0]
+                    const sentences = transData[0].map(s => s[0]).join('');
+                    descEl.textContent = sentences || rawDescription;
+                })
+                .catch(transErr => {
+                    console.warn("Translation failed, displaying English description:", transErr);
+                    descEl.textContent = rawDescription;
+                });
+        })
+        .catch(err => {
+            console.error("DuckDuckGo fetch failed:", err);
+            descEl.textContent = `${symbol} એ ભારતીય શેરબજાર (NSE) માં સૂચિબદ્ધ કંપની છે જે ભારતમાં વિવિધ વ્યાપારી પ્રવૃત્તિઓ સાથે સંકળાયેલી છે. વધુ માહિતી માટે નીચે આપેલ લિંક્સની મુલાકાત લો.`;
+        });
+        
+    // 2. Fetch Yahoo Finance Stock Quote Data for Technical Sentiment
+    const yahooSymbol = `${symbol}.NS`;
+    const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}`;
+    
+    const parseYahooData = (meta) => {
+        const currentPrice = meta.regularMarketPrice;
+        const high52 = meta.fiftyTwoWeekHigh;
+        const low52 = meta.fiftyTwoWeekLow;
+        const longName = meta.longName || symbol;
+        
+        if (longName) {
+            document.getElementById('research-company-title').textContent = longName.toUpperCase();
+        }
+        
+        if (high52 && low52 && currentPrice) {
+            highEl.textContent = `₹${high52.toFixed(2)}`;
+            lowEl.textContent = `₹${low52.toFixed(2)}`;
+            
+            // Technical Sentiment Logic
+            const totalRange = high52 - low52;
+            const position = currentPrice - low52;
+            const pctPosition = totalRange > 0 ? (position / totalRange) * 100 : 50;
+            
+            let sentiment = '';
+            let color = '';
+            let gujAdvice = '';
+            
+            if (pctPosition >= 80) {
+                sentiment = 'Strong Buy / Bullish';
+                color = 'var(--success-color)';
+                gujAdvice = `સ્ટોક હાલમાં મજબૂત તેજી (Bullish) માં છે અને તેના ૫૨-અઠવાડિયાના ઉચ્ચ સ્તરની નજીક ટ્રેડ કરી રહ્યો છે. નિષ્ણાતોના મતે સ્ટોકમાં મોમેન્ટમ મજબૂત છે, જેથી તે નવા રેકોર્ડ સ્તરો બનાવી શકે છે. ટૂંકા ગાળાના નફા માટે આ એક સારો વિકલ્પ હોઈ શકે છે.`;
+            } else if (pctPosition <= 20) {
+                sentiment = 'Value Buy / Oversold';
+                color = '#e11d48'; // deep red
+                gujAdvice = `સ્ટોક તેના ૫૨-અઠવાડિયાના નીચલા સ્તરની નજીક છે અને ઓવરસોલ્ડ (Oversold) ઝોનમાં આવી ગયો છે. લાંબા ગાળાના રોકાણકારો માટે આ સારા ભાવે ખરીદી કરવાની તક હોઈ શકે છે, પરંતુ તે પહેલા કંપનીના ફંડામેન્ટલ્સ ચકાસવા અને બજારમાં રિવર્સલ ટ્રેન્ડની રાહ જોવી હિતાવહ છે.`;
+            } else {
+                sentiment = 'Hold / Neutral';
+                color = '#eab308'; // yellow
+                gujAdvice = `સ્ટોક મધ્યમ શ્રેણીમાં (ન તેજી, ન મંદી) ચાલી રહ્યો છે. નિષ્ણાતોના મતે અત્યારે ઉતાવળમાં નવું રોકાણ કરવાને બદલે હાલના રોકાણને હોલ્ડ (Hold) કરી રાખવું વધુ યોગ્ય રહેશે. નવી ખરીદી માટે થોડો ઘટાડો થાય ત્યારે 'Buy on Dips' ની રણનીતિ અપનાવો.`;
+            }
+            
+            badgeEl.textContent = sentiment;
+            badgeEl.style.background = color;
+            badgeEl.style.color = '#ffffff';
+            adviceEl.textContent = gujAdvice;
+        } else {
+            highEl.textContent = 'N/A';
+            lowEl.textContent = 'N/A';
+            badgeEl.textContent = 'Hold';
+            badgeEl.style.background = '#eab308';
+            adviceEl.textContent = 'આ સ્ટોકનો ૫૨ અઠવાડિયાનો વિગતવાર ડેટા ડાઉનલોડ થઈ શક્યો નથી. વધુ સલાહ માટે નીચે આપેલ Screener અથવા Tickertape ની મુલાકાત લો.';
+        }
+    };
+    
+    // Execute Fetch to Yahoo Finance
+    fetch(yahooUrl)
+        .then(res => {
+            if (!res.ok) throw new Error("HTTP error");
+            return res.json();
+        })
+        .then(data => {
+            const meta = data.chart.result[0].meta;
+            parseYahooData(meta);
+        })
+        .catch(err => {
+            console.warn("Direct Yahoo quoteSummary failed, trying proxy...", err);
+            const proxyUrl = `https://corsproxy.io/?url=${encodeURIComponent(yahooUrl)}`;
+            fetch(proxyUrl)
+                .then(res => res.json())
+                .then(data => {
+                    const meta = data.chart.result[0].meta;
+                    parseYahooData(meta);
+                })
+                .catch(proxyErr => {
+                    console.error("Proxy fetch failed:", proxyErr);
+                    highEl.textContent = 'Connection Error';
+                    lowEl.textContent = 'Connection Error';
+                    badgeEl.textContent = 'N/A';
+                    adviceEl.textContent = 'નેટવર્ક જોડાણ ખોરવાયું છે. કૃપા કરીને થોડીવાર પછી ફરી પ્રયાસ કરો.';
+                });
+        });
+};
 
 // Run on load
 document.addEventListener('DOMContentLoaded', initEvents);

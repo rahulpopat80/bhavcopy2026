@@ -484,6 +484,72 @@
         </div>
     </div>
 
+    <!-- Company Research Modal -->
+    <div class="modal-overlay hidden" id="research-modal">
+        <div class="modal-card" style="max-width: 600px;">
+            <div class="modal-header">
+                <div>
+                    <h2 id="research-company-title">COMPANY RESEARCH</h2>
+                    <span style="font-size: 0.8rem; color: var(--text-secondary);">Business summary & expert investment analysis</span>
+                </div>
+                <button class="modal-close" id="research-modal-close">&times;</button>
+            </div>
+            <div class="modal-body" style="display: flex; flex-direction: column; gap: 1.2rem; padding: 1.5rem 0;">
+                
+                <!-- Section 1: Company Profile (Gujarati) -->
+                <div class="card" style="background: rgba(15,23,42,0.4); padding: 1.2rem; border: 1px solid var(--card-border);">
+                    <h3 style="color: var(--accent-color); margin-bottom: 0.65rem; display: flex; align-items: center; gap: 0.5rem; font-size: 1rem;">
+                        <i class="fa-solid fa-building"></i> કંપની વિશે માહિતી (Gujarati)
+                    </h3>
+                    <p id="research-description" style="font-size: 0.88rem; line-height: 1.5; color: #e5e7eb; min-height: 50px; margin: 0;">કંપનીની માહિતી મેળવી રહ્યા છીએ...</p>
+                </div>
+                
+                <!-- Section 2: Technical Sentiment & Advice (Gujarati) -->
+                <div class="card" style="background: rgba(15,23,42,0.4); padding: 1.2rem; border: 1px solid var(--card-border);">
+                    <h3 style="color: var(--accent-color); margin-bottom: 0.65rem; display: flex; align-items: center; gap: 0.5rem; font-size: 1rem;">
+                        <i class="fa-solid fa-chart-line"></i> રોકાણ વિશ્લેષણ (Technical Sentiment)
+                    </h3>
+                    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.75rem; margin-bottom: 1rem;">
+                        <div class="modal-stat-box" style="padding: 0.5rem 0.75rem; border-radius: 6px; background: rgba(15,23,42,0.5); border: 1px solid var(--card-border); display: flex; flex-direction: column;">
+                            <span class="stat-label" style="font-size: 0.75rem; color: var(--text-secondary);">૫૨ અઠવાડિયાની ઊંચાઈ (52W High)</span>
+                            <span class="stat-value" id="research-52w-high" style="font-size: 1.1rem; color: #ffffff; font-weight: bold; margin-top: 0.25rem;">₹0.00</span>
+                        </div>
+                        <div class="modal-stat-box" style="padding: 0.5rem 0.75rem; border-radius: 6px; background: rgba(15,23,42,0.5); border: 1px solid var(--card-border); display: flex; flex-direction: column;">
+                            <span class="stat-label" style="font-size: 0.75rem; color: var(--text-secondary);">૫૨ અઠવાડિયાની નીચાઈ (52W Low)</span>
+                            <span class="stat-value" id="research-52w-low" style="font-size: 1.1rem; color: #ffffff; font-weight: bold; margin-top: 0.25rem;">₹0.00</span>
+                        </div>
+                    </div>
+                    <div style="padding: 0.85rem; border-radius: 6px; background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(255,255,255,0.05);">
+                        <div style="font-weight: 600; font-size: 0.85rem; margin-bottom: 0.35rem; display: flex; align-items: center; gap: 0.35rem;">
+                            રોકાણ સલાહ: <span id="research-sentiment-badge" style="padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.75rem; font-weight: bold;">Calculating...</span>
+                        </div>
+                        <p id="research-sentiment-text" style="font-size: 0.85rem; line-height: 1.5; color: #cbd5e1; margin: 0;">ગણતરી કરી રહ્યા છીએ...</p>
+                    </div>
+                </div>
+                
+                <!-- Section 3: Expert Advice External Links -->
+                <div class="card" style="background: rgba(15,23,42,0.4); padding: 1.2rem; border: 1px solid var(--card-border);">
+                    <h3 style="color: var(--accent-color); margin-bottom: 0.65rem; display: flex; align-items: center; gap: 0.5rem; font-size: 1rem;">
+                        <i class="fa-solid fa-users"></i> બાહ્ય નિષ્ણાત સલાહ (External Research Links)
+                    </h3>
+                    <p style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.75rem; line-height: 1.4;">વિવિધ વિશ્લેષણ પ્લેટફોર્મ પર કંપનીના નાણાકીય આંકડા અને વિશ્લેષકોના બ્રોકર કોલ્સ જોવા માટે નીચે ક્લિક કરો:</p>
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.6rem;">
+                        <a id="link-screener" href="#" target="_blank" class="btn btn-secondary" style="font-size: 0.78rem; padding: 0.5rem; text-align: center; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 0.3rem; background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1); color: #fff;">
+                            <i class="fa-solid fa-square-poll-vertical"></i> Screener.in
+                        </a>
+                        <a id="link-tickertape" href="#" target="_blank" class="btn btn-secondary" style="font-size: 0.78rem; padding: 0.5rem; text-align: center; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 0.3rem; background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1); color: #fff;">
+                            <i class="fa-solid fa-chart-pie"></i> Tickertape
+                        </a>
+                        <a id="link-moneycontrol" href="#" target="_blank" class="btn btn-secondary" style="font-size: 0.78rem; padding: 0.5rem; text-align: center; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 0.3rem; background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1); color: #fff;">
+                            <i class="fa-solid fa-newspaper"></i> Moneycontrol
+                        </a>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
     <!-- Notification system -->
     <div class="notification-container" id="notification-container"></div>
 
