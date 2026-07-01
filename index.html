@@ -255,19 +255,23 @@
                         </div>
                     </div>
 
-                    <!-- Top 30 Days Gainers Highlight -->
+                    <!-- Top Gainers Highlight -->
                     <div class="card movement-card">
                         <div class="movement-header">
                             <i class="fa-solid fa-chart-line movement-icon"></i>
-                            <h2>Top 50 Gainers (Last 30 Days)</h2>
+                            <h2 id="gainer-card-title">Top 10 Gainers (Last 5 Days)</h2>
+                            <div class="gainer-toggle-group">
+                                <button class="toggle-btn active" id="gainer-toggle-5">5-Day</button>
+                                <button class="toggle-btn" id="gainer-toggle-30">30-Day</button>
+                            </div>
                         </div>
-                        <p class="card-desc">Companies showing the highest net positive close-to-close change over the last 30 active trading days.</p>
+                        <p class="card-desc" id="gainer-card-desc">Companies showing the highest net positive close-to-close change over the last 5 active trading days.</p>
                         <div class="table-wrapper movement-table-wrapper">
                             <table id="movement-table">
                                 <thead>
                                     <tr>
                                         <th>Symbol</th>
-                                        <th>Price 30 Days Ago</th>
+                                        <th id="gainer-table-old-price-header">Price 5 Days Ago</th>
                                         <th>Latest Price</th>
                                         <th>Net Gain (₹)</th>
                                         <th>Gain (%)</th>
@@ -418,6 +422,9 @@
                                     </td>
                                 </tr>
                             </tbody>
+                            <tfoot>
+                                <!-- Populated dynamically from JS -->
+                            </tfoot>
                         </table>
                     </div>
                 </div>

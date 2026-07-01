@@ -55,7 +55,10 @@ let state = {
     highColIndex: -1,
     diffColIndex: -1,
     latestDateColIndex: -1,
-    isinColIndex: -1
+    isinColIndex: -1,
+    
+    // Gainers Window Active Selection (5 or 30)
+    gainersWindow: 5
 };
 
 // UI Elements
@@ -236,6 +239,26 @@ function initEvents() {
     // Portfolio Form Initializations
     setupPortfolioFormCalculations();
     setupPortfolioFormSubmit();
+
+    // Gainers range toggles
+    const toggle5 = document.getElementById('gainer-toggle-5');
+    const toggle30 = document.getElementById('gainer-toggle-30');
+    
+    if (toggle5 && toggle30) {
+        toggle5.addEventListener('click', () => {
+            toggle5.classList.add('active');
+            toggle30.classList.remove('active');
+            state.gainersWindow = 5;
+            renderGainersAnalysis();
+        });
+
+        toggle30.addEventListener('click', () => {
+            toggle30.classList.add('active');
+            toggle5.classList.remove('active');
+            state.gainersWindow = 30;
+            renderGainersAnalysis();
+        });
+    }
 }
 
 // Drag & Drop Setup
@@ -674,10 +697,12 @@ async function deletePortfolioItem(id) {
 // Render portfolio entries list table and calculate summaries
 function renderPortfolioTable() {
     const tbody = document.querySelector('#portfolio-table tbody');
+    const tfoot = document.querySelector('#portfolio-table tfoot');
     if (!tbody) return;
 
     if (portfolioItems.length === 0) {
         tbody.innerHTML = `<tr><td colspan="12" style="text-align:center; padding: 2rem; color: var(--text-secondary);">No transactions logged yet. Add your first transaction on the left!</td></tr>`;
+        if (tfoot) tfoot.innerHTML = '';
         updatePortfolioSummary(0, 0, 0, 0);
         document.getElementById('portfolio-count').textContent = 'Holdings: 0';
         return;
@@ -686,14 +711,18 @@ function renderPortfolioTable() {
     let html = '';
     let totalInvested = 0;
     let totalProfit = 0;
+    let totalSellAmount = 0;
+    let totalQty = 0;
     let activeCount = 0;
     let soldCount = 0;
+    let totalDaysSold = 0;
 
     portfolioItems.forEach(item => {
         const qty = parseInt(item.quantity) || 0;
         const buyRate = parseFloat(item.buyRate) || 0;
         const buyAmt = qty * buyRate;
         totalInvested += buyAmt;
+        totalQty += qty;
 
         const hasSold = item.sellRate && item.sellDate;
         
@@ -708,6 +737,7 @@ function renderPortfolioTable() {
             soldCount++;
             const sellRate = parseFloat(item.sellRate);
             const sellAmt = qty * sellRate;
+            totalSellAmount += sellAmt;
             const profit = sellAmt - buyAmt;
             totalProfit += profit;
             
@@ -719,6 +749,7 @@ function renderPortfolioTable() {
             const d1 = new Date(item.buyDate);
             const d2 = new Date(item.sellDate);
             const diffDays = Math.ceil((d2 - d1) / (1000 * 60 * 60 * 24));
+            totalDaysSold += diffDays >= 0 ? diffDays : 0;
             daysStr = `${diffDays >= 0 ? diffDays : 0} days`;
             badgeHtml = `<span class="badge-sold">SOLD</span>`;
         } else {
@@ -760,6 +791,33 @@ function renderPortfolioTable() {
     });
 
     tbody.innerHTML = html;
+
+    // Render footer totals
+    if (tfoot) {
+        const profitClass = totalProfit >= 0 ? 'profit-text' : 'loss-text';
+        const profitSign = totalProfit >= 0 ? '+' : '';
+        const avgDaysSold = soldCount > 0 ? Math.round(totalDaysSold / soldCount) : 0;
+        const totalProfitRatio = totalInvested > 0 ? ((totalProfit / totalInvested) * 100) : 0;
+        const profitRatioSign = totalProfitRatio >= 0 ? '+' : '';
+
+        tfoot.innerHTML = `
+            <tr style="font-weight: bold; background: rgba(0, 0, 0, 0.45); border-top: 2px solid var(--accent-color);">
+                <td>TOTAL</td>
+                <td>-</td>
+                <td>${totalQty}</td>
+                <td>-</td>
+                <td>₹${totalInvested.toFixed(2)}</td>
+                <td>-</td>
+                <td>-</td>
+                <td>${totalSellAmount > 0 ? `₹${totalSellAmount.toFixed(2)}` : '-'}</td>
+                <td class="${profitClass}">${profitSign}₹${totalProfit.toFixed(2)}</td>
+                <td>${soldCount > 0 ? `${avgDaysSold} days (Avg)` : '-'}</td>
+                <td class="${profitClass}">${profitRatioSign}${totalProfitRatio.toFixed(2)}%</td>
+                <td>-</td>
+            </tr>
+        `;
+    }
+
     updatePortfolioSummary(totalInvested, totalProfit, activeCount, soldCount);
     document.getElementById('portfolio-count').textContent = `Holdings: ${portfolioItems.length}`;
 }
@@ -1793,12 +1851,14 @@ async function processFiles() {
 }
 
 // Analytical Section: Top 50 30-Day Gainers (Latest Close - 30 Days Ago Close)
+// Analytical Section: Top Gainers dynamic (5-Day or 30-Day based on toggle)
 function renderGainersAnalysis() {
     const data = state.processedMasterData;
     if (!data || data.length < 2) return;
     
     const insertIdx = state.latestDateColIndex;
     const gainersRows = [];
+    const windowDays = state.gainersWindow || 5;
     
     // Determine where metadata columns end so we don't scan them as price columns
     let startMetadataLimit = -1;
@@ -1816,9 +1876,9 @@ function renderGainersAnalysis() {
         
         if (!symbol) continue;
         
-        // Collect prices from last 30 date columns going forward (since newest date is inserted next to HIGH)
+        // Collect prices from last windowDays date columns going forward
         const prices = [];
-        const limit = Math.min(row.length, insertIdx + 30);
+        const limit = Math.min(row.length, insertIdx + windowDays);
         for (let colIdx = insertIdx; colIdx < limit; colIdx++) {
             const pVal = parseFloat(row[colIdx]);
             if (!isNaN(pVal)) {
@@ -1829,7 +1889,7 @@ function renderGainersAnalysis() {
         // Need today's price (prices[0]) and at least one older price to compute gain
         if (prices.length >= 2) {
             const todayPrice = prices[0];
-            const oldestPrice = prices[prices.length - 1]; // oldest available date in the last 30 days
+            const oldestPrice = prices[prices.length - 1]; // oldest available date in the window
             const gain = parseFloat((todayPrice - oldestPrice).toFixed(2));
             const gainPct = oldestPrice > 0 ? parseFloat(((gain / oldestPrice) * 100).toFixed(2)) : 0;
             
@@ -1865,13 +1925,33 @@ function renderGainersAnalysis() {
         gainPctEl.textContent = `${sign}${best.pct}%`;
         gainPctEl.style.color = color;
         
+        // Update labels dynamically based on window selection
+        const performerHeader = topPerformerCard.querySelector('.performer-header h2');
+        if (performerHeader) performerHeader.textContent = `${windowDays}-Day Performance Leader`;
+        
+        const oldPriceLabel = document.getElementById('performer-old-price').parentNode;
+        if (oldPriceLabel) {
+            oldPriceLabel.childNodes[0].textContent = `Price ${windowDays} Days Ago: `;
+        }
+        
         topPerformerCard.classList.remove('hidden');
     } else {
         topPerformerCard.classList.add('hidden');
     }
     
-    // Select top 50
-    const topGainers = gainersRows.slice(0, 50);
+    // Update card title and descriptions
+    const cardTitle = document.getElementById('gainer-card-title');
+    if (cardTitle) cardTitle.textContent = `Top ${windowDays === 5 ? '10' : '50'} Gainers (Last ${windowDays} Days)`;
+    
+    const cardDesc = document.getElementById('gainer-card-desc');
+    if (cardDesc) cardDesc.textContent = `Companies showing the highest net positive close-to-close change over the last ${windowDays} active trading days.`;
+    
+    const tableHeaderOld = document.getElementById('gainer-table-old-price-header');
+    if (tableHeaderOld) tableHeaderOld.textContent = `Price ${windowDays} Days Ago`;
+    
+    // Select top 10 or 50 based on window
+    const sliceLimit = windowDays === 5 ? 10 : 50;
+    const topGainers = gainersRows.slice(0, sliceLimit);
     
     // Render to table
     let html = '';
