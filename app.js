@@ -2504,6 +2504,69 @@ function showPriceChart(symbol) {
         }
     });
     
+    // Fetch Live Price from Yahoo Finance
+    const livePriceEl = document.getElementById('modal-live-price');
+    if (livePriceEl) {
+        livePriceEl.textContent = 'Fetching...';
+        livePriceEl.style.color = '#ffffff';
+        
+        // Yahoo Finance symbol format is [symbol].NS for NSE stocks
+        const yahooSymbol = `${symbol}.NS`;
+        const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}`;
+        
+        fetch(yahooUrl)
+            .then(res => {
+                if (!res.ok) throw new Error("HTTP error");
+                return res.json();
+            })
+            .then(data => {
+                const meta = data.chart.result[0].meta;
+                const currentPrice = meta.regularMarketPrice;
+                const prevClose = meta.chartPreviousClose;
+                
+                if (currentPrice !== undefined) {
+                    const diff = currentPrice - prevClose;
+                    const pct = (diff / prevClose) * 100;
+                    
+                    const sign = diff >= 0 ? '+' : '';
+                    const color = diff >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+                    
+                    livePriceEl.innerHTML = `₹${currentPrice.toFixed(2)} <span style="font-size: 0.75rem; font-weight: 600; color: ${color}; margin-left: 0.35rem;">(${sign}${pct.toFixed(2)}%)</span>`;
+                } else {
+                    livePriceEl.textContent = 'N/A';
+                }
+            })
+            .catch(err => {
+                console.warn("Direct Yahoo Finance fetch failed, trying proxy...", err);
+                
+                // Fallback via proxy
+                const proxyUrl = `https://corsproxy.io/?url=${encodeURIComponent(yahooUrl)}`;
+                fetch(proxyUrl)
+                    .then(res => res.json())
+                    .then(data => {
+                        const meta = data.chart.result[0].meta;
+                        const currentPrice = meta.regularMarketPrice;
+                        const prevClose = meta.chartPreviousClose;
+                        
+                        if (currentPrice !== undefined) {
+                            const diff = currentPrice - prevClose;
+                            const pct = (diff / prevClose) * 100;
+                            
+                            const sign = diff >= 0 ? '+' : '';
+                            const color = diff >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+                            
+                            livePriceEl.innerHTML = `₹${currentPrice.toFixed(2)} <span style="font-size: 0.75rem; font-weight: 600; color: ${color}; margin-left: 0.35rem;">(${sign}${pct.toFixed(2)}%)</span>`;
+                        } else {
+                            livePriceEl.textContent = 'N/A';
+                        }
+                    })
+                    .catch(proxyErr => {
+                        console.error("Yahoo Finance proxy fetch failed:", proxyErr);
+                        livePriceEl.textContent = 'Connection Error';
+                    });
+            });
+    }
+    
     // Show Modal overlay
     document.getElementById('chart-modal').classList.remove('hidden');
 }
