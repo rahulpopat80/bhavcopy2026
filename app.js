@@ -408,8 +408,11 @@ async function saveMasterToCloud() {
     } catch (err) {
         console.error('Error syncing to Firestore:', err);
         updateCloudSyncUI('error', 'Sync Failed');
+        const logContainer = document.getElementById('process-log-container');
+        if (logContainer) logContainer.classList.remove('hidden');
         log(`Cloud sync failed: ${err.message}`, 'error');
-        showNotification('Cloud sync failed. Check Firestore rules!', 'error');
+        showNotification(`Cloud sync failed: ${err.message}`, 'error');
+        alert(`Cloud sync failed: ${err.message}\nCheck Firebase Console/Rules!`);
     }
 }
 
@@ -418,6 +421,7 @@ async function loadMasterFromCloud() {
     if (!db) {
         console.error("Firestore not initialized");
         updateCloudSyncUI('error', 'Firebase Offline');
+        showNotification('Firebase SDK failed to initialize. Check connection or blockers!', 'error');
         return false;
     }
 
@@ -485,7 +489,10 @@ async function loadMasterFromCloud() {
     } catch (err) {
         console.error('Error loading from Firestore:', err);
         updateCloudSyncUI('error', 'Load Failed');
+        const logContainer = document.getElementById('process-log-container');
+        if (logContainer) logContainer.classList.remove('hidden');
         log(`Cloud load failed: ${err.message}`, 'error');
+        showNotification(`Cloud load failed: ${err.message}`, 'error');
         return false;
     }
 }
