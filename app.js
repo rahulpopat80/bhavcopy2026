@@ -172,7 +172,7 @@ function initEvents() {
             const symbolCell = row.cells[state.symbolColIndex];
             if (symbolCell) {
                 const symbol = symbolCell.textContent.trim().toUpperCase();
-                showPriceChart(symbol);
+                showResearchModal(symbol);
             }
         }
     });
@@ -2788,12 +2788,18 @@ window.showResearchModal = function(symbol) {
             const row = masterData.find((r, idx) => idx > 0 && String(r[symbolIndex] || '').trim().toUpperCase() === symbol);
             if (row) {
                 const startIdx = highIndex !== -1 ? highIndex + 1 : (state.diffColIndex !== -1 ? state.diffColIndex + 1 : symbolIndex + 1);
-                for (let colIdx = startIdx; colIdx < row.length; colIdx++) {
+                const maxColIdx = Math.min(headers.length, row.length);
+                for (let colIdx = startIdx; colIdx < maxColIdx; colIdx++) {
                     const headerName = headers[colIdx];
-                    const pVal = parseFloat(row[colIdx]);
-                    if (headerName && !isNaN(pVal)) {
+                    if (headerName) {
                         dateLabels.push(headerName);
-                        prices.push(pVal);
+                        
+                        const pVal = parseFloat(row[colIdx]);
+                        if (!isNaN(pVal)) {
+                            prices.push(pVal);
+                        } else {
+                            prices.push(null);
+                        }
                     }
                 }
                 if (prices.length > 0) {
