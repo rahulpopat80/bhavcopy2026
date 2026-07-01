@@ -325,15 +325,60 @@ function initEvents() {
             const nseFilename = `BhavCopy_NSE_CM_0_0_0_${yyyy}${mm}${dd}_F_0000.csv.zip`;
             const nseUrl = `https://nsearchives.nseindia.com/content/cm/${nseFilename}`;
             
+            showFetchStatus("Trying direct fetch from NSE archives...", "info", true);
+            
+            let success = false;
+            
+            // Try Direct Fetch (Works instantly if the user has a CORS extension enabled!)
+            try {
+                console.log(`Trying direct fetch: ${nseUrl}`);
+                const response = await fetch(nseUrl);
+                if (response.ok) {
+                    const arrayBuffer = await response.arrayBuffer();
+                    if (arrayBuffer.byteLength > 1000) {
+                        showFetchStatus("Direct fetch succeeded! Unzipping...", "info", true);
+                        
+                        const zip = await JSZip.loadAsync(arrayBuffer);
+                        const csvFileKey = Object.keys(zip.files).find(k => k.toLowerCase().endsWith('.csv'));
+                        if (!csvFileKey) throw new Error("No CSV file found inside the ZIP.");
+                        
+                        const csvFile = zip.files[csvFileKey];
+                        const csvText = await csvFile.async("string");
+                        
+                        showFetchStatus("Bhavcopy fetched successfully! Loading data...", "success");
+                        
+                        const blob = new Blob([csvText], { type: 'text/csv' });
+                        const fileObj = new File([blob], csvFileKey, { type: 'text/csv' });
+                        
+                        state.csvFiles = [fileObj];
+                        state.csvFile = fileObj;
+                        
+                        csvFilename.textContent = fileObj.name;
+                        csvFilesize.textContent = formatBytes(fileObj.size);
+                        csvDropzone.classList.add('hidden');
+                        csvStatus.classList.remove('hidden');
+                        
+                        parseCSVFile(fileObj);
+                        
+                        success = true;
+                        setTimeout(() => {
+                            fetchModal.classList.add('hidden');
+                        }, 1500);
+                        return;
+                    }
+                }
+            } catch (directErr) {
+                console.warn("Direct fetch failed (CORS block). Trying proxies...", directErr);
+            }
+            
+            // Fallback: Try Proxies (CORS proxies)
             const proxies = [
                 `https://corsproxy.io/?url=${encodeURIComponent(nseUrl)}`,
                 `https://api.allorigins.win/raw?url=${encodeURIComponent(nseUrl)}`,
                 `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(nseUrl)}`
             ];
             
-            showFetchStatus("Contacting NSE archives via proxy...", "info", true);
-            
-            let success = false;
+            showFetchStatus("Direct fetch blocked by CORS. Contacting NSE via proxy...", "info", true);
             
             for (let i = 0; i < proxies.length; i++) {
                 const proxyUrl = proxies[i];
@@ -344,10 +389,10 @@ function initEvents() {
                     
                     const arrayBuffer = await response.arrayBuffer();
                     if (arrayBuffer.byteLength < 1000) {
-                        throw new Error("Response is too small (likely blocked page or error).");
+                        throw new Error("Response is too small (likely blocked by NSE firewall).");
                     }
                     
-                    showFetchStatus("Zip file downloaded! Extracting...", "info", true);
+                    showFetchStatus("Zip file downloaded! Unzipping...", "info", true);
                     
                     const zip = await JSZip.loadAsync(arrayBuffer);
                     const csvFileKey = Object.keys(zip.files).find(k => k.toLowerCase().endsWith('.csv'));
@@ -356,7 +401,7 @@ function initEvents() {
                     const csvFile = zip.files[csvFileKey];
                     const csvText = await csvFile.async("string");
                     
-                    showFetchStatus("Bhavcopy extracted successfully! Processing data...", "success");
+                    showFetchStatus("Bhavcopy fetched successfully! Loading data...", "success");
                     
                     const blob = new Blob([csvText], { type: 'text/csv' });
                     const fileObj = new File([blob], csvFileKey, { type: 'text/csv' });
@@ -382,7 +427,7 @@ function initEvents() {
             }
             
             if (!success) {
-                showFetchStatus("Cloud Fetch failed or timed out. NSE blocks foreign proxy servers. Please try Option B below to download directly!", "error");
+                showFetchStatus("Direct Fetch blocked by CORS & Cloud Proxy blocked by NSE firewall.<br><strong style='color:var(--success-color);'>Tip: Install a 'CORS Unblock' browser extension to enable 1-click Direct Fetch!</strong> or use Option B.", "error");
             }
         });
     }
