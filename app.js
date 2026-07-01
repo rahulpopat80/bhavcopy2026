@@ -435,47 +435,114 @@ function initEvents() {
     // Modal Option B: Samco Direct Download Form Submission
     const btnDirectDownload = document.getElementById('btn-direct-download');
     if (btnDirectDownload) {
-        btnDirectDownload.addEventListener('click', () => {
+        btnDirectDownload.addEventListener('click', async () => {
             const dateVal = document.getElementById('fetch-date').value;
             if (!dateVal) {
                 showFetchStatus("Please select a date.", "error");
                 return;
             }
             
-            const form = document.createElement('form');
-            form.method = 'POST';
-            form.action = 'https://www.samco.in/bse_nse_mcx/getBhavcopy';
-            form.target = '_blank';
+            showFetchStatus("Contacting Samco servers to download CSV...", "info", true);
             
-            const startInput = document.createElement('input');
-            startInput.type = 'hidden';
-            startInput.name = 'start_date';
-            startInput.value = dateVal;
-            form.appendChild(startInput);
-            
-            const endInput = document.createElement('input');
-            endInput.type = 'hidden';
-            endInput.name = 'end_date';
-            endInput.value = dateVal;
-            form.appendChild(endInput);
-            
-            const segmentInput = document.createElement('input');
-            segmentInput.type = 'hidden';
-            segmentInput.name = 'bhavcopy_data[]';
-            segmentInput.value = 'NSE';
-            form.appendChild(segmentInput);
-            
-            const showDownInput = document.createElement('input');
-            showDownInput.type = 'hidden';
-            showDownInput.name = 'show_or_down';
-            showDownInput.value = '2'; // 2 = Download ZIP
-            form.appendChild(showDownInput);
-            
-            document.body.appendChild(form);
-            form.submit();
-            document.body.removeChild(form);
-            
-            showFetchStatus("Form submitted! Direct download started. Drag the downloaded ZIP file directly into the uploader box on the screen.", "success");
+            try {
+                // Construct urlencoded body parameters
+                const bodyParams = new URLSearchParams();
+                bodyParams.append('start_date', dateVal);
+                bodyParams.append('end_date', dateVal);
+                bodyParams.append('bhavcopy_data[]', 'NSE');
+                bodyParams.append('show_or_down', '2'); // 2 = Download ZIP
+                
+                // Fetch directly from Samco (works because CORS is disabled via .bat file!)
+                const response = await fetch('https://www.samco.in/bse_nse_mcx/getBhavcopy', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: bodyParams.toString()
+                });
+                
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                
+                const arrayBuffer = await response.arrayBuffer();
+                if (arrayBuffer.byteLength < 1000) {
+                    throw new Error("Response is too small (likely blocked by Cloudflare challenge).");
+                }
+                
+                showFetchStatus("Zip file downloaded! Unzipping to CSV...", "info", true);
+                
+                // Unzip
+                const zip = await JSZip.loadAsync(arrayBuffer);
+                const csvFileKey = Object.keys(zip.files).find(k => k.toLowerCase().endsWith('.csv'));
+                if (!csvFileKey) throw new Error("No CSV file found inside the downloaded ZIP.");
+                
+                const csvFile = zip.files[csvFileKey];
+                const csvText = await csvFile.async("string");
+                
+                showFetchStatus("CSV extracted! Starting download...", "success");
+                
+                // Trigger download of the raw CSV file
+                const blob = new Blob([csvText], { type: 'text/csv' });
+                const downloadUrl = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = downloadUrl;
+                a.download = csvFileKey; // download as the raw CSV filename!
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(downloadUrl);
+                
+                // Also automatically feed it into the uploader!
+                const fileObj = new File([blob], csvFileKey, { type: 'text/csv' });
+                state.csvFiles = [fileObj];
+                state.csvFile = fileObj;
+                csvFilename.textContent = fileObj.name;
+                csvFilesize.textContent = formatBytes(fileObj.size);
+                csvDropzone.classList.add('hidden');
+                csvStatus.classList.remove('hidden');
+                parseCSVFile(fileObj);
+                
+                setTimeout(() => {
+                    fetchModal.classList.add('hidden');
+                }, 1500);
+                
+            } catch (err) {
+                console.warn("Direct Samco download failed:", err);
+                showFetchStatus("Direct download failed. Falling back to native browser form submission...", "warning");
+                
+                // Fallback: Submit form natively (this will download the ZIP as a fallback if the fetch failed)
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = 'https://www.samco.in/bse_nse_mcx/getBhavcopy';
+                form.target = '_blank';
+                
+                const startInput = document.createElement('input');
+                startInput.type = 'hidden';
+                startInput.name = 'start_date';
+                startInput.value = dateVal;
+                form.appendChild(startInput);
+                
+                const endInput = document.createElement('input');
+                endInput.type = 'hidden';
+                endInput.name = 'end_date';
+                endInput.value = dateVal;
+                form.appendChild(endInput);
+                
+                const segmentInput = document.createElement('input');
+                segmentInput.type = 'hidden';
+                segmentInput.name = 'bhavcopy_data[]';
+                segmentInput.value = 'NSE';
+                form.appendChild(segmentInput);
+                
+                const showDownInput = document.createElement('input');
+                showDownInput.type = 'hidden';
+                showDownInput.name = 'show_or_down';
+                showDownInput.value = '2';
+                form.appendChild(showDownInput);
+                
+                document.body.appendChild(form);
+                form.submit();
+                document.body.removeChild(form);
+            }
         });
     }
 }
@@ -1037,7 +1104,7 @@ function renderPortfolioTable() {
         };
 
         html += `
-            <tr>
+            <tr data-id="${item.id}" onclick="event.target.closest('button') ? null : editPortfolioRow('${item.id}')" style="cursor: pointer;" title="Click to Edit Transaction">
                 <td><strong>${item.companySymbol}</strong> ${badgeHtml}</td>
                 <td>${formatDate(item.buyDate)}</td>
                 <td>${qty}</td>
