@@ -3148,20 +3148,20 @@ window.showResearchModal = function(symbol) {
 // Helper to fetch Yahoo Finance quotes with sequential CORS proxy fallbacks
 async function fetchYahooFinanceData(ticker) {
     const tickerEncoded = encodeURIComponent(ticker.trim().toUpperCase());
+    
+    // Use clean Yahoo Finance API endpoints (without range/interval limits that fail outside market hours)
+    const q1Url = `https://query1.finance.yahoo.com/v8/finance/chart/${tickerEncoded}`;
+    const q2Url = `https://query2.finance.yahoo.com/v8/finance/chart/${tickerEncoded}`;
+    
     const cacheBuster = Date.now();
-    
-    // Construct URLs using BOTH query1 and query2 Yahoo subdomains with cache busting parameters
-    const q1Url = `https://query1.finance.yahoo.com/v8/finance/chart/${tickerEncoded}?range=1d&interval=1m&nocache=${cacheBuster}`;
-    const q2Url = `https://query2.finance.yahoo.com/v8/finance/chart/${tickerEncoded}?range=1d&interval=1m&nocache=${cacheBuster}`;
-    
-    // Ordered list of URLs to try sequentially (including raw and JSON wrapper proxies)
+    // Cache bust the proxy requests, keeping the inner Yahoo Finance requests clean
     const urls = [
-        `https://api.allorigins.win/raw?url=${encodeURIComponent(q1Url)}`,
-        `https://api.allorigins.win/raw?url=${encodeURIComponent(q2Url)}`,
-        `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(q1Url)}`,
-        `https://corsproxy.io/?url=${encodeURIComponent(q1Url)}`,
-        `https://corsproxy.io/?url=${encodeURIComponent(q2Url)}`,
-        `https://api.allorigins.win/get?url=${encodeURIComponent(q1Url)}`, // JSON wrapper fallback
+        `https://api.allorigins.win/raw?url=${encodeURIComponent(q1Url)}&_t=${cacheBuster}`,
+        `https://api.allorigins.win/raw?url=${encodeURIComponent(q2Url)}&_t=${cacheBuster}`,
+        `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(q1Url)}&_t=${cacheBuster}`,
+        `https://corsproxy.io/?url=${encodeURIComponent(q1Url)}&_t=${cacheBuster}`,
+        `https://corsproxy.io/?url=${encodeURIComponent(q2Url)}&_t=${cacheBuster}`,
+        `https://api.allorigins.win/get?url=${encodeURIComponent(q1Url)}&_t=${cacheBuster}`, // JSON wrapper fallback
         `https://thingproxy.freeboard.io/fetch/${q1Url}`,
         `https://thingproxy.freeboard.io/fetch/${q2Url}`,
         q1Url, // direct fetch
