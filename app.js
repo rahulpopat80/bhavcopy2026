@@ -3292,6 +3292,10 @@ function renderResultsAndDividendsTable() {
 
     let html = '';
     resultsAndDividendsData.forEach(item => {
+        // Fetch last known price from uploaded Bhavcopy file
+        const bhavcopyRateVal = getLastKnownPrice(item.symbol);
+        const bhavcopyRateHtml = bhavcopyRateVal ? `₹${bhavcopyRateVal.toFixed(2)}` : '<span style="font-size:0.75rem;color:var(--text-secondary);">No Data</span>';
+
         const livePriceVal = state.gainersLivePrices.get(item.symbol);
         const livePriceHtml = livePriceVal 
             ? `₹${livePriceVal.toFixed(2)} <span class="live-pulse" style="width:6px;height:6px;box-shadow:0 0 0 0 rgba(16,185,129,0.7);animation:pulse 1.5s infinite;margin-left:0.2rem;display:inline-block;border-radius:50%;background:#10b981;"></span>`
@@ -3300,6 +3304,7 @@ function renderResultsAndDividendsTable() {
         html += `
             <tr>
                 <td><strong>${item.symbol}</strong></td>
+                <td>${bhavcopyRateHtml}</td>
                 <td class="live-price-cell-results" data-symbol="${item.symbol}">${livePriceHtml}</td>
                 <td><i class="fa-regular fa-calendar"></i> ${item.date}</td>
                 <td style="font-weight:600;">₹${item.profit} Cr</td>
