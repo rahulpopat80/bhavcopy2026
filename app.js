@@ -1167,21 +1167,24 @@ async function fetchPortfolioLivePrices() {
     
     await Promise.all(activeSymbols.map(async (symbol) => {
         try {
-            const yahooSymbol = encodeURIComponent(symbol.trim().toUpperCase() + '.NS');
-            const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}`;
+            let data;
+            const isNumeric = symbol.match(/^\d+$/);
+            // Numeric is BSE, alphabetical is NSE preferred
+            const prefSuffix = isNumeric ? '.BO' : '.NS';
+            const fallbackSuffix = isNumeric ? '.NS' : '.BO';
             
-            let res = await fetch(yahooUrl);
-            if (!res.ok) {
-                // Try proxy fallback
-                res = await fetch(`https://corsproxy.io/?url=${encodeURIComponent(yahooUrl)}`);
+            try {
+                data = await fetchYahooFinanceData(symbol.trim().toUpperCase() + prefSuffix);
+            } catch (e) {
+                data = await fetchYahooFinanceData(symbol.trim().toUpperCase() + fallbackSuffix);
             }
-            const data = await res.json();
+            
             const price = data.chart.result[0].meta.regularMarketPrice;
             if (price !== undefined) {
                 state.portfolioLivePrices.set(symbol, price);
             }
         } catch (e) {
-            console.warn(`Failed to fetch live price for ${symbol}:`, e);
+            console.warn(`Failed to fetch live price for active portfolio item ${symbol}:`, e.message);
         }
     }));
     
@@ -3145,18 +3148,24 @@ window.showResearchModal = function(symbol) {
 // Helper to fetch Yahoo Finance quotes with sequential CORS proxy fallbacks
 async function fetchYahooFinanceData(ticker) {
     const tickerEncoded = encodeURIComponent(ticker.trim().toUpperCase());
+    const cacheBuster = Date.now();
     
-    // Add range and interval to get latest real-time quote data reliably
-    const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${tickerEncoded}?range=1d&interval=1m`;
+    // Construct URLs using BOTH query1 and query2 Yahoo subdomains with cache busting parameters
+    const q1Url = `https://query1.finance.yahoo.com/v8/finance/chart/${tickerEncoded}?range=1d&interval=1m&nocache=${cacheBuster}`;
+    const q2Url = `https://query2.finance.yahoo.com/v8/finance/chart/${tickerEncoded}?range=1d&interval=1m&nocache=${cacheBuster}`;
     
     // Ordered list of URLs to try sequentially (including raw and JSON wrapper proxies)
     const urls = [
-        `https://api.allorigins.win/raw?url=${encodeURIComponent(yahooUrl)}`,
-        `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(yahooUrl)}`,
-        `https://corsproxy.io/?url=${encodeURIComponent(yahooUrl)}`,
-        `https://api.allorigins.win/get?url=${encodeURIComponent(yahooUrl)}`, // JSON wrapper fallback
-        `https://thingproxy.freeboard.io/fetch/${yahooUrl}`,
-        yahooUrl // direct fetch
+        `https://api.allorigins.win/raw?url=${encodeURIComponent(q1Url)}`,
+        `https://api.allorigins.win/raw?url=${encodeURIComponent(q2Url)}`,
+        `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(q1Url)}`,
+        `https://corsproxy.io/?url=${encodeURIComponent(q1Url)}`,
+        `https://corsproxy.io/?url=${encodeURIComponent(q2Url)}`,
+        `https://api.allorigins.win/get?url=${encodeURIComponent(q1Url)}`, // JSON wrapper fallback
+        `https://thingproxy.freeboard.io/fetch/${q1Url}`,
+        `https://thingproxy.freeboard.io/fetch/${q2Url}`,
+        q1Url, // direct fetch
+        q2Url  // direct fetch
     ];
 
     let lastError = null;
@@ -3202,8 +3211,19 @@ async function fetchGainersLivePrices(symbols) {
     
     await Promise.all(uniqueSymbols.map(async (symbol) => {
         try {
-            const ticker = symbol.trim().toUpperCase() + '.NS';
-            const data = await fetchYahooFinanceData(ticker);
+            let data;
+            const isNumeric = symbol.match(/^\d+$/);
+            const prefSuffix = isNumeric ? '.BO' : '.NS';
+            const fallbackSuffix = isNumeric ? '.NS' : '.BO';
+            
+            try {
+                // Try preferred exchange first
+                data = await fetchYahooFinanceData(symbol.trim().toUpperCase() + prefSuffix);
+            } catch (e) {
+                // Fallback to secondary exchange
+                data = await fetchYahooFinanceData(symbol.trim().toUpperCase() + fallbackSuffix);
+            }
+            
             const price = data.chart.result[0].meta.regularMarketPrice;
             if (price !== undefined) {
                 state.gainersLivePrices.set(symbol, price);
@@ -3335,8 +3355,17 @@ async function fetchResultsLivePrices(symbols) {
     
     await Promise.all(uniqueSymbols.map(async (symbol) => {
         try {
-            const ticker = symbol.trim().toUpperCase() + '.NS';
-            const data = await fetchYahooFinanceData(ticker);
+            let data;
+            const isNumeric = symbol.match(/^\d+$/);
+            const prefSuffix = isNumeric ? '.BO' : '.NS';
+            const fallbackSuffix = isNumeric ? '.NS' : '.BO';
+            
+            try {
+                data = await fetchYahooFinanceData(symbol.trim().toUpperCase() + prefSuffix);
+            } catch (e) {
+                data = await fetchYahooFinanceData(symbol.trim().toUpperCase() + fallbackSuffix);
+            }
+            
             const price = data.chart.result[0].meta.regularMarketPrice;
             if (price !== undefined) {
                 state.gainersLivePrices.set(symbol, price);
