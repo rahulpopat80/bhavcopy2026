@@ -2748,60 +2748,49 @@ function showPriceChart(symbol) {
         livePriceEl.style.color = '#ffffff';
         
         // Yahoo Finance symbol format is [symbol].NS for NSE stocks
-        const yahooSymbol = `${symbol}.NS`;
-        const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}`;
-        
-        fetch(yahooUrl)
-            .then(res => {
-                if (!res.ok) throw new Error("HTTP error");
-                return res.json();
-            })
-            .then(data => {
-                const meta = data.chart.result[0].meta;
-                const currentPrice = meta.regularMarketPrice;
-                const prevClose = meta.chartPreviousClose;
-                
-                if (currentPrice !== undefined) {
-                    const diff = currentPrice - prevClose;
-                    const pct = (diff / prevClose) * 100;
-                    
-                    const sign = diff >= 0 ? '+' : '';
-                    const color = diff >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
-                    
-                    livePriceEl.innerHTML = `₹${currentPrice.toFixed(2)} <span style="font-size: 0.75rem; font-weight: 600; color: ${color}; margin-left: 0.35rem;">(${sign}${pct.toFixed(2)}%)</span>`;
-                } else {
-                    livePriceEl.textContent = 'N/A';
+        const rawSym = symbol.trim().toUpperCase();
+        const yahooSymbol = rawSym.endsWith('.NS') ? rawSym : rawSym + '.NS';
+
+        // Helper: render price from meta
+        const renderLivePrice = (meta) => {
+            const currentPrice = meta.regularMarketPrice;
+            const prevClose = meta.chartPreviousClose;
+            if (currentPrice !== undefined && currentPrice !== null) {
+                const diff = currentPrice - prevClose;
+                const pct = prevClose ? (diff / prevClose) * 100 : 0;
+                const sign = diff >= 0 ? '+' : '';
+                const color = diff >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+                livePriceEl.innerHTML = `₹${currentPrice.toFixed(2)} <span style="font-size: 0.75rem; font-weight: 600; color: ${color}; margin-left: 0.35rem;">(${sign}${pct.toFixed(2)}%)</span>`;
+            } else {
+                livePriceEl.textContent = 'N/A';
+            }
+        };
+
+        // Ordered list of URLs to try
+        const liveUrls = [
+            `/api/yahoo?symbol=${encodeURIComponent(yahooSymbol)}`,
+            `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}`,
+            `https://api.allorigins.win/raw?url=${encodeURIComponent('https://query1.finance.yahoo.com/v8/finance/chart/' + yahooSymbol)}`,
+            `https://thingproxy.freeboard.io/fetch/https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}`,
+        ];
+
+        (async () => {
+            for (const url of liveUrls) {
+                try {
+                    const res = await fetch(url);
+                    if (!res.ok) continue;
+                    const data = await res.json();
+                    if (data && data.chart && data.chart.result && data.chart.result[0]) {
+                        renderLivePrice(data.chart.result[0].meta);
+                        return;
+                    }
+                } catch (e) {
+                    console.warn('Live price fetch failed for URL:', url, e);
                 }
-            })
-            .catch(err => {
-                console.warn("Direct Yahoo Finance fetch failed, trying proxy...", err);
-                
-                // Fallback via proxy
-                const proxyUrl = `https://corsproxy.io/?url=${encodeURIComponent(yahooUrl)}`;
-                fetch(proxyUrl)
-                    .then(res => res.json())
-                    .then(data => {
-                        const meta = data.chart.result[0].meta;
-                        const currentPrice = meta.regularMarketPrice;
-                        const prevClose = meta.chartPreviousClose;
-                        
-                        if (currentPrice !== undefined) {
-                            const diff = currentPrice - prevClose;
-                            const pct = (diff / prevClose) * 100;
-                            
-                            const sign = diff >= 0 ? '+' : '';
-                            const color = diff >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
-                            
-                            livePriceEl.innerHTML = `₹${currentPrice.toFixed(2)} <span style="font-size: 0.75rem; font-weight: 600; color: ${color}; margin-left: 0.35rem;">(${sign}${pct.toFixed(2)}%)</span>`;
-                        } else {
-                            livePriceEl.textContent = 'N/A';
-                        }
-                    })
-                    .catch(proxyErr => {
-                        console.error("Yahoo Finance proxy fetch failed:", proxyErr);
-                        livePriceEl.textContent = 'Connection Error';
-                    });
-            });
+            }
+            // All sources failed
+            livePriceEl.textContent = 'N/A';
+        })();
     }
     
     // Show Modal overlay
@@ -2995,38 +2984,35 @@ window.showResearchModal = function(symbol) {
             descEl.textContent = `${symbol} એ ભારતીય શેરબજાર (NSE) માં સૂચિબદ્ધ કંપની છે જે ભારતમાં વિવિધ વ્યાપારી પ્રવૃત્તિઓ સાથે સંકળાયેલી છે. વધુ માહિતી માટે નીચે આપેલ લિંક્સની મુલાકાત લો.`;
         });
         
-    // 2. Fetch Yahoo Finance Stock Quote Data for Technical Sentiment
-    const yahooSymbol = encodeURIComponent(symbol.trim().toUpperCase() + '.NS');
-    const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}?range=1y&interval=1d`;
-    
+    // 2. Fetch Yahoo Finance Stock Quote Data for Technical Sentiment & 52W High/Low
+    const rawSymForYahoo = symbol.trim().toUpperCase();
+    const yahooNsSymbol = rawSymForYahoo.endsWith('.NS') ? rawSymForYahoo : rawSymForYahoo + '.NS';
+
+    // Parser function to extract and render data from Yahoo Finance response
     const parseYahooData = (data) => {
         if (!data || !data.chart || !data.chart.result || !data.chart.result[0]) {
             throw new Error("Invalid Yahoo Finance response structure");
         }
-        
+
         const result = data.chart.result[0];
         const meta = result.meta;
         const currentPrice = meta.regularMarketPrice;
         const longName = meta.longName || symbol;
-        
+
         if (longName) {
             document.getElementById('research-company-title').textContent = longName.toUpperCase();
         }
-        
+
         // Populate Live Price in the chart stats strip
         const liveEl = document.getElementById('chart-live-price');
         if (liveEl) {
-            if (currentPrice) {
-                liveEl.textContent = `₹${currentPrice.toFixed(2)}`;
-            } else {
-                liveEl.textContent = 'N/A';
-            }
+            liveEl.textContent = currentPrice ? `\u20b9${currentPrice.toFixed(2)}` : 'N/A';
         }
-        
-        // Dynamic client-side calculation of 52-week High and Low
+
+        // Dynamic client-side calculation of 52-week High and Low from full year data
         let high52 = meta.fiftyTwoWeekHigh;
         let low52 = meta.fiftyTwoWeekLow;
-        
+
         try {
             if (result.indicators && result.indicators.quote && result.indicators.quote[0]) {
                 const closePrices = result.indicators.quote[0].close.filter(x => x !== null && x !== undefined && !isNaN(x));
@@ -3036,36 +3022,33 @@ window.showResearchModal = function(symbol) {
                 }
             }
         } catch (calcErr) {
-            console.warn("Dynamic calculation of 52W high/low failed, falling back to metadata:", calcErr);
+            console.warn("Dynamic 52W high/low calc failed, using metadata:", calcErr);
         }
-        
+
         if (high52 && low52 && currentPrice) {
-            highEl.textContent = `₹${high52.toFixed(2)}`;
-            lowEl.textContent = `₹${low52.toFixed(2)}`;
-            
-            // Technical Sentiment Logic
+            highEl.textContent = `\u20b9${high52.toFixed(2)}`;
+            lowEl.textContent = `\u20b9${low52.toFixed(2)}`;
+
             const totalRange = high52 - low52;
             const position = currentPrice - low52;
             const pctPosition = totalRange > 0 ? (position / totalRange) * 100 : 50;
-            
-            let sentiment = '';
-            let color = '';
-            let gujAdvice = '';
-            
+
+            let sentiment, color, gujAdvice;
+
             if (pctPosition >= 80) {
                 sentiment = 'Strong Buy / Bullish';
                 color = 'var(--success-color)';
-                gujAdvice = `સ્ટોક હાલમાં મજબૂત તેજી (Bullish) માં છે અને તેના ૫૨-અઠવાડિયાના ઉચ્ચ સ્તરની નજીક ટ્રેડ કરી રહ્યો છે. નિષ્ણાતોના મતે સ્ટોકમાં મોમેન્ટમ મજબૂત છે, જેથી તે નવા રેકોર્ડ સ્તરો બનાવી શકે છે. ટૂંકા ગાળાના નફા માટે આ એક સારો વિકલ્પ હોઈ શકે છે.`;
+                gujAdvice = `\u0ab8\u0acd\u0a9f\u0acb\u0a95 \u0ab9\u0abe\u0ab2\u0aae\u0abe\u0a82 \u0aae\u0a9c\u0aac\u0ac2\u0aa4 \u0aa4\u0ac7\u0a9c\u0ac0 (Bullish) \u0aae\u0abe\u0a82 \u0a9b\u0ac7 \u0a85\u0aa8\u0ac7 \u0aa4\u0ac7\u0aa8\u0abe \u0aeb\u0ae8-\u0a85\u0aa0\u0ab5\u0abe\u0aa1\u0abf\u0aaf\u0abe\u0aa8\u0abe \u0a89\u0a9a\u0acd\u0a9a \u0ab8\u0acd\u0aa4\u0ab0\u0aa8\u0ac0 \u0aa8\u0a9c\u0ac0\u0a95 \u0a9f\u0acd\u0ab0\u0ac7\u0aa1 \u0a95\u0ab0\u0ac0 \u0ab0\u0ab9\u0acd\u0aaf\u0acb \u0a9b\u0ac7. \u0aa8\u0abf\u0ab7\u0acd\u0aa3\u0abe\u0aa4\u0acb\u0aa8\u0abe \u0aae\u0aa4\u0ac7 \u0ab8\u0acd\u0a9f\u0acb\u0a95\u0aae\u0abe\u0a82 \u0aae\u0acb\u0aae\u0ac7\u0aa8\u0acd\u0a9f\u0aae \u0aae\u0a9c\u0aac\u0ac2\u0aa4 \u0a9b\u0ac7. \u0a9f\u0ac2\u0a82\u0a95\u0abe \u0a97\u0abe\u0ab3\u0abe\u0aa8\u0abe \u0aa8\u0aab\u0abe \u0aae\u0abe\u0a9f\u0ac7 \u0a86 \u0a8f\u0a95 \u0ab8\u0abe\u0ab0\u0acb \u0ab5\u0abf\u0a95\u0ab2\u0acd\u0aaa \u0ab9\u0acb\u0a88 \u0ab6\u0a95\u0ac7 \u0a9b\u0ac7.`;
             } else if (pctPosition <= 20) {
                 sentiment = 'Value Buy / Oversold';
-                color = '#e11d48'; // deep red
-                gujAdvice = `સ્ટોક તેના ૫૨-અઠવાડિયાના નીચલા સ્તરની નજીક છે અને ઓવરસોલ્ડ (Oversold) ઝોનમાં આવી ગયો છે. લાંબા ગાળાના રોકાણકારો માટે આ સારા ભાવે ખરીદી કરવાની તક હોઈ શકે છે, પરંતુ તે પહેલા કંપનીના ફંડામેન્ટલ્સ ચકાસવા અને બજારમાં રિવર્સલ ટ્રેન્ડની રાહ જોવી હિતાવહ છે.`;
+                color = '#e11d48';
+                gujAdvice = `\u0ab8\u0acd\u0a9f\u0acb\u0a95 \u0aa4\u0ac7\u0aa8\u0abe \u0aeb\u0ae8-\u0a85\u0aa0\u0ab5\u0abe\u0aa1\u0abf\u0aaf\u0abe\u0aa8\u0abe \u0aa8\u0ac0\u0a9a\u0ab2\u0abe \u0ab8\u0acd\u0aa4\u0ab0\u0aa8\u0ac0 \u0aa8\u0a9c\u0ac0\u0a95 \u0a9b\u0ac7 \u0a85\u0aa8\u0ac7 \u0a93\u0ab5\u0ab0\u0ab8\u0acb\u0ab2\u0acd\u0aa1 (Oversold) \u0a9d\u0acb\u0aa8\u0aae\u0abe\u0a82 \u0a86\u0ab5\u0ac0 \u0a97\u0aaf\u0acb \u0a9b\u0ac7. \u0ab2\u0abe\u0a82\u0aac\u0abe \u0a97\u0abe\u0ab3\u0abe\u0aa8\u0abe \u0ab0\u0acb\u0a95\u0abe\u0aa3\u0a95\u0abe\u0ab0\u0acb \u0aae\u0abe\u0a9f\u0ac7 \u0a86 \u0ab8\u0abe\u0ab0\u0abe \u0aad\u0abe\u0ab5\u0ac7 \u0a96\u0ab0\u0ac0\u0aa6\u0ac0 \u0a95\u0ab0\u0ab5\u0abe\u0aa8\u0ac0 \u0aa4\u0a95 \u0ab9\u0acb\u0a88 \u0ab6\u0a95\u0ac7 \u0a9b\u0ac7. \u0a95\u0a82\u0aaa\u0aa8\u0ac0\u0aa8\u0abe \u0aab\u0a82\u0aa1\u0abe\u0aae\u0ac7\u0aa8\u0acd\u0a9f\u0ab2\u0acd\u0ab8 \u0a9a\u0a95\u0abe\u0ab8\u0ac0\u0aa8\u0ac7 \u0ab0\u0abf\u0ab5\u0ab0\u0acd\u0ab8\u0ab2 \u0a9f\u0acd\u0ab0\u0ac7\u0aa8\u0acd\u0aa1\u0aa8\u0ac0 \u0ab0\u0abe\u0ab9 \u0a9c\u0acb\u0ab5\u0ac0 \u0a96\u0ab0\u0ac0\u0aa6\u0ac0 \u0a95\u0ab0\u0ab5\u0ac0.`;
             } else {
                 sentiment = 'Hold / Neutral';
-                color = '#eab308'; // yellow
-                gujAdvice = `સ્ટોક મધ્યમ શ્રેણીમાં (ન તેજી, ન મંદી) ચાલી રહ્યો છે. નિષ્ણાતોના મતે અત્યારે ઉતાવળમાં નવું રોકાણ કરવાને બદલે હાલના રોકાણને હોલ્ડ (Hold) કરી રાખવું વધુ યોગ્ય રહેશે. નવી ખરીદી માટે થોડો ઘટાડો થાય ત્યારે 'Buy on Dips' ની રણનીતિ અપનાવો.`;
+                color = '#eab308';
+                gujAdvice = `\u0ab8\u0acd\u0a9f\u0acb\u0a95 \u0aae\u0aa7\u0acd\u0aaf\u0aae \u0ab6\u0acd\u0ab0\u0ac7\u0aa3\u0ac0\u0aae\u0abe\u0a82 \u0a9a\u0abe\u0ab2\u0ac0 \u0ab0\u0ab9\u0acd\u0aaf\u0acb \u0a9b\u0ac7. \u0a85\u0aa4\u0acd\u0aaf\u0abe\u0ab0\u0ac7 \u0ab9\u0abe\u0ab2\u0aa8\u0abe \u0ab0\u0acb\u0a95\u0abe\u0aa3\u0aa8\u0ac7 Hold \u0a95\u0ab0\u0ac0 \u0ab0\u0abe\u0a96\u0ab5\u0ac1\u0a82 \u0ab5\u0aa7\u0ac1 \u0aaf\u0acb\u0a97\u0acd\u0aaf \u0ab0\u0ab9\u0ac7\u0ab6\u0ac7. \u0aa8\u0ab5\u0ac0 \u0a96\u0ab0\u0ac0\u0aa6\u0ac0 \u0aae\u0abe\u0a9f\u0ac7 'Buy on Dips' \u0aa8\u0ac0 \u0ab0\u0aa3\u0aa8\u0ac0\u0aa4\u0abf \u0a85\u0aaa\u0aa8\u0abe\u0ab5\u0acb.`;
             }
-            
+
             badgeEl.textContent = sentiment;
             badgeEl.style.background = color;
             badgeEl.style.color = '#ffffff';
@@ -3075,35 +3058,51 @@ window.showResearchModal = function(symbol) {
             lowEl.textContent = 'N/A';
             badgeEl.textContent = 'Hold';
             badgeEl.style.background = '#eab308';
-            adviceEl.textContent = 'આ સ્ટોકનો ૫૨ અઠવાડિયાનો વિગતવાર ડેટા ડાઉનલોડ થઈ શક્યો નથી. વધુ સલાહ માટે નીચે આપેલ Screener અથવા Tickertape ની મુલાકાત લો.';
+            badgeEl.style.color = '#fff';
+            adviceEl.textContent = '\u0a86 \u0ab8\u0acd\u0a9f\u0acb\u0a95\u0aa8\u0acb \u0aeb\u0ae8 \u0a85\u0aa0\u0ab5\u0abe\u0aa1\u0abf\u0aaf\u0abe\u0aa8\u0acb \u0ab5\u0abf\u0a97\u0aa4\u0ab5\u0abe\u0ab0 \u0aa1\u0ac7\u0a9f\u0abe \u0aa1\u0abe\u0a89\u0aa8\u0ab2\u0acb\u0aa1 \u0aa5\u0a88 \u0ab6\u0a95\u0acd\u0aaf\u0acb \u0aa8\u0aa5\u0ac0. Screener.in \u0a85\u0aa5\u0ab5\u0abe Tickertape.in \u0aa8\u0ac0 \u0aae\u0ac1\u0ab2\u0abe\u0a95\u0abe\u0aa4 \u0ab2\u0acb.';
         }
     };
-    
-    // Execute Fetch to Yahoo Finance
-    fetch(yahooUrl)
-        .then(res => {
-            if (!res.ok) throw new Error("HTTP error");
-            return res.json();
-        })
-        .then(data => {
-            parseYahooData(data);
-        })
-        .catch(err => {
-            console.warn("Direct Yahoo quoteSummary failed, trying proxy...", err);
-            const proxyUrl = `https://corsproxy.io/?url=${encodeURIComponent(yahooUrl)}`;
-            fetch(proxyUrl)
-                .then(res => res.json())
-                .then(data => {
+
+    // Multiple URL sources in priority order — /api/yahoo (Vercel) is server-side, no CORS
+    const researchUrls = [
+
+        `/api/yahoo?symbol=${encodeURIComponent(yahooNsSymbol)}`,
+        `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooNsSymbol)}?range=1y&interval=1d`,
+        `https://api.allorigins.win/raw?url=${encodeURIComponent('https://query1.finance.yahoo.com/v8/finance/chart/' + yahooNsSymbol + '?range=1y&interval=1d')}`,
+        `https://thingproxy.freeboard.io/fetch/https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooNsSymbol)}?range=1y&interval=1d`,
+    ];
+
+    (async () => {
+        let success = false;
+        for (const url of researchUrls) {
+            try {
+                const res = await fetch(url);
+                if (!res.ok) {
+                    console.warn(`Yahoo fetch failed (HTTP ${res.status}) for: ${url}`);
+                    continue;
+                }
+                const data = await res.json();
+                if (data && data.chart && data.chart.result && data.chart.result[0]) {
                     parseYahooData(data);
-                })
-                .catch(proxyErr => {
-                    console.error("Proxy fetch failed:", proxyErr);
-                    highEl.textContent = 'Connection Error';
-                    lowEl.textContent = 'Connection Error';
-                    badgeEl.textContent = 'N/A';
-                    adviceEl.textContent = 'નેટવર્ક જોડાણ ખોરવાયું છે. કૃપા કરીને થોડીવાર પછી ફરી પ્રયાસ કરો.';
-                });
-        });
+                    success = true;
+                    break;
+                }
+            } catch (e) {
+                console.warn('Research fetch failed for URL:', url, e.message);
+            }
+        }
+        if (!success) {
+            console.error('All Yahoo Finance sources exhausted for symbol:', symbol);
+            highEl.textContent = 'N/A';
+            lowEl.textContent = 'N/A';
+            badgeEl.textContent = 'Hold';
+            badgeEl.style.background = '#eab308';
+            badgeEl.style.color = '#fff';
+            adviceEl.textContent = 'Yahoo Finance ડેટા હાલ ઉપલબ્ધ નથી. Screener.in અથવા Tickertape.in ની મુલાકાત લો.';
+            const liveEl2 = document.getElementById('chart-live-price');
+            if (liveEl2) liveEl2.textContent = 'N/A';
+        }
+    })();
 };
 
 // Run on load
