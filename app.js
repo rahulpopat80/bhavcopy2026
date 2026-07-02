@@ -224,38 +224,49 @@ function initEvents() {
     const tabResearch = document.getElementById('tab-research');
     const tabPortfolio = document.getElementById('tab-portfolio');
     const tabResults = document.getElementById('tab-results');
+    const tabWatchlist = document.getElementById('tab-watchlist');
     const researchTabContent = document.getElementById('research-tab-content');
     const portfolioTabContent = document.getElementById('portfolio-tab-content');
     const resultsTabContent = document.getElementById('results-tab-content');
+    const watchlistTabContent = document.getElementById('watchlist-tab-content');
 
-    if (tabResearch && tabPortfolio && tabResults && researchTabContent && portfolioTabContent && resultsTabContent) {
+    const hideAllTabs = () => {
+        [researchTabContent, portfolioTabContent, resultsTabContent, watchlistTabContent].forEach(el => el && el.classList.add('hidden'));
+        [tabResearch, tabPortfolio, tabResults, tabWatchlist].forEach(el => el && el.classList.remove('active'));
+    };
+
+    if (tabResearch && researchTabContent) {
         tabResearch.addEventListener('click', () => {
+            hideAllTabs();
             tabResearch.classList.add('active');
-            tabPortfolio.classList.remove('active');
-            tabResults.classList.remove('active');
             researchTabContent.classList.remove('hidden');
-            portfolioTabContent.classList.add('hidden');
-            resultsTabContent.classList.add('hidden');
         });
+    }
 
+    if (tabPortfolio && portfolioTabContent) {
         tabPortfolio.addEventListener('click', () => {
+            hideAllTabs();
             tabPortfolio.classList.add('active');
-            tabResearch.classList.remove('active');
-            tabResults.classList.remove('active');
             portfolioTabContent.classList.remove('hidden');
-            researchTabContent.classList.add('hidden');
-            resultsTabContent.classList.add('hidden');
-            loadPortfolioFromCloud(); // Fetch portfolio items on tab load
+            loadPortfolioFromCloud();
         });
+    }
 
+    if (tabWatchlist && watchlistTabContent) {
+        tabWatchlist.addEventListener('click', () => {
+            hideAllTabs();
+            tabWatchlist.classList.add('active');
+            watchlistTabContent.classList.remove('hidden');
+            renderWatchlist();
+        });
+    }
+
+    if (tabResults && resultsTabContent) {
         tabResults.addEventListener('click', () => {
+            hideAllTabs();
             tabResults.classList.add('active');
-            tabResearch.classList.remove('active');
-            tabPortfolio.classList.remove('active');
             resultsTabContent.classList.remove('hidden');
-            researchTabContent.classList.add('hidden');
-            portfolioTabContent.classList.add('hidden');
-            renderResultsAndDividendsTable(); // Render Tab 3 Content
+            renderResultsAndDividendsTable();
         });
     }
 
@@ -1295,8 +1306,10 @@ function renderPortfolioTable() {
         };
 
         html += `
-            <tr data-id="${item.id}" onclick="event.target.closest('button') ? null : editPortfolioRow('${item.id}')" style="cursor: pointer;" title="Click to Edit Transaction">
-                <td><strong>${item.companySymbol}</strong> ${badgeHtml}</td>
+            <tr data-id="${item.id}" style="cursor: pointer;">
+                <td onclick="showResearchModal('${item.companySymbol}')" title="ચાર્ટ અને વિગતો જુાા" style="cursor:pointer;">
+                    <strong style="color: var(--accent-color); text-decoration: underline dotted; text-underline-offset: 3px;">${item.companySymbol}</strong> ${badgeHtml}
+                </td>
                 <td>${formatDate(item.buyDate)}</td>
                 <td>${qty}</td>
                 <td>₹${buyRate.toFixed(2)}</td>
@@ -2349,10 +2362,57 @@ async function processFiles() {
         // Save final state
         state.processedMasterData = updatedMaster;
         state.masterData = updatedMaster;
+
+        // =====================================================================
+        // 100-DAY CAP: Auto-delete oldest date columns beyond 100 days
+        // Date columns start right after the HIGH column (or DIFF if no HIGH)
+        // They run to the end of the header row.
+        // Newest date is always at the leftmost date column; oldest at the right.
+        // =====================================================================
+        const capHeaders = updatedMaster[0];
+        
+        // Determine the first date column index (same logic as detectColumnIndexes)
+        let firstDateColForCap = -1;
+        capHeaders.forEach((h, idx) => {
+            const hStr = String(h || '').toUpperCase().trim();
+            if (hStr === 'HIGH') firstDateColForCap = idx + 1;
+        });
+        // Fallback: check DIFF
+        if (firstDateColForCap === -1) {
+            capHeaders.forEach((h, idx) => {
+                const hStr = String(h || '').toUpperCase().trim();
+                if (hStr === 'DIFF') firstDateColForCap = idx + 1;
+            });
+        }
+
+        if (firstDateColForCap !== -1) {
+            const totalCols = capHeaders.length;
+            const dateColCount = totalCols - firstDateColForCap;
+
+            if (dateColCount > 100) {
+                const toRemove = dateColCount - 100; // number of oldest cols to drop
+                const removeStartIdx = totalCols - toRemove; // index of first col to remove
+
+                // Trim every row (header + data)
+                for (let r = 0; r < updatedMaster.length; r++) {
+                    updatedMaster[r].splice(removeStartIdx, toRemove);
+                }
+
+                // Recalculate lastInsertIndex since we may have shifted columns
+                // (insert index stays the same — newest date is always at firstDateColForCap)
+                lastInsertIndex = firstDateColForCap;
+
+                log(`📅 100-Day Cap Applied: Removed ${toRemove} oldest date column(s). Data now contains exactly 100 trading days.`, 'info');
+            } else {
+                log(`📅 Data contains ${dateColCount} day(s) of price history (limit: 100).`, 'info');
+            }
+        }
+        // =====================================================================
         
         saveMasterToLocalStorage();
         await saveMasterToCloud(); // Push to Firebase Cloud Firestore!
         log('All files processed successfully, saved locally and synced to Cloud.', 'success');
+
         
         state.latestDateColIndex = lastInsertIndex;
         state.diffColIndex = lastDiffColIndex;
@@ -2497,7 +2557,7 @@ function renderGainersAnalysis() {
     // Render to table
     let html = '';
     if (topGainers.length === 0) {
-        html = '<tr><td colspan="6" style="text-align:center;">No data available</td></tr>';
+        html = '<tr><td colspan="7" style="text-align:center;">No data available</td></tr>';
     } else {
         topGainers.forEach(item => {
             const sign = item.gain > 0 ? '+' : '';
@@ -2509,6 +2569,12 @@ function renderGainersAnalysis() {
                 ? `₹${livePriceVal.toFixed(2)} <span class="live-pulse" style="width:6px;height:6px;box-shadow:0 0 0 0 rgba(16,185,129,0.7);animation:pulse 1.5s infinite;margin-left:0.2rem;display:inline-block;border-radius:50%;background:#10b981;"></span>`
                 : `₹${item.today.toFixed(2)} <span style="font-size:0.7rem;color:var(--text-secondary);">(EOD)</span>`;
 
+            // Check if already in watchlist
+            const inWatchlist = watchlistItems.some(w => w.symbol === item.symbol);
+            const starBtn = inWatchlist
+                ? `<button onclick="removeFromWatchlist('${item.symbol}'); event.stopPropagation();" title="Watchlistä¸­થી કાઢો" style="background:rgba(245,158,11,0.18); border:1px solid #f59e0b; color:#f59e0b; border-radius:5px; padding:0.25rem 0.55rem; cursor:pointer; font-size:0.85rem;"><i class='fa-solid fa-star'></i></button>`
+                : `<button onclick="addToWatchlist('${item.symbol}', ${item.today}); event.stopPropagation();" title="Watchlistä¸­ઉમેરો" style="background:none; border:1px solid rgba(255,255,255,0.15); color:var(--text-secondary); border-radius:5px; padding:0.25rem 0.55rem; cursor:pointer; font-size:0.85rem;"><i class='fa-regular fa-star'></i></button>`;
+
             html += `
                 <tr class="clickable-row" title="Click to view price history chart" onclick="showResearchModal('${item.symbol}')">
                     <td><strong>${item.symbol}</strong></td>
@@ -2517,6 +2583,7 @@ function renderGainersAnalysis() {
                     <td class="live-price-cell" data-symbol="${item.symbol}">${livePriceHtml}</td>
                     <td style="color:${color}; font-weight:600;">${sign}₹${item.gain.toFixed(2)}</td>
                     <td><span class="volatility-pct" style="color:${color};">${sign}${item.pct}%</span></td>
+                    <td style="text-align:center;">${starBtn}</td>
                 </tr>
             `;
         });
