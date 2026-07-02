@@ -3142,6 +3142,38 @@ window.showResearchModal = function(symbol) {
 // NEW FUNCTIONALITY: LIVE PRICES, INDICES, RESULTS & DIVIDENDS
 // ============================================================================
 
+// Helper to fetch Yahoo Finance quotes with sequential CORS proxy fallbacks
+async function fetchYahooFinanceData(ticker) {
+    const tickerEncoded = encodeURIComponent(ticker.trim().toUpperCase());
+    const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${tickerEncoded}`;
+    
+    // Ordered list of URLs to try sequentially
+    const urls = [
+        `https://corsproxy.io/?url=${encodeURIComponent(yahooUrl)}`,
+        `https://thingproxy.freeboard.io/fetch/${yahooUrl}`,
+        yahooUrl
+    ];
+
+    let lastError = null;
+    for (const url of urls) {
+        try {
+            const res = await fetch(url);
+            if (!res.ok) {
+                console.warn(`Yahoo URL returned HTTP ${res.status}: ${url}`);
+                continue;
+            }
+            const data = await res.json();
+            if (data && data.chart && data.chart.result && data.chart.result[0]) {
+                return data;
+            }
+        } catch (e) {
+            console.warn(`Yahoo fetch failed for: ${url}`, e.message);
+            lastError = e;
+        }
+    }
+    throw new Error(`All sources exhausted for ticker ${ticker}. Last error: ${lastError ? lastError.message : 'Unknown'}`);
+}
+
 // Fetch live prices for top gainers asynchronously in the background
 async function fetchGainersLivePrices(symbols) {
     if (!symbols || symbols.length === 0) return;
@@ -3151,15 +3183,8 @@ async function fetchGainersLivePrices(symbols) {
     
     await Promise.all(uniqueSymbols.map(async (symbol) => {
         try {
-            const yahooSymbol = encodeURIComponent(symbol.trim().toUpperCase() + '.NS');
-            const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}`;
-            
-            let res = await fetch(yahooUrl);
-            if (!res.ok) {
-                // Try CORS Proxy fallback
-                res = await fetch(`https://corsproxy.io/?url=${encodeURIComponent(yahooUrl)}`);
-            }
-            const data = await res.json();
+            const ticker = symbol.trim().toUpperCase() + '.NS';
+            const data = await fetchYahooFinanceData(ticker);
             const price = data.chart.result[0].meta.regularMarketPrice;
             if (price !== undefined) {
                 state.gainersLivePrices.set(symbol, price);
@@ -3171,7 +3196,7 @@ async function fetchGainersLivePrices(symbols) {
                 });
             }
         } catch (e) {
-            console.warn(`Failed to fetch live price for gainer ${symbol}:`, e);
+            console.warn(`Failed to fetch live price for gainer ${symbol}:`, e.message);
         }
     }));
 }
@@ -3185,14 +3210,7 @@ async function fetchMarketIndices() {
 
     for (const item of indices) {
         try {
-            const tickerEncoded = encodeURIComponent(item.ticker);
-            const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${tickerEncoded}`;
-            
-            let res = await fetch(yahooUrl);
-            if (!res.ok) {
-                res = await fetch(`https://corsproxy.io/?url=${encodeURIComponent(yahooUrl)}`);
-            }
-            const data = await res.json();
+            const data = await fetchYahooFinanceData(item.ticker);
             const meta = data.chart.result[0].meta;
             const currentPrice = meta.regularMarketPrice;
             const prevClose = meta.previousClose;
@@ -3219,7 +3237,7 @@ async function fetchMarketIndices() {
                 }
             }
         } catch (e) {
-            console.error(`Failed to fetch index ${item.name}:`, e);
+            console.error(`Failed to fetch index ${item.name}:`, e.message);
         }
     }
 }
@@ -3293,14 +3311,8 @@ async function fetchResultsLivePrices(symbols) {
     
     await Promise.all(uniqueSymbols.map(async (symbol) => {
         try {
-            const yahooSymbol = encodeURIComponent(symbol.trim().toUpperCase() + '.NS');
-            const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}`;
-            
-            let res = await fetch(yahooUrl);
-            if (!res.ok) {
-                res = await fetch(`https://corsproxy.io/?url=${encodeURIComponent(yahooUrl)}`);
-            }
-            const data = await res.json();
+            const ticker = symbol.trim().toUpperCase() + '.NS';
+            const data = await fetchYahooFinanceData(ticker);
             const price = data.chart.result[0].meta.regularMarketPrice;
             if (price !== undefined) {
                 state.gainersLivePrices.set(symbol, price);
@@ -3312,7 +3324,7 @@ async function fetchResultsLivePrices(symbols) {
                 });
             }
         } catch (e) {
-            console.warn(`Failed to fetch live price for results item ${symbol}:`, e);
+            console.warn(`Failed to fetch live price for results item ${symbol}:`, e.message);
         }
     }));
 }
