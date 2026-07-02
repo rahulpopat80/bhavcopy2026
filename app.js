@@ -3145,29 +3145,48 @@ window.showResearchModal = function(symbol) {
 // Helper to fetch Yahoo Finance quotes with sequential CORS proxy fallbacks
 async function fetchYahooFinanceData(ticker) {
     const tickerEncoded = encodeURIComponent(ticker.trim().toUpperCase());
-    const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${tickerEncoded}`;
     
-    // Ordered list of URLs to try sequentially
+    // Add range and interval to get latest real-time quote data reliably
+    const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${tickerEncoded}?range=1d&interval=1m`;
+    
+    // Ordered list of URLs to try sequentially (including raw and JSON wrapper proxies)
     const urls = [
+        `https://api.allorigins.win/raw?url=${encodeURIComponent(yahooUrl)}`,
+        `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(yahooUrl)}`,
         `https://corsproxy.io/?url=${encodeURIComponent(yahooUrl)}`,
+        `https://api.allorigins.win/get?url=${encodeURIComponent(yahooUrl)}`, // JSON wrapper fallback
         `https://thingproxy.freeboard.io/fetch/${yahooUrl}`,
-        yahooUrl
+        yahooUrl // direct fetch
     ];
 
     let lastError = null;
     for (const url of urls) {
         try {
+            console.log(`[Yahoo API] Fetching ${ticker} via: ${url.split('?')[0]}`);
             const res = await fetch(url);
             if (!res.ok) {
                 console.warn(`Yahoo URL returned HTTP ${res.status}: ${url}`);
                 continue;
             }
-            const data = await res.json();
+            
+            let data;
+            if (url.includes('allorigins.win/get')) {
+                // allorigins.win/get returns a JSON wrapper: { contents: "stringified json" }
+                const wrapper = await res.json();
+                if (wrapper && wrapper.contents) {
+                    data = JSON.parse(wrapper.contents);
+                } else {
+                    continue;
+                }
+            } else {
+                data = await res.json();
+            }
+
             if (data && data.chart && data.chart.result && data.chart.result[0]) {
                 return data;
             }
         } catch (e) {
-            console.warn(`Yahoo fetch failed for: ${url}`, e.message);
+            console.warn(`Yahoo fetch failed for: ${url.split('?')[0]}`, e.message);
             lastError = e;
         }
     }
