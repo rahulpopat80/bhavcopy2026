@@ -3449,6 +3449,177 @@ async function fetchResultsLivePrices(symbols) {
     }));
 }
 
+// =====================================================================
+//  WATCHLIST — State, Persistence & Render
+// =====================================================================
+
+// In-memory watchlist array: [{symbol, addedPrice, addedAt}]
+let watchlistItems = [];
+
+// Load from localStorage on page startup
+function loadWatchlistFromStorage() {
+    try {
+        const saved = localStorage.getItem('rahul_watchlist');
+        watchlistItems = saved ? JSON.parse(saved) : [];
+    } catch (e) {
+        watchlistItems = [];
+    }
+}
+
+// Save to localStorage
+function saveWatchlistToStorage() {
+    try {
+        localStorage.setItem('rahul_watchlist', JSON.stringify(watchlistItems));
+    } catch (e) {
+        console.warn('Watchlist save failed:', e);
+    }
+}
+
+// Add a stock
+window.addToWatchlist = function(symbol, addedPrice) {
+    if (watchlistItems.some(w => w.symbol === symbol)) {
+        showNotification(`${symbol} પહેલેથી Watchlist માં છે.`, 'warning');
+        return;
+    }
+    watchlistItems.push({
+        symbol,
+        addedPrice: parseFloat(addedPrice) || 0,
+        addedAt: new Date().toISOString()
+    });
+    saveWatchlistToStorage();
+    showNotification(`⭐ ${symbol} Watchlist માં ઉમેરાયું!`, 'success');
+    renderGainersAnalysis(); // refresh star icons
+};
+
+// Remove a stock
+window.removeFromWatchlist = function(symbol) {
+    watchlistItems = watchlistItems.filter(w => w.symbol !== symbol);
+    saveWatchlistToStorage();
+    showNotification(`${symbol} Watchlist માંથી કાઢ્યું.`, 'info');
+    renderGainersAnalysis(); // refresh star icons
+    renderWatchlist();
+};
+
+// Clear all
+window.clearWatchlist = function() {
+    if (watchlistItems.length === 0) return;
+    if (!confirm('શું તમે સમગ્ર Watchlist ખાલી કરવા માંગો છો?')) return;
+    watchlistItems = [];
+    saveWatchlistToStorage();
+    renderWatchlist();
+    showNotification('Watchlist ખાલી કરવામાં આવી.', 'info');
+};
+
+// Render the Watchlist tab
+window.renderWatchlist = function() {
+    const tbody        = document.getElementById('watchlist-tbody');
+    const emptyState   = document.getElementById('watchlist-empty-state');
+    const tableWrapper = document.getElementById('watchlist-table-wrapper');
+    const badge        = document.getElementById('watchlist-count-badge');
+
+    if (!tbody) return;
+
+    const count = watchlistItems.length;
+    if (badge) badge.textContent = `${count} Script${count !== 1 ? 's' : ''}`;
+
+    if (count === 0) {
+        if (emptyState)   emptyState.style.display  = '';
+        if (tableWrapper) tableWrapper.style.display = 'none';
+        return;
+    }
+
+    if (emptyState)   emptyState.style.display  = 'none';
+    if (tableWrapper) tableWrapper.style.display = '';
+
+    let html = '';
+    watchlistItems.forEach((item, idx) => {
+        const livePrice = state.gainersLivePrices.get(item.symbol);
+        let livePriceHtml = '<span style="font-size:0.75rem;color:var(--text-secondary);">Loading...</span>';
+        let changeHtml    = '-';
+
+        if (livePrice !== undefined) {
+            livePriceHtml = `\u20b9${livePrice.toFixed(2)} <span class="live-pulse" style="width:6px;height:6px;background:#22c55e;border-radius:50%;display:inline-block;margin-left:3px;animation:pulse 1.5s infinite;"></span>`;
+            if (item.addedPrice > 0) {
+                const diff  = livePrice - item.addedPrice;
+                const pct   = (diff / item.addedPrice) * 100;
+                const sign  = diff >= 0 ? '+' : '';
+                const color = diff >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+                changeHtml  = `<span style="color:${color};font-weight:600;">${sign}\u20b9${diff.toFixed(2)} (${sign}${pct.toFixed(2)}%)</span>`;
+            }
+        }
+
+        const addedPriceStr = item.addedPrice > 0 ? `\u20b9${item.addedPrice.toFixed(2)}` : '-';
+        const addedDate = item.addedAt ? new Date(item.addedAt).toLocaleDateString('en-IN') : '-';
+
+        html += `
+            <tr class="clickable-row" onclick="showResearchModal('${item.symbol}')" title="\u0a9a\u0abe\u0ab0\u0acd\u0a9f \u0a85\u0aa8\u0ac7 \u0ab5\u0abf\u0a97\u0aa4 \u0a9c\u0ac1\u0abe\u0acb">
+                <td style="color:var(--text-secondary);font-size:0.8rem;">${idx + 1}</td>
+                <td>
+                    <strong style="color:var(--accent-color);">${item.symbol}</strong><br>
+                    <span style="font-size:0.7rem;color:var(--text-secondary);">Added: ${addedDate}</span>
+                </td>
+                <td>${addedPriceStr}</td>
+                <td class="watchlist-live-cell" data-symbol="${item.symbol}">${livePriceHtml}</td>
+                <td>${changeHtml}</td>
+                <td style="text-align:center;">
+                    <button onclick="showResearchModal('${item.symbol}'); event.stopPropagation();" title="Research"
+                        style="background:var(--accent-light,rgba(59,130,246,0.12));border:1px solid var(--accent-color);color:var(--accent-color);border-radius:5px;padding:0.25rem 0.55rem;cursor:pointer;font-size:0.82rem;">
+                        <i class="fa-solid fa-chart-area"></i>
+                    </button>
+                </td>
+                <td style="text-align:center;">
+                    <button onclick="removeFromWatchlist('${item.symbol}'); event.stopPropagation();" title="Watchlist \u0aae\u0abe\u0a82\u0aa5\u0ac0 \u0a95\u0abe\u0aa2\u0acb"
+                        style="background:rgba(239,68,68,0.1);border:1px solid var(--danger-color);color:var(--danger-color);border-radius:5px;padding:0.25rem 0.55rem;cursor:pointer;font-size:0.82rem;">
+                        <i class="fa-solid fa-trash"></i>
+                    </button>
+                </td>
+            </tr>
+        `;
+    });
+
+    tbody.innerHTML = html;
+
+    // Fetch live prices for symbols not yet cached
+    const missing = watchlistItems.map(w => w.symbol).filter(s => !state.gainersLivePrices.has(s));
+    if (missing.length > 0) fetchWatchlistLivePrices(missing);
+};
+
+// Fetch live prices for watchlist symbols
+async function fetchWatchlistLivePrices(symbols) {
+    await Promise.all(symbols.map(async (symbol) => {
+        try {
+            const nsSymbol = symbol.trim().toUpperCase() + '.NS';
+            const urls = [
+                `/api/yahoo?symbol=${encodeURIComponent(nsSymbol)}`,
+                `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(nsSymbol)}`,
+            ];
+            for (const url of urls) {
+                try {
+                    const res  = await fetch(url);
+                    if (!res.ok) continue;
+                    const data = await res.json();
+                    const price = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
+                    if (price) {
+                        state.gainersLivePrices.set(symbol, price);
+                        // Update live cells in watchlist table
+                        document.querySelectorAll(`.watchlist-live-cell[data-symbol="${symbol}"]`).forEach(cell => {
+                            cell.innerHTML = `\u20b9${price.toFixed(2)} <span class="live-pulse" style="width:6px;height:6px;background:#22c55e;border-radius:50%;display:inline-block;margin-left:3px;animation:pulse 1.5s infinite;"></span>`;
+                        });
+                        renderWatchlist(); // re-render for change %
+                        break;
+                    }
+                } catch (_) { /* try next */ }
+            }
+        } catch (e) {
+            console.warn(`Watchlist live price failed for ${symbol}:`, e.message);
+        }
+    }));
+}
+
+// Load watchlist immediately (before DOMContentLoaded so it's ready for gainers render)
+loadWatchlistFromStorage();
+
 // Run on load
 document.addEventListener('DOMContentLoaded', initEvents);
+
 

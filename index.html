@@ -75,6 +75,9 @@
             <button class="nav-btn" id="tab-portfolio">
                 <i class="fa-solid fa-briefcase"></i> My Portfolio
             </button>
+            <button class="nav-btn" id="tab-watchlist">
+                <i class="fa-solid fa-star"></i> Watchlist
+            </button>
             <button class="nav-btn" id="tab-results">
                 <i class="fa-solid fa-calendar-days"></i> Results & Dividends
             </button>
@@ -305,6 +308,7 @@
                                         <th>Live Price</th>
                                         <th>Net Gain (₹)</th>
                                         <th>Gain (%)</th>
+                                        <th style="text-align:center;">Watchlist</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -462,6 +466,47 @@
             </div>
         </div>
         
+        <!-- Tab: Watchlist (Hidden by default) -->
+        <div id="watchlist-tab-content" class="hidden">
+            <div class="card" style="margin-bottom: 0;">
+                <div class="movement-header" style="margin-bottom: 0.75rem;">
+                    <i class="fa-solid fa-star movement-icon" style="color: #f59e0b;"></i>
+                    <h2 style="color: var(--text-primary);">My Watchlist <span class="results-badge" id="watchlist-count-badge" style="background: rgba(245,158,11,0.15); color:#f59e0b; border-color:rgba(245,158,11,0.3);">0 Scripts</span></h2>
+                    <button onclick="clearWatchlist()" class="btn btn-secondary" style="margin-left: auto; font-size:0.78rem; padding:0.35rem 0.75rem; color: var(--danger-color); border-color: var(--danger-color);">
+                        <i class="fa-solid fa-trash"></i> Clear All
+                    </button>
+                </div>
+                <p class="card-desc" style="margin-bottom: 0.75rem;">Stocks you are tracking. Click any row to see the chart &amp; research details. Add stocks from the Top Gainers list using the ★ button.</p>
+
+                <!-- Empty State -->
+                <div id="watchlist-empty-state" style="text-align:center; padding: 2.5rem 1rem; color: var(--text-secondary);">
+                    <i class="fa-regular fa-star" style="font-size: 2.5rem; margin-bottom: 0.75rem; display:block; opacity:0.4;"></i>
+                    <p style="font-size: 0.9rem;">તમારી Watchlist ખાલી છે.</p>
+                    <p style="font-size: 0.8rem; margin-top: 0.25rem;">Top Gainers માં ★ બટન ક્લિક કરીને Watchlist ઉમેરો.</p>
+                </div>
+
+                <!-- Watchlist Table -->
+                <div class="table-wrapper movement-table-wrapper" id="watchlist-table-wrapper" style="display:none;">
+                    <table id="watchlist-table" style="min-width: 520px;">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Symbol</th>
+                                <th>Added Price (₹)</th>
+                                <th>Live Price</th>
+                                <th>Change</th>
+                                <th style="text-align:center;">Research</th>
+                                <th style="text-align:center;">Remove</th>
+                            </tr>
+                        </thead>
+                        <tbody id="watchlist-tbody">
+                            <!-- Dynamic -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
         <!-- Tab 3: Upcoming Results & Dividend Analysis (Hidden by default) -->
         <div id="results-tab-content" class="hidden">
             <!-- Results & Dividends Dashboard Card -->
