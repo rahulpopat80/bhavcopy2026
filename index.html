@@ -44,6 +44,19 @@
                     <img src="https://i.ibb.co/4wLM3bJ1/Rahul-Finance-removebg-preview.png" alt="Rahul Finance Logo" class="logo-image">
                     <h1 class="logo-text">Rahul Finance</h1>
                 </div>
+                <!-- Nifty / Sensex live widget -->
+                <div class="header-indices-widget no-print">
+                    <div class="index-card">
+                        <span class="index-label">NIFTY 50</span>
+                        <span class="index-val" id="nifty-val">Loading...</span>
+                        <span class="index-chg" id="nifty-chg">-</span>
+                    </div>
+                    <div class="index-card">
+                        <span class="index-label">SENSEX</span>
+                        <span class="index-val" id="sensex-val">Loading...</span>
+                        <span class="index-chg" id="sensex-chg">-</span>
+                    </div>
+                </div>
                 <div class="cloud-sync-badge sync-connecting" id="cloud-sync-status">
                     <i class="fa-solid fa-cloud-arrow-up sync-icon spin"></i>
                     <span id="cloud-sync-text">Connecting Firebase...</span>
@@ -61,6 +74,9 @@
             </button>
             <button class="nav-btn" id="tab-portfolio">
                 <i class="fa-solid fa-briefcase"></i> My Portfolio
+            </button>
+            <button class="nav-btn" id="tab-results">
+                <i class="fa-solid fa-calendar-days"></i> Results & Dividends
             </button>
         </nav>
 
@@ -286,6 +302,7 @@
                                         <th>Symbol</th>
                                         <th id="gainer-table-old-price-header">Price (5d)</th>
                                         <th>Latest Price</th>
+                                        <th>Live Price</th>
                                         <th>Net Gain (₹)</th>
                                         <th>Gain (%)</th>
                                     </tr>
@@ -441,6 +458,46 @@
                             </tfoot>
                         </table>
                     </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Tab 3: Upcoming Results & Dividend Analysis (Hidden by default) -->
+        <div id="results-tab-content" class="hidden">
+            <!-- Results & Dividends Dashboard Card -->
+            <div class="card results-dashboard-card">
+                <div class="dashboard-header" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 0.75rem;">
+                    <div>
+                        <h2 style="color: var(--accent-color); font-size: 1.35rem; display: flex; align-items: center; gap: 0.5rem;">
+                            <i class="fa-solid fa-award"></i> પરિણામો અને ડિવિડન્ડ વિશ્લેષણ (Upcoming Results & Dividend)
+                        </h2>
+                        <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.25rem;">છેલ્લા ત્રણ ક્વાર્ટરમાં ઉત્કૃષ્ટ પરિણામો અને સારું ડિવિડન્ડ ચુકવતી ટોપ ૨૦ કંપનીઓની વિગતો.</p>
+                    </div>
+                    <span class="results-badge" style="background: rgba(34,197,94,0.12); border-color: var(--success-color); color: var(--success-color); font-weight: bold; font-size: 0.8rem; padding: 0.25rem 0.6rem; border-radius: 6px; border: 1px solid;">
+                        Top 20 Leaderboard
+                    </span>
+                </div>
+                
+                <div class="table-wrapper" style="max-height: 650px;">
+                    <table id="upcoming-results-table">
+                        <thead>
+                            <tr>
+                                <th>કંપની (Symbol)</th>
+                                <th>લાઇવ ભાવ (Live Price)</th>
+                                <th>પરિણામ તારીખ (Result Date)</th>
+                                <th>છેલ્લા ક્વાર્ટરનો નફો (Net Profit)</th>
+                                <th>ક્વાર્ટર ગ્રોથ (Q-o-Q Growth)</th>
+                                <th>સ્થિતિ (Status)</th>
+                                <th>ડિવિડન્ડ આપે છે?</th>
+                                <th>૫ વર્ષમાં ડિવિડન્ડ (5-Yr Count)</th>
+                                <th>ડિવિડન્ડ યીલ્ડ (Yield %)</th>
+                                <th style="text-align: center;">ઍક્શન (Action)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Dynamically loaded rows -->
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>

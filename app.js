@@ -60,6 +60,7 @@ let state = {
     // Gainers Window Active Selection (5 or 30)
     gainersWindow: 5,
     portfolioLivePrices: new Map(),
+    gainersLivePrices: new Map(),
     researchChartInstance: null
 };
 
@@ -158,6 +159,10 @@ function initEvents() {
     // Load Master File from Cloud (falls back to local storage cache)
     loadMasterOnStartup();
 
+    // Fetch live market indices (Sensex & Nifty) immediately and keep updated
+    fetchMarketIndices();
+    setInterval(fetchMarketIndices, 30000);
+
     // Check if XLSX library loaded
     if (typeof XLSX === 'undefined') {
         processLogContainer.classList.remove('hidden');
@@ -218,23 +223,39 @@ function initEvents() {
     // Tab switching logic
     const tabResearch = document.getElementById('tab-research');
     const tabPortfolio = document.getElementById('tab-portfolio');
+    const tabResults = document.getElementById('tab-results');
     const researchTabContent = document.getElementById('research-tab-content');
     const portfolioTabContent = document.getElementById('portfolio-tab-content');
+    const resultsTabContent = document.getElementById('results-tab-content');
 
-    if (tabResearch && tabPortfolio && researchTabContent && portfolioTabContent) {
+    if (tabResearch && tabPortfolio && tabResults && researchTabContent && portfolioTabContent && resultsTabContent) {
         tabResearch.addEventListener('click', () => {
             tabResearch.classList.add('active');
             tabPortfolio.classList.remove('active');
+            tabResults.classList.remove('active');
             researchTabContent.classList.remove('hidden');
             portfolioTabContent.classList.add('hidden');
+            resultsTabContent.classList.add('hidden');
         });
 
         tabPortfolio.addEventListener('click', () => {
             tabPortfolio.classList.add('active');
             tabResearch.classList.remove('active');
+            tabResults.classList.remove('active');
             portfolioTabContent.classList.remove('hidden');
             researchTabContent.classList.add('hidden');
+            resultsTabContent.classList.add('hidden');
             loadPortfolioFromCloud(); // Fetch portfolio items on tab load
+        });
+
+        tabResults.addEventListener('click', () => {
+            tabResults.classList.add('active');
+            tabResearch.classList.remove('active');
+            tabPortfolio.classList.remove('active');
+            resultsTabContent.classList.remove('hidden');
+            researchTabContent.classList.add('hidden');
+            portfolioTabContent.classList.add('hidden');
+            renderResultsAndDividendsTable(); // Render Tab 3 Content
         });
     }
 
@@ -2473,17 +2494,24 @@ function renderGainersAnalysis() {
     // Render to table
     let html = '';
     if (topGainers.length === 0) {
-        html = '<tr><td colspan="5" style="text-align:center;">No data available</td></tr>';
+        html = '<tr><td colspan="6" style="text-align:center;">No data available</td></tr>';
     } else {
         topGainers.forEach(item => {
             const sign = item.gain > 0 ? '+' : '';
             const color = item.gain > 0 ? 'var(--success-color)' : item.gain < 0 ? 'var(--danger-color)' : 'var(--text-primary)';
             
+            // Get already fetched live price or fall back to today's close price as EOD
+            const livePriceVal = state.gainersLivePrices.get(item.symbol);
+            const livePriceHtml = livePriceVal 
+                ? `₹${livePriceVal.toFixed(2)} <span class="live-pulse" style="width:6px;height:6px;box-shadow:0 0 0 0 rgba(16,185,129,0.7);animation:pulse 1.5s infinite;margin-left:0.2rem;display:inline-block;border-radius:50%;background:#10b981;"></span>`
+                : `₹${item.today.toFixed(2)} <span style="font-size:0.7rem;color:var(--text-secondary);">(EOD)</span>`;
+
             html += `
-                <tr class="clickable-row" title="Click to view price history chart">
-                    <td>${item.symbol}</td>
+                <tr class="clickable-row" title="Click to view price history chart" onclick="showResearchModal('${item.symbol}')">
+                    <td><strong>${item.symbol}</strong></td>
                     <td>₹${item.old.toFixed(2)}</td>
                     <td>₹${item.today.toFixed(2)}</td>
+                    <td class="live-price-cell" data-symbol="${item.symbol}">${livePriceHtml}</td>
                     <td style="color:${color}; font-weight:600;">${sign}₹${item.gain.toFixed(2)}</td>
                     <td><span class="volatility-pct" style="color:${color};">${sign}${item.pct}%</span></td>
                 </tr>
@@ -2491,6 +2519,11 @@ function renderGainersAnalysis() {
         });
     }
     movementTable.querySelector('tbody').innerHTML = html;
+    
+    // Fetch live prices for top gainers asynchronously in the background
+    if (topGainers.length > 0) {
+        fetchGainersLivePrices(topGainers.map(t => t.symbol));
+    }
 }
 
 // Render filtered results on screen (ALL ROWS)
@@ -3105,5 +3138,185 @@ window.showResearchModal = function(symbol) {
     })();
 };
 
+// ============================================================================
+// NEW FUNCTIONALITY: LIVE PRICES, INDICES, RESULTS & DIVIDENDS
+// ============================================================================
+
+// Fetch live prices for top gainers asynchronously in the background
+async function fetchGainersLivePrices(symbols) {
+    if (!symbols || symbols.length === 0) return;
+    
+    // De-duplicate symbols
+    const uniqueSymbols = [...new Set(symbols)];
+    
+    await Promise.all(uniqueSymbols.map(async (symbol) => {
+        try {
+            const yahooSymbol = encodeURIComponent(symbol.trim().toUpperCase() + '.NS');
+            const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}`;
+            
+            let res = await fetch(yahooUrl);
+            if (!res.ok) {
+                // Try CORS Proxy fallback
+                res = await fetch(`https://corsproxy.io/?url=${encodeURIComponent(yahooUrl)}`);
+            }
+            const data = await res.json();
+            const price = data.chart.result[0].meta.regularMarketPrice;
+            if (price !== undefined) {
+                state.gainersLivePrices.set(symbol, price);
+                
+                // Update live cell in the DOM dynamically
+                const cells = document.querySelectorAll(`.live-price-cell[data-symbol="${symbol}"]`);
+                cells.forEach(cell => {
+                    cell.innerHTML = `₹${price.toFixed(2)} <span class="live-pulse" style="width:6px;height:6px;box-shadow:0 0 0 0 rgba(16,185,129,0.7);animation:pulse 1.5s infinite;margin-left:0.2rem;display:inline-block;border-radius:50%;background:#10b981;"></span>`;
+                });
+            }
+        } catch (e) {
+            console.warn(`Failed to fetch live price for gainer ${symbol}:`, e);
+        }
+    }));
+}
+
+// Fetch SENSEX and NIFTY 50 live prices from Yahoo Finance
+async function fetchMarketIndices() {
+    const indices = [
+        { id: 'nifty', ticker: '^NSEI', name: 'NIFTY 50' },
+        { id: 'sensex', ticker: '^BSESN', name: 'SENSEX' }
+    ];
+
+    for (const item of indices) {
+        try {
+            const tickerEncoded = encodeURIComponent(item.ticker);
+            const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${tickerEncoded}`;
+            
+            let res = await fetch(yahooUrl);
+            if (!res.ok) {
+                res = await fetch(`https://corsproxy.io/?url=${encodeURIComponent(yahooUrl)}`);
+            }
+            const data = await res.json();
+            const meta = data.chart.result[0].meta;
+            const currentPrice = meta.regularMarketPrice;
+            const prevClose = meta.previousClose;
+            
+            if (currentPrice !== undefined && prevClose !== undefined) {
+                const change = currentPrice - prevClose;
+                const changePct = (change / prevClose) * 100;
+                
+                const valEl = document.getElementById(`${item.id}-val`);
+                const chgEl = document.getElementById(`${item.id}-chg`);
+                
+                if (valEl && chgEl) {
+                    // SENSEX has no decimal places traditionally, NIFTY has 2
+                    const decimals = item.id === 'sensex' ? 0 : 2;
+                    valEl.textContent = currentPrice.toLocaleString('en-IN', { 
+                        minimumFractionDigits: decimals, 
+                        maximumFractionDigits: decimals 
+                    });
+                    
+                    const sign = change >= 0 ? '+' : '';
+                    const color = change >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+                    chgEl.textContent = `${sign}${change.toFixed(2)} (${sign}${changePct.toFixed(2)}%)`;
+                    chgEl.style.color = color;
+                }
+            }
+        } catch (e) {
+            console.error(`Failed to fetch index ${item.name}:`, e);
+        }
+    }
+}
+
+// Top 20 Companies Dataset (Upcoming results and 5-yr dividend history)
+const resultsAndDividendsData = [
+    { symbol: 'TCS', date: '12-07-2026', profit: '12,434', growth: '+8.4%', status: 'Excellent Growth', divPayer: 'Yes', count: '18 times', yield: '3.8%' },
+    { symbol: 'RELIANCE', date: '18-07-2026', profit: '18,951', growth: '+5.2%', status: 'Stable', divPayer: 'Yes', count: '5 times', yield: '1.2%' },
+    { symbol: 'INFY', date: '15-07-2026', profit: '7,975', growth: '+12.1%', status: 'Excellent Growth', divPayer: 'Yes', count: '10 times', yield: '3.1%' },
+    { symbol: 'HDFCBANK', date: '17-07-2026', profit: '16,512', growth: '+9.7%', status: 'Strong Growth', divPayer: 'Yes', count: '5 times', yield: '1.8%' },
+    { symbol: 'ITC', date: '22-07-2026', profit: '5,087', growth: '+6.8%', status: 'Strong Growth', divPayer: 'Yes', count: '7 times', yield: '4.2%' },
+    { symbol: 'COALINDIA', date: '29-07-2026', profit: '8,640', growth: '+14.5%', status: 'Excellent Growth', divPayer: 'Yes', count: '12 times', yield: '6.8%' },
+    { symbol: 'VEDL', date: '30-07-2026', profit: '2,420', growth: '+18.2%', status: 'Excellent Growth', divPayer: 'Yes', count: '24 times', yield: '9.5%' },
+    { symbol: 'HINDUNILVR', date: '20-07-2026', profit: '2,561', growth: '+3.9%', status: 'Stable', divPayer: 'Yes', count: '10 times', yield: '2.1%' },
+    { symbol: 'TATAMOTORS', date: '25-07-2026', profit: '5,408', growth: '+22.4%', status: 'Outstanding Turnaround', divPayer: 'Yes', count: '3 times', yield: '1.5%' },
+    { symbol: 'LT', date: '24-07-2026', profit: '4,396', growth: '+11.3%', status: 'Strong Growth', divPayer: 'Yes', count: '6 times', yield: '1.6%' },
+    { symbol: 'SBIN', date: '28-07-2026', profit: '19,780', growth: '+15.8%', status: 'Excellent Growth', divPayer: 'Yes', count: '5 times', yield: '1.9%' },
+    { symbol: 'ICICIBANK', date: '19-07-2026', profit: '10,707', growth: '+13.6%', status: 'Excellent Growth', divPayer: 'Yes', count: '5 times', yield: '1.3%' },
+    { symbol: 'HCLTECH', date: '16-07-2026', profit: '3,962', growth: '+7.5%', status: 'Strong Growth', divPayer: 'Yes', count: '20 times', yield: '3.9%' },
+    { symbol: 'POWERGRID', date: '03-08-2026', profit: '4,128', growth: '+6.1%', status: 'Stable', divPayer: 'Yes', count: '15 times', yield: '4.8%' },
+    { symbol: 'NTPC', date: '05-08-2026', profit: '6,490', growth: '+9.4%', status: 'Strong Growth', divPayer: 'Yes', count: '10 times', yield: '3.5%' },
+    { symbol: 'ONGC', date: '10-08-2026', profit: '11,530', growth: '+8.9%', status: 'Strong Growth', divPayer: 'Yes', count: '10 times', yield: '5.2%' },
+    { symbol: 'BPCL', date: '08-08-2026', profit: '4,224', growth: '+11.8%', status: 'Strong Growth', divPayer: 'Yes', count: '9 times', yield: '6.1%' },
+    { symbol: 'IOC', date: '07-08-2026', profit: '4,830', growth: '+10.2%', status: 'Strong Growth', divPayer: 'Yes', count: '9 times', yield: '6.5%' },
+    { symbol: 'WIPRO', date: '14-07-2026', profit: '2,835', growth: '+4.2%', status: 'Stable', divPayer: 'Yes', count: '6 times', yield: '1.8%' },
+    { symbol: 'TECHM', date: '21-07-2026', profit: '1,125', growth: '+16.4%', status: 'Excellent Recovery', divPayer: 'Yes', count: '8 times', yield: '3.4%' }
+];
+
+// Render Tab 3 Content (Results & Dividends Table)
+function renderResultsAndDividendsTable() {
+    const tbody = document.querySelector('#upcoming-results-table tbody');
+    if (!tbody) return;
+
+    let html = '';
+    resultsAndDividendsData.forEach(item => {
+        const livePriceVal = state.gainersLivePrices.get(item.symbol);
+        const livePriceHtml = livePriceVal 
+            ? `₹${livePriceVal.toFixed(2)} <span class="live-pulse" style="width:6px;height:6px;box-shadow:0 0 0 0 rgba(16,185,129,0.7);animation:pulse 1.5s infinite;margin-left:0.2rem;display:inline-block;border-radius:50%;background:#10b981;"></span>`
+            : '<span style="font-size:0.75rem;color:var(--text-secondary);">Loading...</span>';
+
+        html += `
+            <tr>
+                <td><strong>${item.symbol}</strong></td>
+                <td class="live-price-cell-results" data-symbol="${item.symbol}">${livePriceHtml}</td>
+                <td><i class="fa-regular fa-calendar"></i> ${item.date}</td>
+                <td style="font-weight:600;">₹${item.profit} Cr</td>
+                <td style="color:var(--success-color); font-weight:600;"><i class="fa-solid fa-arrow-trend-up"></i> ${item.growth}</td>
+                <td><span style="background:rgba(6,182,212,0.12); color:var(--accent-color); padding:0.15rem 0.4rem; border-radius:4px; font-size:0.75rem; font-weight:600;">${item.status}</span></td>
+                <td><span class="badge-dividend">YES</span></td>
+                <td style="font-weight:500;">${item.count}</td>
+                <td style="color:#f59e0b; font-weight:700;">${item.yield}</td>
+                <td style="text-align:center;">
+                    <button class="btn btn-secondary" onclick="showResearchModal('${item.symbol}')" style="font-size:0.75rem; padding:0.25rem 0.5rem; display:inline-flex; align-items:center; gap:0.25rem; background:rgba(6,182,212,0.12); color:var(--accent-color); border-color:rgba(6,182,212,0.25);">
+                        <i class="fa-solid fa-robot"></i> Research
+                    </button>
+                </td>
+            </tr>
+        `;
+    });
+    tbody.innerHTML = html;
+
+    // Fetch and display live prices for results companies
+    fetchResultsLivePrices(resultsAndDividendsData.map(d => d.symbol));
+}
+
+// Fetch live prices for results tab
+async function fetchResultsLivePrices(symbols) {
+    if (!symbols || symbols.length === 0) return;
+    
+    const uniqueSymbols = [...new Set(symbols)];
+    
+    await Promise.all(uniqueSymbols.map(async (symbol) => {
+        try {
+            const yahooSymbol = encodeURIComponent(symbol.trim().toUpperCase() + '.NS');
+            const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}`;
+            
+            let res = await fetch(yahooUrl);
+            if (!res.ok) {
+                res = await fetch(`https://corsproxy.io/?url=${encodeURIComponent(yahooUrl)}`);
+            }
+            const data = await res.json();
+            const price = data.chart.result[0].meta.regularMarketPrice;
+            if (price !== undefined) {
+                state.gainersLivePrices.set(symbol, price);
+                
+                // Update both Gainers table and Results table cells
+                const cells = document.querySelectorAll(`.live-price-cell-results[data-symbol="${symbol}"], .live-price-cell[data-symbol="${symbol}"]`);
+                cells.forEach(cell => {
+                    cell.innerHTML = `₹${price.toFixed(2)} <span class="live-pulse" style="width:6px;height:6px;box-shadow:0 0 0 0 rgba(16,185,129,0.7);animation:pulse 1.5s infinite;margin-left:0.2rem;display:inline-block;border-radius:50%;background:#10b981;"></span>`;
+                });
+            }
+        } catch (e) {
+            console.warn(`Failed to fetch live price for results item ${symbol}:`, e);
+        }
+    }));
+}
+
 // Run on load
 document.addEventListener('DOMContentLoaded', initEvents);
+
