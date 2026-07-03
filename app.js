@@ -3237,6 +3237,7 @@ async function fetchYahooFinanceData(ticker) {
     const cacheBuster = Date.now();
     // Cache bust the proxy requests, keeping the inner Yahoo Finance requests clean
     const urls = [
+        `/api/yahoo?symbol=${tickerEncoded}&_t=${cacheBuster}`,
         `https://api.allorigins.win/raw?url=${encodeURIComponent(q1Url)}&_t=${cacheBuster}`,
         `https://api.allorigins.win/raw?url=${encodeURIComponent(q2Url)}&_t=${cacheBuster}`,
         `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(q1Url)}&_t=${cacheBuster}`,

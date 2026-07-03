@@ -18,7 +18,14 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'Missing symbol parameter' });
     }
 
-    const nsSymbol = symbol.toUpperCase().endsWith('.NS') ? symbol.toUpperCase() : `${symbol.toUpperCase()}.NS`;
+    const uppercaseSymbol = symbol.toUpperCase().trim();
+    // Only append .NS if the symbol is a plain stock code (e.g., "TCS", "RELIANCE")
+    // Do NOT append if it already has a suffix/special characters (.NS, .BO, =, ^, etc.)
+    const needsSuffix = !uppercaseSymbol.includes('.') && 
+                        !uppercaseSymbol.includes('=') && 
+                        !uppercaseSymbol.includes('^');
+    
+    const nsSymbol = needsSuffix ? `${uppercaseSymbol}.NS` : uppercaseSymbol;
     const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(nsSymbol)}?range=1y&interval=1d`;
 
     try {
