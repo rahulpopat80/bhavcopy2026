@@ -1222,11 +1222,11 @@ async function fetchPortfolioLivePrices() {
     
     console.log("Fetching live prices for active portfolio holdings:", activeSymbols);
     
-    await Promise.all(activeSymbols.map(async (symbol) => {
+    // Process each symbol concurrently and update the UI instantly as each successful fetch completes
+    activeSymbols.forEach(async (symbol) => {
         try {
             let data;
             const isNumeric = symbol.match(/^\d+$/);
-            // Numeric is BSE, alphabetical is NSE preferred
             const prefSuffix = isNumeric ? '.BO' : '.NS';
             const fallbackSuffix = isNumeric ? '.NS' : '.BO';
             
@@ -1236,17 +1236,16 @@ async function fetchPortfolioLivePrices() {
                 data = await fetchYahooFinanceData(symbol.trim().toUpperCase() + fallbackSuffix);
             }
             
-            const price = data.chart.result[0].meta.regularMarketPrice;
+            const price = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
             if (price !== undefined) {
                 state.portfolioLivePrices.set(symbol, price);
+                // Re-render the portfolio table immediately for responsive user feedback
+                renderPortfolioTable();
             }
         } catch (e) {
             console.warn(`Failed to fetch live price for active portfolio item ${symbol}:`, e.message);
         }
-    }));
-    
-    // Re-render table with live prices updated
-    renderPortfolioTable();
+    });
 }
 
 // Render portfolio entries list table and calculate summaries
