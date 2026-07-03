@@ -4115,7 +4115,11 @@ window.renderInvestorAdvice = function() {
 
         const sym = String(row[symCol] || '').trim().toUpperCase();
         const series = serCol !== -1 ? String(row[serCol] || '').trim().toUpperCase() : 'EQ';
-        if (!sym || series !== 'EQ') continue;
+        const isin = state.isinColIndex !== -1 ? String(row[state.isinColIndex] || '').trim().toUpperCase() : '';
+        
+        // Strict exclusion of Mutual Funds (ISIN starting with INF or symbol contains MF/ETF or length > 10)
+        const isMF = sym.endsWith('-MF') || sym.includes('MF') || sym.includes('ETF') || isin.startsWith('INF') || sym.length > 10;
+        if (!sym || series !== 'EQ' || isMF) continue;
 
         if (searchQuery && !sym.includes(searchQuery)) continue;
 
@@ -4241,21 +4245,21 @@ window.renderInvestorAdvice = function() {
             : `<button onclick="addToWatchlist('${item.symbol}', ${item.latestPrice}); event.stopPropagation();" title="Watchlist \u0aae\u0abe\u0a82 \u0a89\u0aae\u0ac7\u0ab0\u0acb" style="background:none; border:1px solid rgba(255,255,255,0.15); color:var(--text-secondary); border-radius:5px; padding:0.25rem 0.5rem; cursor:pointer; font-size:0.8rem;"><i class='fa-regular fa-star'></i></button>`;
 
         return `
-            <tr>
+            <tr class="clickable-row" onclick="showResearchModal('${item.symbol}')" title="Chart & Research" style="cursor:pointer;">
                 <td><strong style="color:var(--accent-color);">${item.symbol}</strong></td>
                 <td>\u20b9${item.latestPrice.toFixed(2)}</td>
                 <td style="color:${item.modelColor}; font-weight:600;"><i class="fa-solid fa-user-tie" style="font-size:0.75rem;margin-right:4px;"></i>${item.modelName}</td>
                 <td style="text-align:center;"><span style="background:rgba(255,255,255,0.06); font-weight:bold; padding:0.2rem 0.5rem; border-radius:4px;">${item.score}</span></td>
                 <td style="color:${item.decisionColor}; font-weight:bold; font-size:0.85rem;">${item.decision}</td>
                 <td>
-                    <button onclick="showAdviceDetails('${item.symbol}')" class="btn" style="padding:0.25rem 0.6rem; font-size:0.75rem; background:rgba(34,197,94,0.15); color:#22c55e; border:1px solid rgba(34,197,94,0.3); border-radius:4px; font-weight:bold; cursor:pointer;">
+                    <button onclick="showAdviceDetails('${item.symbol}'); event.stopPropagation();" class="btn" style="padding:0.25rem 0.6rem; font-size:0.75rem; background:rgba(34,197,94,0.15); color:#22c55e; border:1px solid rgba(34,197,94,0.3); border-radius:4px; font-weight:bold; cursor:pointer;">
                         <i class="fa-solid fa-magnifying-glass-chart" style="margin-right:3px;"></i> View Logic
                     </button>
                 </td>
                 <td style="text-align:center;">
                     <div style="display:flex; gap:0.25rem; justify-content:center;">
                         ${starBtn}
-                        <button onclick="showResearchModal('${item.symbol}')" style="background:var(--accent-light,rgba(59,130,246,0.12)); border:1px solid var(--accent-color); color:var(--accent-color); border-radius:5px; padding:0.25rem 0.5rem; cursor:pointer; font-size:0.8rem;">
+                        <button onclick="showResearchModal('${item.symbol}'); event.stopPropagation();" style="background:var(--accent-light,rgba(59,130,246,0.12)); border:1px solid var(--accent-color); color:var(--accent-color); border-radius:5px; padding:0.25rem 0.5rem; cursor:pointer; font-size:0.8rem;">
                             <i class="fa-solid fa-chart-area"></i>
                         </button>
                     </div>
