@@ -536,7 +536,7 @@
                     <h2 style="color:var(--text-primary);">Super Investor Advice <span class="results-badge" id="advice-count-badge" style="background:rgba(34,197,94,0.15);color:#22c55e;border-color:rgba(34,197,94,0.3);">0 Scripts</span></h2>
                     
                     <div style="margin-left:auto; display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">
-                        <input type="text" id="advice-search-input" placeholder="Search Symbol..." style="padding:0.4rem 0.75rem; border:1px solid rgba(255,255,255,0.15); border-radius:6px; background:rgba(0,0,0,0.2); color:#fff; font-size:0.8rem; width:150px;" oninput="renderInvestorAdvice()">
+                        <input type="text" id="advice-search-input" placeholder="Search Symbol..." style="padding:0.4rem 0.75rem; border:1px solid rgba(255,255,255,0.15); border-radius:6px; background:rgba(0,0,0,0.2); color:#fff; font-size:0.8rem; width:150px;" oninput="debouncedRenderInvestorAdvice()">
                         <select id="advice-model-select" style="padding:0.4rem 0.75rem; border:1px solid rgba(255,255,255,0.15); border-radius:6px; background:#1e293b; color:#fff; font-size:0.8rem; cursor:pointer;" onchange="renderInvestorAdvice()">
                             <option value="ALL">All Models</option>
                             <option value="BUFFETT">Warren Buffett (Value/Quality)</option>

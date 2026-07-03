@@ -1212,6 +1212,15 @@ function getLastKnownPrice(symbol) {
     return null;
 }
 
+let portfolioRenderTimeout = null;
+function throttledRenderPortfolioTable() {
+    if (portfolioRenderTimeout) return;
+    portfolioRenderTimeout = setTimeout(() => {
+        renderPortfolioTable();
+        portfolioRenderTimeout = null;
+    }, 300); // Throttle renders to once every 300ms
+}
+
 // Fetch live prices for active portfolio holdings and re-render
 async function fetchPortfolioLivePrices() {
     if (portfolioItems.length === 0) return;
@@ -1239,8 +1248,8 @@ async function fetchPortfolioLivePrices() {
             const price = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
             if (price !== undefined) {
                 state.portfolioLivePrices.set(symbol, price);
-                // Re-render the portfolio table immediately for responsive user feedback
-                renderPortfolioTable();
+                // Re-render the portfolio table using throttled updates for buttery smooth scrolling/animations
+                throttledRenderPortfolioTable();
             }
         } catch (e) {
             console.warn(`Failed to fetch live price for active portfolio item ${symbol}:`, e.message);
@@ -4072,6 +4081,23 @@ function calculateStandardDeviation(arr) {
 // Keep track of which symbols we have already requested live prices for to prevent redundant requests
 const requestedAdviceSymbols = new Set();
 
+let adviceRenderTimeout = null;
+function throttledRenderInvestorAdvice() {
+    if (adviceRenderTimeout) return;
+    adviceRenderTimeout = setTimeout(() => {
+        renderInvestorAdvice();
+        adviceRenderTimeout = null;
+    }, 450); // Throttle renders to once every 450ms
+}
+
+let adviceSearchTimeout = null;
+window.debouncedRenderInvestorAdvice = function() {
+    if (adviceSearchTimeout) clearTimeout(adviceSearchTimeout);
+    adviceSearchTimeout = setTimeout(() => {
+        renderInvestorAdvice();
+    }, 250); // Debounce search input typing by 250ms
+};
+
 // Fetch live prices specifically for visible symbols on the advice page
 async function fetchAdviceLivePrices(symbols) {
     if (!symbols || symbols.length === 0) return;
@@ -4093,8 +4119,8 @@ async function fetchAdviceLivePrices(symbols) {
             const price = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
             if (price !== undefined) {
                 state.gainersLivePrices.set(symbol, price);
-                // Trigger re-render to recalculate the scorecards and decision immediately using the live price
-                renderInvestorAdvice();
+                // Trigger throttled re-render to recalculate metrics smoothly without blocking main thread
+                throttledRenderInvestorAdvice();
             }
         } catch (e) {
             console.warn(`[Advice Live Prices] Failed to fetch live price for ${symbol}:`, e.message);
@@ -4293,7 +4319,7 @@ window.renderInvestorAdvice = function() {
         fetchAdviceLivePrices(symbolsToFetch);
     }
 
-    tbody.innerHTML = results.map(item => {
+    tbody.innerHTML = results.slice(0, 100).map(item => {
         const inWatchlist = watchlistItems.some(w => w.symbol === item.symbol);
         const starBtn = inWatchlist
             ? `<button onclick="removeFromWatchlist('${item.symbol}'); event.stopPropagation();" title="Watchlist \u0aae\u0abe\u0a82\u0aa5\u0ac0 \u0a95\u0abe\u0aa2\u0acb" style="background:rgba(245,158,11,0.18); border:1px solid #f59e0b; color:#f59e0b; border-radius:5px; padding:0.25rem 0.5rem; cursor:pointer; font-size:0.8rem;"><i class='fa-solid fa-star'></i></button>`
