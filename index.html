@@ -91,8 +91,11 @@
             <button class="nav-btn" id="tab-morning-picks">
                 <i class="fa-solid fa-sun"></i> Morning Picks
             </button>
+            <button class="nav-btn" id="tab-investor-advice">
+                <i class="fa-solid fa-lightbulb"></i> Investor Advice
+            </button>
             <button class="nav-btn" id="tab-results">
-                <i class="fa-solid fa-calendar-days"></i> Results & Dividends
+                <i class="fa-solid fa-calendar-days"></i> Results &amp; Dividends
             </button>
         </nav>
 
@@ -520,6 +523,56 @@
                             </tr>
                         </thead>
                         <tbody id="picks-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: Investor Advice (Hidden by default) -->
+        <div id="investor-advice-tab-content" class="hidden">
+            <div class="card" style="margin-bottom:0;">
+                <div class="movement-header" style="margin-bottom:0.75rem; flex-wrap:wrap; gap:0.5rem;">
+                    <i class="fa-solid fa-lightbulb movement-icon" style="color:#22c55e;"></i>
+                    <h2 style="color:var(--text-primary);">Super Investor Advice <span class="results-badge" id="advice-count-badge" style="background:rgba(34,197,94,0.15);color:#22c55e;border-color:rgba(34,197,94,0.3);">0 Scripts</span></h2>
+                    
+                    <div style="margin-left:auto; display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">
+                        <input type="text" id="advice-search-input" placeholder="Search Symbol..." style="padding:0.4rem 0.75rem; border:1px solid rgba(255,255,255,0.15); border-radius:6px; background:rgba(0,0,0,0.2); color:#fff; font-size:0.8rem; width:150px;" oninput="renderInvestorAdvice()">
+                        <select id="advice-model-select" style="padding:0.4rem 0.75rem; border:1px solid rgba(255,255,255,0.15); border-radius:6px; background:#1e293b; color:#fff; font-size:0.8rem; cursor:pointer;" onchange="renderInvestorAdvice()">
+                            <option value="ALL">All Models</option>
+                            <option value="BUFFETT">Warren Buffett (Value/Quality)</option>
+                            <option value="JHUNJHUNWALA">Rakesh Jhunjhunwala (Aggressive Growth)</option>
+                            <option value="KEDIA">Vijay Kedia (High Volatility/Breakout)</option>
+                        </select>
+                        <button onclick="renderInvestorAdvice()" class="btn btn-secondary" style="font-size:0.78rem; padding:0.4rem 0.8rem;">
+                            <i class="fa-solid fa-rotate-right"></i> Recalculate
+                        </button>
+                    </div>
+                </div>
+                
+                <p class="card-desc" style="margin-bottom:1rem;">Apply top legendary investors' models (Buffett, Jhunjhunwala, Kedia) on all your master stocks to find the best opportunities.</p>
+
+                <!-- No-data state -->
+                <div id="advice-empty-state" style="text-align:center;padding:2.5rem 1rem;color:var(--text-secondary);">
+                    <i class="fa-solid fa-file-invoice-dollar" style="font-size:2.2rem;opacity:0.35;display:block;margin-bottom:0.75rem;"></i>
+                    <p style="font-size:0.9rem;">Master File ડેટા લોડ થયેલ નથી.</p>
+                    <p style="font-size:0.8rem;margin-top:0.2rem;">સૌપ્રથમ Stock Research tab માં જઈ Master Excel File અને daily Bhavcopy ફાઇલો પ્રોસેસ કરો.</p>
+                </div>
+
+                <!-- Advice Table -->
+                <div class="table-wrapper movement-table-wrapper" id="advice-table-wrapper" style="display:none;">
+                    <table id="advice-table" style="min-width:700px;">
+                        <thead>
+                            <tr>
+                                <th>Symbol</th>
+                                <th>Latest Price</th>
+                                <th>Best Fit Model</th>
+                                <th style="text-align:center;">Score</th>
+                                <th>Advice Decision</th>
+                                <th>Reasoning Check</th>
+                                <th style="text-align:center;">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="advice-tbody"></tbody>
                     </table>
                 </div>
             </div>
