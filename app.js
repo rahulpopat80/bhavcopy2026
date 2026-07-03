@@ -4069,6 +4069,39 @@ function calculateStandardDeviation(arr) {
     return Math.sqrt(variance);
 }
 
+// Keep track of which symbols we have already requested live prices for to prevent redundant requests
+const requestedAdviceSymbols = new Set();
+
+// Fetch live prices specifically for visible symbols on the advice page
+async function fetchAdviceLivePrices(symbols) {
+    if (!symbols || symbols.length === 0) return;
+    console.log("[Advice Live Prices] Fetching live prices for visible stocks:", symbols);
+    
+    symbols.forEach(async (symbol) => {
+        try {
+            let data;
+            const isNumeric = symbol.match(/^\d+$/);
+            const prefSuffix = isNumeric ? '.BO' : '.NS';
+            const fallbackSuffix = isNumeric ? '.NS' : '.BO';
+            
+            try {
+                data = await fetchYahooFinanceData(symbol.trim().toUpperCase() + prefSuffix);
+            } catch (e) {
+                data = await fetchYahooFinanceData(symbol.trim().toUpperCase() + fallbackSuffix);
+            }
+            
+            const price = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
+            if (price !== undefined) {
+                state.gainersLivePrices.set(symbol, price);
+                // Trigger re-render to recalculate the scorecards and decision immediately using the live price
+                renderInvestorAdvice();
+            }
+        } catch (e) {
+            console.warn(`[Advice Live Prices] Failed to fetch live price for ${symbol}:`, e.message);
+        }
+    });
+}
+
 window.renderInvestorAdvice = function() {
     const emptyState   = document.getElementById('advice-empty-state');
     const tableWrapper = document.getElementById('advice-table-wrapper');
@@ -4129,7 +4162,15 @@ window.renderInvestorAdvice = function() {
         }
         if (prices.length < 2) continue;
 
-        const latestPrice = prices[0];
+        // Check if we have a live price cached for this symbol
+        let latestPrice = prices[0];
+        const livePrice = state.gainersLivePrices.get(sym) || state.portfolioLivePrices.get(sym);
+        let isRealTime = false;
+        if (livePrice !== undefined && livePrice !== null) {
+            latestPrice = livePrice;
+            prices[0] = latestPrice; // Inject live price as the most recent day close for all math metrics
+            isRealTime = true;
+        }
 
         const mom3 = prices.length >= 3 && prices[2] > 0 ? ((prices[0] - prices[2]) / prices[2]) * 100 : 0;
         const mom5 = prices.length >= 5 && prices[4] > 0 ? ((prices[0] - prices[4]) / prices[4]) * 100 : mom3;
@@ -4203,9 +4244,14 @@ window.renderInvestorAdvice = function() {
             decisionColor = 'var(--danger-color)';
         }
 
+        const priceDisplay = isRealTime
+            ? `₹${latestPrice.toFixed(2)} <span class="live-pulse" style="width:6px;height:6px;box-shadow:0 0 0 0 rgba(16,185,129,0.7);animation:pulse 1.5s infinite;margin-left:0.2rem;display:inline-block;border-radius:50%;background:#10b981;"></span>`
+            : `₹${latestPrice.toFixed(2)} <span style="font-size:0.7rem;color:var(--text-secondary);">(EOD)</span>`;
+
         results.push({
             symbol: sym,
             latestPrice,
+            priceDisplay,
             bestModel,
             modelName,
             modelColor,
@@ -4237,6 +4283,16 @@ window.renderInvestorAdvice = function() {
     if (tableWrapper) tableWrapper.style.display = '';
     if (badge) badge.textContent = `${results.length} Scripts`;
 
+    // Fetch live prices for the top 30 visible symbols in the table (if not already fetched/fetching)
+    const symbolsToFetch = results.slice(0, 30)
+        .map(item => item.symbol)
+        .filter(sym => !state.gainersLivePrices.has(sym) && !state.portfolioLivePrices.has(sym) && !requestedAdviceSymbols.has(sym));
+        
+    if (symbolsToFetch.length > 0) {
+        symbolsToFetch.forEach(sym => requestedAdviceSymbols.add(sym));
+        fetchAdviceLivePrices(symbolsToFetch);
+    }
+
     tbody.innerHTML = results.map(item => {
         const inWatchlist = watchlistItems.some(w => w.symbol === item.symbol);
         const starBtn = inWatchlist
@@ -4246,7 +4302,7 @@ window.renderInvestorAdvice = function() {
         return `
             <tr class="clickable-row" onclick="showResearchModal('${item.symbol}')" title="Chart & Research" style="cursor:pointer;">
                 <td><strong style="color:var(--accent-color);">${item.symbol}</strong></td>
-                <td>\u20b9${item.latestPrice.toFixed(2)}</td>
+                <td>${item.priceDisplay}</td>
                 <td style="color:${item.modelColor}; font-weight:600;"><i class="fa-solid fa-user-tie" style="font-size:0.75rem;margin-right:4px;"></i>${item.modelName}</td>
                 <td style="text-align:center;"><span style="background:rgba(255,255,255,0.06); font-weight:bold; padding:0.2rem 0.5rem; border-radius:4px;">${item.score}</span></td>
                 <td style="color:${item.decisionColor}; font-weight:bold; font-size:0.85rem;">${item.decision}</td>
