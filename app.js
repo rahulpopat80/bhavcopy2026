@@ -4349,6 +4349,13 @@ window.showAdviceDetails = function(symbol) {
         const v = parseFloat(row[c]);
         if (!isNaN(v) && v > 0) prices.push(v);
     }
+    if (prices.length < 2) return;
+
+    // Use live price in the details modal if already cached
+    const livePrice = state.gainersLivePrices.get(symbol) || state.portfolioLivePrices.get(symbol);
+    if (livePrice !== undefined && livePrice !== null) {
+        prices[0] = livePrice;
+    }
 
     const latestPrice = prices[0];
     const mom3 = prices.length >= 3 && prices[2] > 0 ? ((prices[0] - prices[2]) / prices[2]) * 100 : 0;
@@ -4390,66 +4397,80 @@ window.showAdviceDetails = function(symbol) {
 
     let bestModel = 'BUFFETT';
     let bestScore = buffettScore;
-    let modelName = 'Warren Buffett Model';
-    if (rjScore > bestScore) { bestModel = 'JHUNJHUNWALA'; bestScore = rjScore; modelName = 'Jhunjhunwala Growth Model'; }
-    if (kediaScore > bestScore) { bestModel = 'KEDIA'; bestScore = kediaScore; modelName = 'Vijay Kedia Breakout Model'; }
+    let modelName = 'વોરેન બફેટ મોડલ (Warren Buffett)';
+    let gujModelName = 'વોરેન બફેટ ક્વોલિટી રોકાણ મોડલ';
+    if (rjScore > bestScore) { 
+        bestModel = 'JHUNJHUNWALA'; 
+        bestScore = rjScore; 
+        modelName = 'રાકેશ ઝુનઝુનવાલા મોડલ (Rakesh Jhunjhunwala)'; 
+        gujModelName = 'રાકેશ ઝુનઝુનવાલા ગ્રોથ રોકાણ મોડલ';
+    }
+    if (kediaScore > bestScore) { 
+        bestModel = 'KEDIA'; 
+        bestScore = kediaScore; 
+        modelName = 'વિજય કેડિયા મોડલ (Vijay Kedia)'; 
+        gujModelName = 'વિજય કેડિયા બ્રેકઆઉટ રોકાણ મોડલ';
+    }
 
-    title.textContent = `${symbol} - Investor Advice Report`;
-    subtitle.textContent = `Latest Close: \u20b9${latestPrice.toFixed(2)}`;
+    title.textContent = `${symbol} - સુપર ઇન્વેસ્ટર વિશ્લેષણ રિપોર્ટ`;
+    subtitle.textContent = `હાલનો ભાવ: \u20b9${latestPrice.toFixed(2)}`;
 
     body.innerHTML = `
         <div style="background:rgba(255,255,255,0.04); padding:1rem; border-radius:8px; border:1px solid rgba(255,255,255,0.06);">
-            <h3 style="margin-top:0; font-size:1.05rem; color:#fff;">📊 Key Quant Metrics (Last 10 Days)</h3>
+            <h3 style="margin-top:0; font-size:1.05rem; color:#fff;">📊 મુખ્ય ક્વોન્ટ મેટ્રિક્સ (છેલ્લા ૧૦ દિવસ)</h3>
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.8rem; margin-top:0.6rem; font-size:0.85rem;">
-                <div><strong>Daily Volatility:</strong> ${volatility.toFixed(2)}%</div>
-                <div><strong>Trend Consistency:</strong> ${consistencyPct.toFixed(0)}% Green Days (${upDays}/${prices.length-1})</div>
-                <div><strong>3-Day Momentum:</strong> ${mom3 >= 0 ? '+' : ''}${mom3.toFixed(2)}%</div>
-                <div><strong>5-Day Momentum:</strong> ${mom5 >= 0 ? '+' : ''}${mom5.toFixed(2)}%</div>
-                <div style="grid-column:1/-1;"><strong>Position in 10-day Range:</strong> ${positionPct.toFixed(0)}% from High (High: \u20b9${highPrice.toFixed(2)}, Low: \u20b9${lowPrice.toFixed(2)})</div>
+                <div><strong>દૈનિક અસ્થિરતા (Volatility):</strong> ${volatility.toFixed(2)}%</div>
+                <div><strong>ટ્રેન્ડ સુસંગતતા (Consistency):</strong> ${consistencyPct.toFixed(0)}% ગ્રીન દિવસો (${upDays}/${prices.length-1})</div>
+                <div><strong>૩-દિવસનું મોમેન્ટમ:</strong> ${mom3 >= 0 ? '+' : ''}${mom3.toFixed(2)}%</div>
+                <div><strong>૫-દિવસનું મોમેન્ટમ:</strong> ${mom5 >= 0 ? '+' : ''}${mom5.toFixed(2)}%</div>
+                <div style="grid-column:1/-1;"><strong>૧૦-દિવસની હાઇ રેન્જથી અંતર:</strong> હાઇ પ્રાઇસથી ${positionPct.toFixed(0)}% નીચે (મહત્તમ: \u20b9${highPrice.toFixed(2)}, ન્યૂનતમ: \u20b9${lowPrice.toFixed(2)})</div>
             </div>
         </div>
 
         <div style="background:rgba(255,255,255,0.04); padding:1rem; border-radius:8px; border:1px solid rgba(255,255,255,0.06); margin-top:1rem;">
-            <h3 style="margin-top:0; font-size:1.05rem; color:#fff;">🧠 Investor Models Scorecard</h3>
+            <h3 style="margin-top:0; font-size:1.05rem; color:#fff;">🧠 રોકાણકાર મોડલ્સ સ્કોરકાર્ડ</h3>
             
             <div style="display:flex; flex-direction:column; gap:0.9rem; margin-top:0.8rem;">
+                <!-- Buffett Card -->
                 <div style="border-left:4px solid #60a5fa; padding-left:0.6rem;">
                     <div style="display:flex; justify-content:space-between; font-weight:bold; font-size:0.9rem;">
-                        <span style="color:#60a5fa;">Warren Buffett (Value & Quality)</span>
+                        <span style="color:#60a5fa;">વોરેન બફેટ મોડલ (Value & Quality)</span>
                         <span>${buffettScore} / 100</span>
                     </div>
-                    <p style="font-size:0.8rem; color:var(--text-secondary); margin:0.25rem 0 0 0;">Favors low volatility (< 1.5%), steady value progression, and room to grow below EOD range highs.</p>
+                    <p style="font-size:0.8rem; color:var(--text-secondary); margin:0.25rem 0 0 0;">ઓછી અસ્થિરતા (< ૧.૫%), સ્થિર વળતર અને ૧૦-દિવસની રેન્જમાં હાઇ થી નીચે રહેલા શેરો પસંદ કરે છે (વિકાસની પૂરતી તક).</p>
                 </div>
 
+                <!-- Jhunjhunwala Card -->
                 <div style="border-left:4px solid #f59e0b; padding-left:0.6rem;">
                     <div style="display:flex; justify-content:space-between; font-weight:bold; font-size:0.9rem;">
-                        <span style="color:#f59e0b;">Rakesh Jhunjhunwala (Aggressive Growth)</span>
+                        <span style="color:#f59e0b;">રાકેશ ઝુનઝુનવાલા મોડલ (Aggressive Growth)</span>
                         <span>${rjScore} / 100</span>
                     </div>
-                    <p style="font-size:0.8rem; color:var(--text-secondary); margin:0.25rem 0 0 0;">Favors high short-term momentum (> 5%), trend strength, breakout patterns near the highs.</p>
+                    <p style="font-size:0.8rem; color:var(--text-secondary); margin:0.25rem 0 0 0;">ઊંચું મોમેન્ટમ (> ૫%), મજબૂત અપટ્રેન્ડ અને રેન્જ હાઇ નજીક બ્રેકઆઉટ આપતા શેરો પસંદ કરે છે.</p>
                 </div>
 
+                <!-- Vijay Kedia Card -->
                 <div style="border-left:4px solid #ec4899; padding-left:0.6rem;">
                     <div style="display:flex; justify-content:space-between; font-weight:bold; font-size:0.9rem;">
-                        <span style="color:#ec4899;">Vijay Kedia (High Volatility Spikes)</span>
+                        <span style="color:#ec4899;">વિજય કેડિયા મોડલ (High Volatility Spikes)</span>
                         <span>${kediaScore} / 100</span>
                     </div>
-                    <p style="font-size:0.8rem; color:var(--text-secondary); margin:0.25rem 0 0 0;">Favors high volatility, betting on high-beta small caps displaying massive explosive breakouts.</p>
+                    <p style="font-size:0.8rem; color:var(--text-secondary); margin:0.25rem 0 0 0;">વધુ અસ્થિરતા, હાઇ-બીટા સ્મોલ-કેપ શેરો અને અચાનક મોટો ઉછાળો (explosive breakout) દર્શાવતા શેરો પસંદ કરે છે.</p>
                 </div>
             </div>
         </div>
 
         <div style="background:rgba(34,197,94,0.06); padding:1rem; border-radius:8px; border:1px solid rgba(34,197,94,0.2); margin-top:1rem;">
-            <h3 style="margin-top:0; font-size:1.05rem; color:#22c55e;">📝 Decision & Actionable Rationale</h3>
-            <p style="font-size:0.95rem; font-weight:bold; color:#fff; margin:0.5rem 0;">Best Fit: ${modelName} (Score: ${bestScore}/100)</p>
+            <h3 style="margin-top:0; font-size:1.05rem; color:#22c55e;">📝 નિર્ણય અને વિશ્લેષણ (Actionable Rationale)</h3>
+            <p style="font-size:0.95rem; font-weight:bold; color:#fff; margin:0.5rem 0;">શ્રેષ્ઠ ફિટ મોડલ: ${gujModelName} (સ્કોર: ${bestScore}/100)</p>
             <p style="font-size:0.88rem; color:var(--text-primary); margin:0.25rem 0 0 0; line-height:1.45;">
                 ${bestScore >= 80 
-                    ? `The stock shows exceptionally strong quantitative alignments for the ${modelName}. Rationale: highly consistent green days combined with very positive momentum. This presents an excellent buying opportunity.` 
+                    ? `આ સ્ટોક ${modelName} માટે ખૂબ જ મજબૂત સંકેતો દર્શાવે છે. વિશ્લેષણ: સતત વધતા દિવસો (green days) અને ઉત્તમ મોમેન્ટમ હોવાને કારણે હાલમાં રોકાણ કરવા માટે આ ખૂબ જ ઉત્કૃષ્ટ તક છે.` 
                     : bestScore >= 65 
-                    ? `The stock shows a positive setup for the ${modelName}. Rationale: moderate momentum and stable volatility. Ideal for progressive accumulation.` 
+                    ? `આ સ્ટોક ${modelName} માટે સકારાત્મક (positive) સેટઅપ દર્શાવે છે. વિશ્લેષણ: મધ્યમ મોમેન્ટમ અને નિયંત્રિત અસ્થિરતા હોવાને લીધે તેને ધીમે ધીમે ખરીદી કરીને એકત્રિત (accumulate) કરી શકાય છે.` 
                     : bestScore >= 50 
-                    ? `The stock is currently trading in a neutral range. Rationale: high consolidation or range-bound behavior. Best action is to add it to your Watchlist and monitor for a breakout.` 
-                    : `The stock fails to meet the threshold criteria of top investor models. Rationale: negative price momentum or extremely high, unstable risk profiles. Best avoided at current market prices.`
+                    ? `આ સ્ટોક હાલમાં તટસ્થ રેન્જમાં ટ્રેડ થઈ રહ્યો છે. વિશ્લેષણ: સ્ટોક રેન્જ-બાઉન્ડ (એક જ મર્યાદામાં) અથવા કોન્સોલિડેટ થઈ રહ્યો છે. શ્રેષ્ઠ નિર્ણય એ છે કે આ સ્ટોકને વોચલિસ્ટમાં ઉમેરો અને બ્રેકઆઉટ થાય ત્યાં સુધી રાહ જુઓ.` 
+                    : `આ સ્ટોક ટોચના રોકાણકારોના માપદંડમાં બંધબેસતો નથી. વિશ્લેષણ: નકારાત્મક મોમેન્ટમ અથવા અત્યંત જોખમી અને અસ્થિર છે. હાલના બજાર ભાવે આ સ્ટોકથી દૂર રહેવું અથવા પ્રોફિટ બુક કરવો હિતાવહ છે.`
                 }
             </p>
         </div>
