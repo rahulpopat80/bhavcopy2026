@@ -820,7 +820,8 @@ function detectColumnIndexes(headers) {
     headers.forEach((h, idx) => {
         const hStr = String(h || '').toUpperCase().trim();
         if (hStr === 'SYMBOL' || hStr === 'COMPANY_SYMBOL' || hStr === 'COMPANY') state.symbolColIndex = idx;
-        if (hStr === 'SERIES') state.seriesColIndex = idx;
+        const seriesCandidates = ['SERIES', 'SER', 'GROUP', 'TYPE', 'EQ_SERIES', 'SERIES_NAME', 'SCTYSRS'];
+        if (seriesCandidates.includes(hStr) || hStr.includes('SERIES')) state.seriesColIndex = idx;
         if (hStr === 'HIGH') state.highColIndex = idx;
         if (hStr === 'DIFF') state.diffColIndex = idx;
         if (hStr === 'ISIN') state.isinColIndex = idx;
@@ -2209,6 +2210,27 @@ async function processFiles() {
                 symbolColIndex = 0;
                 headers[0] = 'SYMBOL';
                 state.symbolColIndex = 0;
+            }
+            
+            // Auto-create SERIES column if missing, so we can filter EQ series reliably
+            if (seriesColIndex === -1) {
+                const seriesInsertIdx = symbolColIndex + 1;
+                headers.splice(seriesInsertIdx, 0, 'SERIES');
+                state.seriesColIndex = seriesInsertIdx;
+                seriesColIndex = seriesInsertIdx;
+                
+                // Shift indices for other columns
+                if (highColIndex >= seriesInsertIdx) { highColIndex++; state.highColIndex++; }
+                if (diffColIndex >= seriesInsertIdx) { diffColIndex++; state.diffColIndex++; }
+                if (state.isinColIndex >= seriesInsertIdx) { state.isinColIndex++; }
+                if (existingDateColIndex >= seriesInsertIdx) { existingDateColIndex++; }
+                if (insertIndex >= seriesInsertIdx) { insertIndex++; }
+                
+                for (let i = 1; i < updatedMaster.length; i++) {
+                    if (updatedMaster[i]) {
+                        updatedMaster[i].splice(seriesInsertIdx, 0, "");
+                    }
+                }
             }
             
             // Determine insertion index for the new Date column (always immediately next to HIGH column)
