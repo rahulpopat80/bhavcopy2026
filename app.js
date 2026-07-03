@@ -206,6 +206,24 @@ function initEvents() {
         }
     });
 
+    // Close Advice Details Modal Button Click
+    const adviceCloseBtn = document.getElementById('advice-details-close');
+    if (adviceCloseBtn) {
+        adviceCloseBtn.addEventListener('click', () => {
+            document.getElementById('advice-details-modal').classList.add('hidden');
+        });
+    }
+
+    // Close Advice Details Modal on Overlay Click
+    const adviceOverlay = document.getElementById('advice-details-modal');
+    if (adviceOverlay) {
+        adviceOverlay.addEventListener('click', (e) => {
+            if (e.target.id === 'advice-details-modal') {
+                adviceOverlay.classList.add('hidden');
+            }
+        });
+    }
+
     // Clear Local Storage Button Click
     const clearStorageBtn = document.getElementById('clear-storage-btn');
     if (clearStorageBtn) {
@@ -226,16 +244,18 @@ function initEvents() {
     const tabResults     = document.getElementById('tab-results');
     const tabWatchlist   = document.getElementById('tab-watchlist');
     const tabMorning     = document.getElementById('tab-morning-picks');
+    const tabAdvice      = document.getElementById('tab-investor-advice');
     const researchTabContent      = document.getElementById('research-tab-content');
     const portfolioTabContent     = document.getElementById('portfolio-tab-content');
     const resultsTabContent       = document.getElementById('results-tab-content');
     const watchlistTabContent     = document.getElementById('watchlist-tab-content');
     const morningPicksTabContent  = document.getElementById('morning-picks-tab-content');
+    const adviceTabContent        = document.getElementById('investor-advice-tab-content');
 
     const hideAllTabs = () => {
-        [researchTabContent, portfolioTabContent, resultsTabContent, watchlistTabContent, morningPicksTabContent]
+        [researchTabContent, portfolioTabContent, resultsTabContent, watchlistTabContent, morningPicksTabContent, adviceTabContent]
             .forEach(el => el && el.classList.add('hidden'));
-        [tabResearch, tabPortfolio, tabResults, tabWatchlist, tabMorning]
+        [tabResearch, tabPortfolio, tabResults, tabWatchlist, tabMorning, tabAdvice]
             .forEach(el => el && el.classList.remove('active'));
     };
 
@@ -271,6 +291,15 @@ function initEvents() {
             tabMorning.classList.add('active');
             morningPicksTabContent.classList.remove('hidden');
             renderMorningPicks();
+        });
+    }
+
+    if (tabAdvice && adviceTabContent) {
+        tabAdvice.addEventListener('click', () => {
+            hideAllTabs();
+            tabAdvice.classList.add('active');
+            adviceTabContent.classList.remove('hidden');
+            renderInvestorAdvice();
         });
     }
 
@@ -1044,6 +1073,8 @@ function autoRenderIfProcessed() {
             // Render components
             renderFilteredResults();
             renderGainersAnalysis();
+            renderMorningPicks();
+            renderInvestorAdvice();
             
             researchSection.classList.remove('hidden');
             downloadBtn.disabled = false;
@@ -2450,6 +2481,8 @@ async function processFiles() {
         // Render results & analysis
         renderFilteredResults();
         renderGainersAnalysis();
+        renderMorningPicks();
+        renderInvestorAdvice();
         
         researchSection.classList.remove('hidden');
         downloadBtn.disabled = false;
@@ -4004,5 +4037,346 @@ window.renderMorningPicks = function() {
     }).join('');
 };
 
+// =====================================================================
+//  SUPER INVESTOR ADVICE — Quantitative Analysis Checklists
+// =====================================================================
+
+function calculateStandardDeviation(arr) {
+    if (arr.length < 2) return 0;
+    const mean = arr.reduce((sum, val) => sum + val, 0) / arr.length;
+    const variance = arr.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / (arr.length - 1);
+    return Math.sqrt(variance);
+}
+
+window.renderInvestorAdvice = function() {
+    const emptyState   = document.getElementById('advice-empty-state');
+    const tableWrapper = document.getElementById('advice-table-wrapper');
+    const badge        = document.getElementById('advice-count-badge');
+    const tbody        = document.getElementById('advice-tbody');
+    const searchInput  = document.getElementById('advice-search-input');
+    const modelSelect  = document.getElementById('advice-model-select');
+
+    if (!tbody) return;
+
+    const data = state.processedMasterData;
+    if (!data || data.length < 2) {
+        if (emptyState)   emptyState.style.display  = '';
+        if (tableWrapper) tableWrapper.style.display = 'none';
+        return;
+    }
+
+    const headers = data[0];
+    detectColumnIndexes(headers);
+    const symCol  = state.symbolColIndex;
+    const serCol  = state.seriesColIndex;
+    const hiCol   = state.highColIndex;
+    const diffCol = state.diffColIndex;
+
+    let firstDateCol = -1;
+    if (hiCol   !== -1) firstDateCol = hiCol + 1;
+    else if (diffCol !== -1) firstDateCol = diffCol + 1;
+
+    if (firstDateCol === -1 || firstDateCol >= headers.length || (headers.length - firstDateCol) < 2) {
+        if (emptyState)   emptyState.style.display  = '';
+        if (tableWrapper) tableWrapper.style.display = 'none';
+        return;
+    }
+
+    const searchQuery = searchInput ? searchInput.value.trim().toUpperCase() : '';
+    const selectedModel = modelSelect ? modelSelect.value : 'ALL';
+
+    const results = [];
+
+    for (let r = 1; r < data.length; r++) {
+        const row = data[r];
+        if (!row) continue;
+
+        const sym = String(row[symCol] || '').trim().toUpperCase();
+        const series = serCol !== -1 ? String(row[serCol] || '').trim().toUpperCase() : 'EQ';
+        if (!sym || series !== 'EQ') continue;
+
+        if (searchQuery && !sym.includes(searchQuery)) continue;
+
+        const prices = [];
+        for (let c = firstDateCol; c < Math.min(firstDateCol + 10, headers.length); c++) {
+            const v = parseFloat(row[c]);
+            if (!isNaN(v) && v > 0) prices.push(v);
+        }
+        if (prices.length < 2) continue;
+
+        const latestPrice = prices[0];
+
+        const mom3 = prices.length >= 3 && prices[2] > 0 ? ((prices[0] - prices[2]) / prices[2]) * 100 : 0;
+        const mom5 = prices.length >= 5 && prices[4] > 0 ? ((prices[0] - prices[4]) / prices[4]) * 100 : mom3;
+
+        const dailyChanges = [];
+        for (let i = 0; i < prices.length - 1; i++) {
+            if (prices[i+1] > 0) {
+                dailyChanges.push(((prices[i] - prices[i+1]) / prices[i+1]) * 100);
+            }
+        }
+        const volatility = calculateStandardDeviation(dailyChanges);
+
+        let upDays = 0;
+        for (let i = 0; i < prices.length - 1; i++) {
+            if (prices[i] > prices[i+1]) upDays++;
+        }
+        const consistencyPct = (upDays / (prices.length - 1)) * 100;
+
+        const highPrice = Math.max(...prices);
+        const lowPrice  = Math.min(...prices);
+        const range = highPrice - lowPrice;
+        const positionPct = range > 0 ? ((highPrice - latestPrice) / range) * 100 : 50;
+
+        const buffettVolScore = Math.max(0, 100 - (volatility * 40));
+        const buffettConsistScore = consistencyPct;
+        const buffettMomScore = mom5 >= 0 && mom5 <= 6 ? 100 : Math.max(0, 100 - Math.abs(mom5 - 3) * 10);
+        const buffettScore = Math.round(buffettVolScore * 0.40 + buffettConsistScore * 0.30 + buffettMomScore * 0.30);
+
+        const rjMomScore = Math.min(100, Math.max(0, ((mom3 + mom5) / 2 + 5) / 20 * 100));
+        const rjBreakoutScore = Math.max(0, 100 - positionPct);
+        const rjConsistScore = consistencyPct;
+        const rjScore = Math.round(rjMomScore * 0.40 + rjBreakoutScore * 0.30 + rjConsistScore * 0.30);
+
+        const kediaVolScore = Math.min(100, volatility * 30);
+        const kediaMomScore = Math.min(100, Math.max(0, (mom3 + 2) / 10 * 100));
+        const kediaConsistScore = consistencyPct;
+        const kediaScore = Math.round(kediaVolScore * 0.35 + kediaMomScore * 0.45 + kediaConsistScore * 0.20);
+
+        let bestModel = 'BUFFETT';
+        let bestScore = buffettScore;
+        let modelName = 'Warren Buffett Model';
+        let modelColor = '#60a5fa';
+
+        if (rjScore > bestScore) {
+            bestModel = 'JHUNJHUNWALA';
+            bestScore = rjScore;
+            modelName = 'Jhunjhunwala Growth Model';
+            modelColor = '#f59e0b';
+        }
+        if (kediaScore > bestScore) {
+            bestModel = 'KEDIA';
+            bestScore = kediaScore;
+            modelName = 'Vijay Kedia Breakout Model';
+            modelColor = '#ec4899';
+        }
+
+        if (selectedModel !== 'ALL' && selectedModel !== bestModel) continue;
+
+        let decision, decisionColor;
+        if (bestScore >= 80) {
+            decision = '🚀 Strong Buy / Accumulate';
+            decisionColor = 'var(--success-color)';
+        } else if (bestScore >= 65) {
+            decision = '📈 Buy / Hold';
+            decisionColor = '#a855f7';
+        } else if (bestScore >= 50) {
+            decision = '⚖️ Watchlist / Hold';
+            decisionColor = '#60a5fa';
+        } else {
+            decision = '📉 Sell / Avoid';
+            decisionColor = 'var(--danger-color)';
+        }
+
+        results.push({
+            symbol: sym,
+            latestPrice,
+            bestModel,
+            modelName,
+            modelColor,
+            score: bestScore,
+            decision,
+            decisionColor,
+            details: {
+                volatility,
+                mom3,
+                mom5,
+                consistencyPct,
+                positionPct,
+                buffettScore,
+                rjScore,
+                kediaScore
+            }
+        });
+    }
+
+    results.sort((a, b) => b.score - a.score);
+
+    if (results.length === 0) {
+        if (emptyState)   emptyState.style.display  = '';
+        if (tableWrapper) tableWrapper.style.display = 'none';
+        return;
+    }
+
+    if (emptyState)   emptyState.style.display  = 'none';
+    if (tableWrapper) tableWrapper.style.display = '';
+    if (badge) badge.textContent = `${results.length} Scripts`;
+
+    tbody.innerHTML = results.map(item => {
+        const inWatchlist = watchlistItems.some(w => w.symbol === item.symbol);
+        const starBtn = inWatchlist
+            ? `<button onclick="removeFromWatchlist('${item.symbol}'); event.stopPropagation();" title="Watchlist \u0aae\u0abe\u0a82\u0aa5\u0ac0 \u0a95\u0abe\u0aa2\u0acb" style="background:rgba(245,158,11,0.18); border:1px solid #f59e0b; color:#f59e0b; border-radius:5px; padding:0.25rem 0.5rem; cursor:pointer; font-size:0.8rem;"><i class='fa-solid fa-star'></i></button>`
+            : `<button onclick="addToWatchlist('${item.symbol}', ${item.latestPrice}); event.stopPropagation();" title="Watchlist \u0aae\u0abe\u0a82 \u0a89\u0aae\u0ac7\u0ab0\u0acb" style="background:none; border:1px solid rgba(255,255,255,0.15); color:var(--text-secondary); border-radius:5px; padding:0.25rem 0.5rem; cursor:pointer; font-size:0.8rem;"><i class='fa-regular fa-star'></i></button>`;
+
+        return `
+            <tr>
+                <td><strong style="color:var(--accent-color);">${item.symbol}</strong></td>
+                <td>\u20b9${item.latestPrice.toFixed(2)}</td>
+                <td style="color:${item.modelColor}; font-weight:600;"><i class="fa-solid fa-user-tie" style="font-size:0.75rem;margin-right:4px;"></i>${item.modelName}</td>
+                <td style="text-align:center;"><span style="background:rgba(255,255,255,0.06); font-weight:bold; padding:0.2rem 0.5rem; border-radius:4px;">${item.score}</span></td>
+                <td style="color:${item.decisionColor}; font-weight:bold; font-size:0.85rem;">${item.decision}</td>
+                <td>
+                    <button onclick="showAdviceDetails('${item.symbol}')" class="btn" style="padding:0.25rem 0.6rem; font-size:0.75rem; background:rgba(34,197,94,0.15); color:#22c55e; border:1px solid rgba(34,197,94,0.3); border-radius:4px; font-weight:bold; cursor:pointer;">
+                        <i class="fa-solid fa-magnifying-glass-chart" style="margin-right:3px;"></i> View Logic
+                    </button>
+                </td>
+                <td style="text-align:center;">
+                    <div style="display:flex; gap:0.25rem; justify-content:center;">
+                        ${starBtn}
+                        <button onclick="showResearchModal('${item.symbol}')" style="background:var(--accent-light,rgba(59,130,246,0.12)); border:1px solid var(--accent-color); color:var(--accent-color); border-radius:5px; padding:0.25rem 0.5rem; cursor:pointer; font-size:0.8rem;">
+                            <i class="fa-solid fa-chart-area"></i>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+};
+
+window.showAdviceDetails = function(symbol) {
+    const modal = document.getElementById('advice-details-modal');
+    const body = document.getElementById('advice-details-body');
+    const title = document.getElementById('advice-details-title');
+    const subtitle = document.getElementById('advice-details-subtitle');
+
+    if (!modal || !body || !state.processedMasterData) return;
+
+    const data = state.processedMasterData;
+    const headers = data[0];
+    detectColumnIndexes(headers);
+    const symCol = state.symbolColIndex;
+
+    const row = data.find((r, idx) => idx > 0 && String(r[symCol] || '').trim().toUpperCase() === symbol);
+    if (!row) return;
+
+    const hiCol   = state.highColIndex;
+    const diffCol = state.diffColIndex;
+    let firstDateCol = hiCol !== -1 ? hiCol + 1 : (diffCol !== -1 ? diffCol + 1 : -1);
+
+    const prices = [];
+    for (let c = firstDateCol; c < Math.min(firstDateCol + 10, headers.length); c++) {
+        const v = parseFloat(row[c]);
+        if (!isNaN(v) && v > 0) prices.push(v);
+    }
+
+    const latestPrice = prices[0];
+    const mom3 = prices.length >= 3 && prices[2] > 0 ? ((prices[0] - prices[2]) / prices[2]) * 100 : 0;
+    const mom5 = prices.length >= 5 && prices[4] > 0 ? ((prices[0] - prices[4]) / prices[4]) * 100 : mom3;
+
+    const dailyChanges = [];
+    for (let i = 0; i < prices.length - 1; i++) {
+        if (prices[i+1] > 0) {
+            dailyChanges.push(((prices[i] - prices[i+1]) / prices[i+1]) * 100);
+        }
+    }
+    const volatility = calculateStandardDeviation(dailyChanges);
+
+    let upDays = 0;
+    for (let i = 0; i < prices.length - 1; i++) {
+        if (prices[i] > prices[i+1]) upDays++;
+    }
+    const consistencyPct = (upDays / (prices.length - 1)) * 100;
+
+    const highPrice = Math.max(...prices);
+    const lowPrice  = Math.min(...prices);
+    const range = highPrice - lowPrice;
+    const positionPct = range > 0 ? ((highPrice - latestPrice) / range) * 100 : 50;
+
+    const buffettVolScore = Math.max(0, 100 - (volatility * 40));
+    const buffettConsistScore = consistencyPct;
+    const buffettMomScore = mom5 >= 0 && mom5 <= 6 ? 100 : Math.max(0, 100 - Math.abs(mom5 - 3) * 10);
+    const buffettScore = Math.round(buffettVolScore * 0.40 + buffettConsistScore * 0.30 + buffettMomScore * 0.30);
+
+    const rjMomScore = Math.min(100, Math.max(0, ((mom3 + mom5) / 2 + 5) / 20 * 100));
+    const rjBreakoutScore = Math.max(0, 100 - positionPct);
+    const rjConsistScore = consistencyPct;
+    const rjScore = Math.round(rjMomScore * 0.40 + rjBreakoutScore * 0.30 + rjConsistScore * 0.30);
+
+    const kediaVolScore = Math.min(100, volatility * 30);
+    const kediaMomScore = Math.min(100, Math.max(0, (mom3 + 2) / 10 * 100));
+    const kediaConsistScore = consistencyPct;
+    const kediaScore = Math.round(kediaVolScore * 0.35 + kediaMomScore * 0.45 + kediaConsistScore * 0.20);
+
+    let bestModel = 'BUFFETT';
+    let bestScore = buffettScore;
+    let modelName = 'Warren Buffett Model';
+    if (rjScore > bestScore) { bestModel = 'JHUNJHUNWALA'; bestScore = rjScore; modelName = 'Jhunjhunwala Growth Model'; }
+    if (kediaScore > bestScore) { bestModel = 'KEDIA'; bestScore = kediaScore; modelName = 'Vijay Kedia Breakout Model'; }
+
+    title.textContent = `${symbol} - Investor Advice Report`;
+    subtitle.textContent = `Latest Close: \u20b9${latestPrice.toFixed(2)}`;
+
+    body.innerHTML = `
+        <div style="background:rgba(255,255,255,0.04); padding:1rem; border-radius:8px; border:1px solid rgba(255,255,255,0.06);">
+            <h3 style="margin-top:0; font-size:1.05rem; color:#fff;">📊 Key Quant Metrics (Last 10 Days)</h3>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.8rem; margin-top:0.6rem; font-size:0.85rem;">
+                <div><strong>Daily Volatility:</strong> ${volatility.toFixed(2)}%</div>
+                <div><strong>Trend Consistency:</strong> ${consistencyPct.toFixed(0)}% Green Days (${upDays}/${prices.length-1})</div>
+                <div><strong>3-Day Momentum:</strong> ${mom3 >= 0 ? '+' : ''}${mom3.toFixed(2)}%</div>
+                <div><strong>5-Day Momentum:</strong> ${mom5 >= 0 ? '+' : ''}${mom5.toFixed(2)}%</div>
+                <div style="grid-column:1/-1;"><strong>Position in 10-day Range:</strong> ${positionPct.toFixed(0)}% from High (High: \u20b9${highPrice.toFixed(2)}, Low: \u20b9${lowPrice.toFixed(2)})</div>
+            </div>
+        </div>
+
+        <div style="background:rgba(255,255,255,0.04); padding:1rem; border-radius:8px; border:1px solid rgba(255,255,255,0.06); margin-top:1rem;">
+            <h3 style="margin-top:0; font-size:1.05rem; color:#fff;">🧠 Investor Models Scorecard</h3>
+            
+            <div style="display:flex; flex-direction:column; gap:0.9rem; margin-top:0.8rem;">
+                <div style="border-left:4px solid #60a5fa; padding-left:0.6rem;">
+                    <div style="display:flex; justify-content:space-between; font-weight:bold; font-size:0.9rem;">
+                        <span style="color:#60a5fa;">Warren Buffett (Value & Quality)</span>
+                        <span>${buffettScore} / 100</span>
+                    </div>
+                    <p style="font-size:0.8rem; color:var(--text-secondary); margin:0.25rem 0 0 0;">Favors low volatility (< 1.5%), steady value progression, and room to grow below EOD range highs.</p>
+                </div>
+
+                <div style="border-left:4px solid #f59e0b; padding-left:0.6rem;">
+                    <div style="display:flex; justify-content:space-between; font-weight:bold; font-size:0.9rem;">
+                        <span style="color:#f59e0b;">Rakesh Jhunjhunwala (Aggressive Growth)</span>
+                        <span>${rjScore} / 100</span>
+                    </div>
+                    <p style="font-size:0.8rem; color:var(--text-secondary); margin:0.25rem 0 0 0;">Favors high short-term momentum (> 5%), trend strength, breakout patterns near the highs.</p>
+                </div>
+
+                <div style="border-left:4px solid #ec4899; padding-left:0.6rem;">
+                    <div style="display:flex; justify-content:space-between; font-weight:bold; font-size:0.9rem;">
+                        <span style="color:#ec4899;">Vijay Kedia (High Volatility Spikes)</span>
+                        <span>${kediaScore} / 100</span>
+                    </div>
+                    <p style="font-size:0.8rem; color:var(--text-secondary); margin:0.25rem 0 0 0;">Favors high volatility, betting on high-beta small caps displaying massive explosive breakouts.</p>
+                </div>
+            </div>
+        </div>
+
+        <div style="background:rgba(34,197,94,0.06); padding:1rem; border-radius:8px; border:1px solid rgba(34,197,94,0.2); margin-top:1rem;">
+            <h3 style="margin-top:0; font-size:1.05rem; color:#22c55e;">📝 Decision & Actionable Rationale</h3>
+            <p style="font-size:0.95rem; font-weight:bold; color:#fff; margin:0.5rem 0;">Best Fit: ${modelName} (Score: ${bestScore}/100)</p>
+            <p style="font-size:0.88rem; color:var(--text-primary); margin:0.25rem 0 0 0; line-height:1.45;">
+                ${bestScore >= 80 
+                    ? `The stock shows exceptionally strong quantitative alignments for the ${modelName}. Rationale: highly consistent green days combined with very positive momentum. This presents an excellent buying opportunity.` 
+                    : bestScore >= 65 
+                    ? `The stock shows a positive setup for the ${modelName}. Rationale: moderate momentum and stable volatility. Ideal for progressive accumulation.` 
+                    : bestScore >= 50 
+                    ? `The stock is currently trading in a neutral range. Rationale: high consolidation or range-bound behavior. Best action is to add it to your Watchlist and monitor for a breakout.` 
+                    : `The stock fails to meet the threshold criteria of top investor models. Rationale: negative price momentum or extremely high, unstable risk profiles. Best avoided at current market prices.`
+                }
+            </p>
+        </div>
+    `;
+
+    modal.classList.remove('hidden');
+};
+
 // Run on load
 document.addEventListener('DOMContentLoaded', initEvents);
+

@@ -793,6 +793,22 @@
         </div>
     </div>
 
+    <!-- Investor Advice Details Modal -->
+    <div class="modal-overlay hidden" id="advice-details-modal">
+        <div class="modal-card" style="max-width: 600px;">
+            <div class="modal-header">
+                <div>
+                    <h2 id="advice-details-title" style="color: var(--accent-color);">Investor Analysis Details</h2>
+                    <span id="advice-details-subtitle" style="color: var(--text-secondary); font-size: 0.85rem;">Stock analysis breakdown</span>
+                </div>
+                <button class="modal-close" id="advice-details-close">&times;</button>
+            </div>
+            <div class="modal-body" id="advice-details-body" style="color: var(--text-primary); font-size: 0.9rem; display: flex; flex-direction: column; gap: 1.2rem; padding: 1rem 0; max-height: 80vh; overflow-y: auto;">
+                <!-- Filled dynamically by JavaScript -->
+            </div>
+        </div>
+    </div>
+
     <!-- Login Screen Overlay -->
     <div id="login-screen" class="login-overlay">
         <div class="login-card">
