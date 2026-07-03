@@ -56,6 +56,16 @@
                         <span class="index-val" id="sensex-val">Loading...</span>
                         <span class="index-chg" id="sensex-chg">-</span>
                     </div>
+                    <div class="index-card" style="border-color: rgba(255,193,7,0.3);">
+                        <span class="index-label" style="color:#f59e0b;"><i class="fa-solid fa-circle" style="font-size:0.55rem;margin-right:3px;"></i> GOLD /10g</span>
+                        <span class="index-val" id="gold-val">Loading...</span>
+                        <span class="index-chg" id="gold-chg">-</span>
+                    </div>
+                    <div class="index-card" style="border-color: rgba(148,163,184,0.3);">
+                        <span class="index-label" style="color:#94a3b8;"><i class="fa-solid fa-circle" style="font-size:0.55rem;margin-right:3px;"></i> SILVER /kg</span>
+                        <span class="index-val" id="silver-val">Loading...</span>
+                        <span class="index-chg" id="silver-chg">-</span>
+                    </div>
                 </div>
                 <div class="cloud-sync-badge sync-connecting" id="cloud-sync-status">
                     <i class="fa-solid fa-cloud-arrow-up sync-icon spin"></i>
@@ -77,6 +87,9 @@
             </button>
             <button class="nav-btn" id="tab-watchlist">
                 <i class="fa-solid fa-star"></i> Watchlist
+            </button>
+            <button class="nav-btn" id="tab-morning-picks">
+                <i class="fa-solid fa-sun"></i> Morning Picks
             </button>
             <button class="nav-btn" id="tab-results">
                 <i class="fa-solid fa-calendar-days"></i> Results & Dividends
@@ -466,6 +479,52 @@
             </div>
         </div>
         
+        <!-- Tab: Morning Picks (Hidden by default) -->
+        <div id="morning-picks-tab-content" class="hidden">
+            <div class="card" style="margin-bottom:0;">
+                <div class="movement-header" style="margin-bottom:0.75rem; flex-wrap:wrap; gap:0.5rem;">
+                    <i class="fa-solid fa-sun movement-icon" style="color:#f59e0b;"></i>
+                    <h2 style="color:var(--text-primary);">Morning Buy Picks <span class="results-badge" id="picks-count-badge" style="background:rgba(245,158,11,0.15);color:#f59e0b;border-color:rgba(245,158,11,0.3);">25 Scripts</span></h2>
+                    <button onclick="renderMorningPicks()" class="btn" style="margin-left:auto;font-size:0.78rem;padding:0.35rem 0.9rem;background:linear-gradient(135deg,#f59e0b,#d97706);border:none;color:#000;font-weight:700;border-radius:6px;cursor:pointer;">
+                        <i class="fa-solid fa-rotate"></i> Refresh Analysis
+                    </button>
+                </div>
+                <div style="background:rgba(245,158,11,0.07);border:1px solid rgba(245,158,11,0.2);border-radius:8px;padding:0.65rem 1rem;margin-bottom:0.9rem;">
+                    <p style="font-size:0.82rem;color:var(--text-secondary);margin:0;">
+                        <i class="fa-solid fa-circle-info" style="color:#f59e0b;margin-right:5px;"></i>
+                        <strong style="color:#f59e0b;">આજ સવારે 9:30 સુધીમાં ખરીદવા લાયક Top 25 Stocks</strong> — Master File ના ડેટા આધારિત Technical Scoring (Momentum + Trend Consistency + Price Position). <strong>NOTE:</strong> આ માત્ર technical analysis છે, investment advice નથી.
+                    </p>
+                </div>
+
+                <!-- No-data state -->
+                <div id="picks-empty-state" style="text-align:center;padding:2.5rem 1rem;color:var(--text-secondary);">
+                    <i class="fa-solid fa-database" style="font-size:2.2rem;opacity:0.35;display:block;margin-bottom:0.75rem;"></i>
+                    <p style="font-size:0.9rem;">Master File લોડ નથી.</p>
+                    <p style="font-size:0.8rem;margin-top:0.2rem;">Stock Research tab માં Master Excel File અને Bhavcopy ફાઇલ Upload/Process કરો.</p>
+                </div>
+
+                <!-- Scoring Table -->
+                <div class="table-wrapper movement-table-wrapper" id="picks-table-wrapper" style="display:none;">
+                    <table id="picks-table" style="min-width:560px;">
+                        <thead>
+                            <tr>
+                                <th>Rank</th>
+                                <th>Symbol</th>
+                                <th>Latest Price</th>
+                                <th>3-Day %</th>
+                                <th>5-Day %</th>
+                                <th>Trend</th>
+                                <th>Score</th>
+                                <th>Suggestion</th>
+                                <th style="text-align:center;">Research</th>
+                            </tr>
+                        </thead>
+                        <tbody id="picks-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
         <!-- Tab: Watchlist (Hidden by default) -->
         <div id="watchlist-tab-content" class="hidden">
             <div class="card" style="margin-bottom: 0;">

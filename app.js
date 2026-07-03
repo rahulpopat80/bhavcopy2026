@@ -221,18 +221,22 @@ function initEvents() {
     }
 
     // Tab switching logic
-    const tabResearch = document.getElementById('tab-research');
-    const tabPortfolio = document.getElementById('tab-portfolio');
-    const tabResults = document.getElementById('tab-results');
-    const tabWatchlist = document.getElementById('tab-watchlist');
-    const researchTabContent = document.getElementById('research-tab-content');
-    const portfolioTabContent = document.getElementById('portfolio-tab-content');
-    const resultsTabContent = document.getElementById('results-tab-content');
-    const watchlistTabContent = document.getElementById('watchlist-tab-content');
+    const tabResearch    = document.getElementById('tab-research');
+    const tabPortfolio   = document.getElementById('tab-portfolio');
+    const tabResults     = document.getElementById('tab-results');
+    const tabWatchlist   = document.getElementById('tab-watchlist');
+    const tabMorning     = document.getElementById('tab-morning-picks');
+    const researchTabContent      = document.getElementById('research-tab-content');
+    const portfolioTabContent     = document.getElementById('portfolio-tab-content');
+    const resultsTabContent       = document.getElementById('results-tab-content');
+    const watchlistTabContent     = document.getElementById('watchlist-tab-content');
+    const morningPicksTabContent  = document.getElementById('morning-picks-tab-content');
 
     const hideAllTabs = () => {
-        [researchTabContent, portfolioTabContent, resultsTabContent, watchlistTabContent].forEach(el => el && el.classList.add('hidden'));
-        [tabResearch, tabPortfolio, tabResults, tabWatchlist].forEach(el => el && el.classList.remove('active'));
+        [researchTabContent, portfolioTabContent, resultsTabContent, watchlistTabContent, morningPicksTabContent]
+            .forEach(el => el && el.classList.add('hidden'));
+        [tabResearch, tabPortfolio, tabResults, tabWatchlist, tabMorning]
+            .forEach(el => el && el.classList.remove('active'));
     };
 
     if (tabResearch && researchTabContent) {
@@ -261,6 +265,15 @@ function initEvents() {
         });
     }
 
+    if (tabMorning && morningPicksTabContent) {
+        tabMorning.addEventListener('click', () => {
+            hideAllTabs();
+            tabMorning.classList.add('active');
+            morningPicksTabContent.classList.remove('hidden');
+            renderMorningPicks();
+        });
+    }
+
     if (tabResults && resultsTabContent) {
         tabResults.addEventListener('click', () => {
             hideAllTabs();
@@ -269,6 +282,7 @@ function initEvents() {
             renderResultsAndDividendsTable();
         });
     }
+
 
     // Portfolio Form Initializations
     setupPortfolioFormCalculations();
@@ -3307,11 +3321,12 @@ async function fetchGainersLivePrices(symbols) {
     }));
 }
 
-// Fetch SENSEX and NIFTY 50 live prices from Yahoo Finance
+// Fetch SENSEX, NIFTY 50, Gold and Silver live prices
 async function fetchMarketIndices() {
+    // --- Nifty & Sensex ---
     const indices = [
-        { id: 'nifty', ticker: '^NSEI', name: 'NIFTY 50' },
-        { id: 'sensex', ticker: '^BSESN', name: 'SENSEX' }
+        { id: 'nifty',  ticker: '^NSEI',  name: 'NIFTY 50' },
+        { id: 'sensex', ticker: '^BSESN', name: 'SENSEX'   }
     ];
 
     for (const item of indices) {
@@ -3319,24 +3334,20 @@ async function fetchMarketIndices() {
             const data = await fetchYahooFinanceData(item.ticker);
             const meta = data.chart.result[0].meta;
             const currentPrice = meta.regularMarketPrice;
-            const prevClose = meta.previousClose;
-            
+            const prevClose    = meta.previousClose;
+
             if (currentPrice !== undefined && prevClose !== undefined) {
-                const change = currentPrice - prevClose;
+                const change    = currentPrice - prevClose;
                 const changePct = (change / prevClose) * 100;
-                
                 const valEl = document.getElementById(`${item.id}-val`);
                 const chgEl = document.getElementById(`${item.id}-chg`);
-                
                 if (valEl && chgEl) {
-                    // SENSEX has no decimal places traditionally, NIFTY has 2
                     const decimals = item.id === 'sensex' ? 0 : 2;
-                    valEl.textContent = currentPrice.toLocaleString('en-IN', { 
-                        minimumFractionDigits: decimals, 
-                        maximumFractionDigits: decimals 
+                    valEl.textContent = currentPrice.toLocaleString('en-IN', {
+                        minimumFractionDigits: decimals,
+                        maximumFractionDigits: decimals
                     });
-                    
-                    const sign = change >= 0 ? '+' : '';
+                    const sign  = change >= 0 ? '+' : '';
                     const color = change >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
                     chgEl.textContent = `${sign}${change.toFixed(2)} (${sign}${changePct.toFixed(2)}%)`;
                     chgEl.style.color = color;
@@ -3346,7 +3357,60 @@ async function fetchMarketIndices() {
             console.error(`Failed to fetch index ${item.name}:`, e.message);
         }
     }
+
+    // --- Gold & Silver (MCX Indian prices via Yahoo Finance) ---
+    try {
+        // First get USD/INR exchange rate
+        let usdInr = 84.5; // fallback
+        try {
+            const fxData = await fetchYahooFinanceData('INR=X');
+            const fxPrice = fxData?.chart?.result?.[0]?.meta?.regularMarketPrice;
+            if (fxPrice) usdInr = fxPrice;
+        } catch (_) { /* use fallback */ }
+
+        // Gold: COMEX GC=F is USD/troy oz → convert to ₹/10g
+        // 1 troy oz = 31.1035 g → price per gram = price/31.1035 → per 10g = price * 10 / 31.1035
+        const commodities = [
+            { id: 'gold',   ticker: 'GC=F',  name: 'Gold',   unit: '/10g',  factor: 10 / 31.1035 },
+            { id: 'silver', ticker: 'SI=F',   name: 'Silver', unit: '/kg',   factor: 1000 / 31.1035 },
+        ];
+
+        for (const com of commodities) {
+            try {
+                const data = await fetchYahooFinanceData(com.ticker);
+                const meta = data?.chart?.result?.[0]?.meta;
+                if (!meta) continue;
+
+                const usdPrice  = meta.regularMarketPrice;
+                const prevClose = meta.previousClose || meta.chartPreviousClose;
+                if (!usdPrice) continue;
+
+                // Convert to INR
+                const inrPrice    = usdPrice * usdInr * com.factor;
+                const inrPrev     = prevClose ? prevClose * usdInr * com.factor : inrPrice;
+                const change      = inrPrice - inrPrev;
+                const changePct   = inrPrev > 0 ? (change / inrPrev) * 100 : 0;
+
+                const valEl = document.getElementById(`${com.id}-val`);
+                const chgEl = document.getElementById(`${com.id}-chg`);
+                if (valEl && chgEl) {
+                    valEl.textContent = `\u20b9${inrPrice.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+                    const sign  = change >= 0 ? '+' : '';
+                    const color = change >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+                    chgEl.textContent = `${sign}${change.toLocaleString('en-IN', { maximumFractionDigits: 0 })} (${sign}${changePct.toFixed(2)}%)`;
+                    chgEl.style.color = color;
+                }
+            } catch (e) {
+                console.warn(`Failed to fetch ${com.name}:`, e.message);
+                const valEl = document.getElementById(`${com.id}-val`);
+                if (valEl) valEl.textContent = 'N/A';
+            }
+        }
+    } catch (e) {
+        console.warn('Gold/Silver fetch error:', e.message);
+    }
 }
+
 
 // Top 20 Companies Dataset (Upcoming results and 5-yr dividend history)
 const resultsAndDividendsData = [
@@ -3450,13 +3514,35 @@ async function fetchResultsLivePrices(symbols) {
 }
 
 // =====================================================================
-//  WATCHLIST — State, Persistence & Render
+//  WATCHLIST — State, Persistence (Firebase + localStorage fallback)
 // =====================================================================
 
 // In-memory watchlist array: [{symbol, addedPrice, addedAt}]
 let watchlistItems = [];
 
-// Load from localStorage on page startup
+// Load from Firestore (primary) with localStorage fallback
+async function loadWatchlistFromCloud() {
+    // Try localStorage immediately so UI is instant
+    try {
+        const saved = localStorage.getItem('rahul_watchlist');
+        if (saved) watchlistItems = JSON.parse(saved);
+    } catch (_) { watchlistItems = []; }
+
+    if (!db) return; // no Firebase → localStorage only
+    try {
+        const snap = await db.collection('watchlist').orderBy('addedAt', 'asc').get();
+        if (!snap.empty) {
+            watchlistItems = [];
+            snap.forEach(doc => watchlistItems.push({ id: doc.id, ...doc.data() }));
+            // Sync to localStorage as cache
+            localStorage.setItem('rahul_watchlist', JSON.stringify(watchlistItems));
+        }
+    } catch (e) {
+        console.warn('Watchlist Firebase load failed, using localStorage:', e.message);
+    }
+}
+
+// Backward-compatible alias used at startup
 function loadWatchlistFromStorage() {
     try {
         const saved = localStorage.getItem('rahul_watchlist');
@@ -3464,16 +3550,56 @@ function loadWatchlistFromStorage() {
     } catch (e) {
         watchlistItems = [];
     }
+    // Also kick off cloud sync (async, non-blocking)
+    loadWatchlistFromCloud();
 }
 
-// Save to localStorage
-function saveWatchlistToStorage() {
+// Save to Firestore + localStorage
+async function saveWatchlistItem(item) {
+    // Save to localStorage immediately
+    try { localStorage.setItem('rahul_watchlist', JSON.stringify(watchlistItems)); } catch (_) {}
+    if (!db) return;
     try {
-        localStorage.setItem('rahul_watchlist', JSON.stringify(watchlistItems));
+        const docRef = await db.collection('watchlist').add({
+            symbol:     item.symbol,
+            addedPrice: item.addedPrice,
+            addedAt:    item.addedAt
+        });
+        item.id = docRef.id; // store Firestore doc ID for later deletion
     } catch (e) {
-        console.warn('Watchlist save failed:', e);
+        console.warn('Watchlist Firebase save failed:', e.message);
     }
 }
+
+async function deleteWatchlistItem(symbol) {
+    try { localStorage.setItem('rahul_watchlist', JSON.stringify(watchlistItems)); } catch (_) {}
+    if (!db) return;
+    try {
+        const snap = await db.collection('watchlist').where('symbol', '==', symbol).get();
+        snap.forEach(doc => doc.ref.delete());
+    } catch (e) {
+        console.warn('Watchlist Firebase delete failed:', e.message);
+    }
+}
+
+async function clearWatchlistInCloud() {
+    try { localStorage.removeItem('rahul_watchlist'); } catch (_) {}
+    if (!db) return;
+    try {
+        const snap = await db.collection('watchlist').get();
+        const batch = db.batch();
+        snap.forEach(doc => batch.delete(doc.ref));
+        await batch.commit();
+    } catch (e) {
+        console.warn('Watchlist Firebase clear failed:', e.message);
+    }
+}
+
+// Save all to localStorage (called on every change for instant offline access)
+function saveWatchlistToStorage() {
+    try { localStorage.setItem('rahul_watchlist', JSON.stringify(watchlistItems)); } catch (_) {}
+}
+
 
 // Add a stock
 window.addToWatchlist = function(symbol, addedPrice) {
@@ -3481,22 +3607,25 @@ window.addToWatchlist = function(symbol, addedPrice) {
         showNotification(`${symbol} પહેલેથી Watchlist માં છે.`, 'warning');
         return;
     }
-    watchlistItems.push({
+    const newItem = {
         symbol,
         addedPrice: parseFloat(addedPrice) || 0,
         addedAt: new Date().toISOString()
-    });
+    };
+    watchlistItems.push(newItem);
     saveWatchlistToStorage();
+    saveWatchlistItem(newItem); // Firebase (async)
     showNotification(`⭐ ${symbol} Watchlist માં ઉમેરાયું!`, 'success');
-    renderGainersAnalysis(); // refresh star icons
+    renderGainersAnalysis();
 };
 
 // Remove a stock
 window.removeFromWatchlist = function(symbol) {
     watchlistItems = watchlistItems.filter(w => w.symbol !== symbol);
     saveWatchlistToStorage();
+    deleteWatchlistItem(symbol); // Firebase (async)
     showNotification(`${symbol} Watchlist માંથી કાઢ્યું.`, 'info');
-    renderGainersAnalysis(); // refresh star icons
+    renderGainersAnalysis();
     renderWatchlist();
 };
 
@@ -3506,6 +3635,7 @@ window.clearWatchlist = function() {
     if (!confirm('શું તમે સમગ્ર Watchlist ખાલી કરવા માંગો છો?')) return;
     watchlistItems = [];
     saveWatchlistToStorage();
+    clearWatchlistInCloud(); // Firebase (async)
     renderWatchlist();
     showNotification('Watchlist ખાલી કરવામાં આવી.', 'info');
 };
@@ -3616,10 +3746,157 @@ async function fetchWatchlistLivePrices(symbols) {
     }));
 }
 
-// Load watchlist immediately (before DOMContentLoaded so it's ready for gainers render)
+// Load watchlist on startup
 loadWatchlistFromStorage();
+
+// =====================================================================
+//  MORNING PICKS — Technical Scoring Algorithm
+// =====================================================================
+window.renderMorningPicks = function() {
+    const emptyState   = document.getElementById('picks-empty-state');
+    const tableWrapper = document.getElementById('picks-table-wrapper');
+    const badge        = document.getElementById('picks-count-badge');
+    const tbody        = document.getElementById('picks-tbody');
+    if (!tbody) return;
+
+    const data = state.processedMasterData;
+    if (!data || data.length < 2) {
+        if (emptyState)   emptyState.style.display  = '';
+        if (tableWrapper) tableWrapper.style.display = 'none';
+        return;
+    }
+
+    const headers = data[0];
+    detectColumnIndexes(headers);
+    const symCol  = state.symbolColIndex;
+    const serCol  = state.seriesColIndex;
+    const hiCol   = state.highColIndex;
+    const diffCol = state.diffColIndex;
+
+    let firstDateCol = -1;
+    if (hiCol   !== -1) firstDateCol = hiCol + 1;
+    else if (diffCol !== -1) firstDateCol = diffCol + 1;
+
+    if (firstDateCol === -1 || firstDateCol >= headers.length || (headers.length - firstDateCol) < 2) {
+        if (emptyState)   emptyState.style.display  = '';
+        if (tableWrapper) tableWrapper.style.display = 'none';
+        return;
+    }
+
+    const results = [];
+
+    for (let r = 1; r < data.length; r++) {
+        const row = data[r];
+        if (!row) continue;
+        const sym    = String(row[symCol] || '').trim().toUpperCase();
+        const series = serCol !== -1 ? String(row[serCol] || '').trim().toUpperCase() : 'EQ';
+        if (!sym || series !== 'EQ') continue;
+
+        // Collect last 5 close prices (col 0 = newest)
+        const prices = [];
+        for (let c = firstDateCol; c < Math.min(firstDateCol + 5, headers.length); c++) {
+            const v = parseFloat(row[c]);
+            if (!isNaN(v) && v > 0) prices.push(v);
+        }
+        if (prices.length < 2) continue;
+
+        const latestPrice = prices[0];
+
+        const mom3 = prices.length >= 3 && prices[2] > 0
+            ? ((prices[0] - prices[2]) / prices[2]) * 100
+            : prices.length >= 2 && prices[1] > 0
+            ? ((prices[0] - prices[1]) / prices[1]) * 100 : 0;
+
+        const mom5 = prices.length >= 5 && prices[4] > 0
+            ? ((prices[0] - prices[4]) / prices[4]) * 100
+            : mom3;
+
+        if (mom3 <= 0 && mom5 <= 0) continue;
+
+        let upDays = 0;
+        for (let i = 0; i < prices.length - 1; i++) {
+            if (prices[i] > prices[i + 1]) upDays++;
+        }
+        const consistencyPct = (upDays / (prices.length - 1)) * 100;
+
+        const high5d = Math.max(...prices);
+        const low5d  = Math.min(...prices);
+        const range  = high5d - low5d;
+        const positionPct = range > 0 ? ((high5d - latestPrice) / range) * 100 : 50;
+
+        const mom3Score = Math.min(100, Math.max(0, ((mom3 + 5) / 20) * 100));
+        const mom5Score = Math.min(100, Math.max(0, ((mom5 + 5) / 20) * 100));
+
+        const score = Math.round(
+            mom3Score      * 0.30 +
+            mom5Score      * 0.25 +
+            consistencyPct * 0.30 +
+            positionPct    * 0.15
+        );
+
+        let suggestion, suggColor;
+        if      (score >= 80) { suggestion = '🟢 Strong Buy'; suggColor = 'var(--success-color)'; }
+        else if (score >= 65) { suggestion = '🟡 Buy';        suggColor = '#f59e0b'; }
+        else if (score >= 50) { suggestion = '🔵 Watch';      suggColor = '#60a5fa'; }
+        else                  { suggestion = '⚪ Neutral';    suggColor = 'var(--text-secondary)'; }
+
+        const trendHtml = upDays >= prices.length - 1
+            ? `<span style="color:var(--success-color);">\u2191 ${upDays}/${prices.length-1} Up</span>`
+            : upDays === 0
+            ? `<span style="color:var(--danger-color);">\u2193 All Down</span>`
+            : `<span style="color:#f59e0b;">\u2197 ${upDays}/${prices.length-1} Up</span>`;
+
+        results.push({ symbol: sym, latestPrice, mom3, mom5, upDays, totalDays: prices.length-1, score, suggestion, suggColor, trendHtml });
+    }
+
+    results.sort((a, b) => b.score - a.score);
+    const top25 = results.slice(0, 25);
+
+    if (top25.length === 0) {
+        if (emptyState)   emptyState.style.display  = '';
+        if (tableWrapper) tableWrapper.style.display = 'none';
+        return;
+    }
+
+    if (emptyState)   emptyState.style.display  = 'none';
+    if (tableWrapper) tableWrapper.style.display = '';
+    if (badge) badge.textContent = `${top25.length} Scripts`;
+
+    const scoreBarColor = (s) => s >= 65 ? 'var(--success-color)' : s >= 50 ? '#f59e0b' : 'var(--text-secondary)';
+
+    tbody.innerHTML = top25.map((item, idx) => {
+        const sign3  = item.mom3 >= 0 ? '+' : '';
+        const sign5  = item.mom5 >= 0 ? '+' : '';
+        const col3   = item.mom3 >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+        const col5   = item.mom5 >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+        const rankBg = idx === 0 ? '#f59e0b' : idx === 1 ? '#94a3b8' : idx === 2 ? '#b87333' : 'transparent';
+        const rankColor = idx < 3 ? '#000' : 'var(--text-secondary)';
+        return `
+            <tr class="clickable-row" onclick="showResearchModal('${item.symbol}')" title="Chart \u0a85\u0aa8\u0ac7 \u0ab5\u0abf\u0a97\u0aa4">
+                <td style="text-align:center;"><span style="background:${rankBg};color:${rankColor};font-weight:700;padding:0.15rem 0.5rem;border-radius:4px;font-size:0.82rem;">${idx+1}</span></td>
+                <td><strong style="color:var(--accent-color);">${item.symbol}</strong></td>
+                <td>\u20b9${item.latestPrice.toFixed(2)}</td>
+                <td style="color:${col3};font-weight:600;">${sign3}${item.mom3.toFixed(2)}%</td>
+                <td style="color:${col5};font-weight:600;">${sign5}${item.mom5.toFixed(2)}%</td>
+                <td>${item.trendHtml}</td>
+                <td>
+                    <div style="display:flex;align-items:center;gap:5px;">
+                        <div style="flex:1;background:rgba(255,255,255,0.08);border-radius:4px;height:6px;min-width:50px;">
+                            <div style="background:${scoreBarColor(item.score)};width:${item.score}%;height:100%;border-radius:4px;"></div>
+                        </div>
+                        <span style="font-weight:700;font-size:0.82rem;">${item.score}</span>
+                    </div>
+                </td>
+                <td><span style="color:${item.suggColor};font-weight:600;font-size:0.82rem;">${item.suggestion}</span></td>
+                <td style="text-align:center;">
+                    <button onclick="showResearchModal('${item.symbol}');event.stopPropagation();"
+                        style="background:rgba(59,130,246,0.12);border:1px solid var(--accent-color);color:var(--accent-color);border-radius:5px;padding:0.22rem 0.5rem;cursor:pointer;font-size:0.8rem;">
+                        <i class="fa-solid fa-chart-area"></i>
+                    </button>
+                </td>
+            </tr>`;
+    }).join('');
+};
 
 // Run on load
 document.addEventListener('DOMContentLoaded', initEvents);
-
-
