@@ -3359,52 +3359,105 @@ async function fetchMarketIndices() {
         }
     }
 
-    // --- Gold & Silver (MCX Indian prices via Yahoo Finance) ---
+    // --- Gold & Silver (Primary: IBJA Scraper, Fallback: COMEX GC=F / SI=F) ---
     try {
-        // First get USD/INR exchange rate
-        let usdInr = 84.5; // fallback
+        let ibjaSuccess = false;
         try {
-            const fxData = await fetchYahooFinanceData('INR=X');
-            const fxPrice = fxData?.chart?.result?.[0]?.meta?.regularMarketPrice;
-            if (fxPrice) usdInr = fxPrice;
-        } catch (_) { /* use fallback */ }
+            console.log("[Market Indices] Fetching official IBJA rates from proxy...");
+            const ibjaRes = await fetch('/api/ibja');
+            if (ibjaRes.ok) {
+                const ibjaData = await ibjaRes.json();
+                if (ibjaData && ibjaData.gold && ibjaData.silver) {
+                    const goldPrice = ibjaData.gold;
+                    const silverPrice = ibjaData.silver;
+                    
+                    // Daily changes compared to previous day
+                    const prevGold = ibjaData.prevGold || goldPrice;
+                    const prevSilver = ibjaData.prevSilver || silverPrice;
+                    
+                    const goldChange = goldPrice - prevGold;
+                    const goldChangePct = prevGold > 0 ? (goldChange / prevGold) * 100 : 0;
+                    
+                    const silverChange = silverPrice - prevSilver;
+                    const silverChangePct = prevSilver > 0 ? (silverChange / prevSilver) * 100 : 0;
 
-        // Gold: COMEX GC=F is USD/troy oz → convert to ₹/10g
-        // 1 troy oz = 31.1035 g → price per gram = price/31.1035 → per 10g = price * 10 / 31.1035
-        const commodities = [
-            { id: 'gold',   ticker: 'GC=F',  name: 'Gold',   unit: '/10g',  factor: 10 / 31.1035 },
-            { id: 'silver', ticker: 'SI=F',   name: 'Silver', unit: '/kg',   factor: 1000 / 31.1035 },
-        ];
+                    // Update Gold DOM
+                    const goldValEl = document.getElementById('gold-val');
+                    const goldChgEl = document.getElementById('gold-chg');
+                    if (goldValEl && goldChgEl) {
+                        goldValEl.textContent = `\u20b9${goldPrice.toLocaleString('en-IN')}`;
+                        const sign = goldChange >= 0 ? '+' : '';
+                        const color = goldChange >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+                        goldChgEl.textContent = `${sign}${goldChange.toLocaleString('en-IN')} (${sign}${goldChangePct.toFixed(2)}%)`;
+                        goldChgEl.style.color = color;
+                    }
 
-        for (const com of commodities) {
-            try {
-                const data = await fetchYahooFinanceData(com.ticker);
-                const meta = data?.chart?.result?.[0]?.meta;
-                if (!meta) continue;
-
-                const usdPrice  = meta.regularMarketPrice;
-                const prevClose = meta.previousClose || meta.chartPreviousClose;
-                if (!usdPrice) continue;
-
-                // Convert to INR
-                const inrPrice    = usdPrice * usdInr * com.factor;
-                const inrPrev     = prevClose ? prevClose * usdInr * com.factor : inrPrice;
-                const change      = inrPrice - inrPrev;
-                const changePct   = inrPrev > 0 ? (change / inrPrev) * 100 : 0;
-
-                const valEl = document.getElementById(`${com.id}-val`);
-                const chgEl = document.getElementById(`${com.id}-chg`);
-                if (valEl && chgEl) {
-                    valEl.textContent = `\u20b9${inrPrice.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
-                    const sign  = change >= 0 ? '+' : '';
-                    const color = change >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
-                    chgEl.textContent = `${sign}${change.toLocaleString('en-IN', { maximumFractionDigits: 0 })} (${sign}${changePct.toFixed(2)}%)`;
-                    chgEl.style.color = color;
+                    // Update Silver DOM
+                    const silverValEl = document.getElementById('silver-val');
+                    const silverChgEl = document.getElementById('silver-chg');
+                    if (silverValEl && silverChgEl) {
+                        silverValEl.textContent = `\u20b9${silverPrice.toLocaleString('en-IN')}`;
+                        const sign = silverChange >= 0 ? '+' : '';
+                        const color = silverChange >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+                        silverChgEl.textContent = `${sign}${silverChange.toLocaleString('en-IN')} (${sign}${silverChangePct.toFixed(2)}%)`;
+                        silverChgEl.style.color = color;
+                    }
+                    
+                    ibjaSuccess = true;
+                    console.log("[Market Indices] Successfully loaded gold & silver from IBJA.");
                 }
-            } catch (e) {
-                console.warn(`Failed to fetch ${com.name}:`, e.message);
-                const valEl = document.getElementById(`${com.id}-val`);
-                if (valEl) valEl.textContent = 'N/A';
+            }
+        } catch (ibjaErr) {
+            console.warn("[Market Indices] IBJA fetch failed, falling back to COMEX:", ibjaErr.message);
+        }
+
+        if (!ibjaSuccess) {
+            // Fallback: COMEX GC=F / SI=F converted to INR
+            // First get USD/INR exchange rate
+            let usdInr = 84.5; // fallback
+            try {
+                const fxData = await fetchYahooFinanceData('INR=X');
+                const fxPrice = fxData?.chart?.result?.[0]?.meta?.regularMarketPrice;
+                if (fxPrice) usdInr = fxPrice;
+            } catch (_) { /* use fallback */ }
+
+            // Gold: COMEX GC=F is USD/troy oz → convert to ₹/10g
+            // 1 troy oz = 31.1035 g → price per gram = price/31.1035 → per 10g = price * 10 / 31.1035
+            const commodities = [
+                { id: 'gold',   ticker: 'GC=F',  name: 'Gold',   unit: '/10g',  factor: 10 / 31.1035 },
+                { id: 'silver', ticker: 'SI=F',   name: 'Silver', unit: '/kg',   factor: 1000 / 31.1035 },
+            ];
+
+            for (const com of commodities) {
+                try {
+                    const data = await fetchYahooFinanceData(com.ticker);
+                    const meta = data?.chart?.result?.[0]?.meta;
+                    if (!meta) continue;
+
+                    const usdPrice  = meta.regularMarketPrice;
+                    const prevClose = meta.previousClose || meta.chartPreviousClose;
+                    if (!usdPrice) continue;
+
+                    // Convert to INR
+                    const inrPrice    = usdPrice * usdInr * com.factor;
+                    const inrPrev     = prevClose ? prevClose * usdInr * com.factor : inrPrice;
+                    const change      = inrPrice - inrPrev;
+                    const changePct   = inrPrev > 0 ? (change / inrPrev) * 100 : 0;
+
+                    const valEl = document.getElementById(`${com.id}-val`);
+                    const chgEl = document.getElementById(`${com.id}-chg`);
+                    if (valEl && chgEl) {
+                        valEl.textContent = `\u20b9${inrPrice.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+                        const sign  = change >= 0 ? '+' : '';
+                        const color = change >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+                        chgEl.textContent = `${sign}${change.toLocaleString('en-IN', { maximumFractionDigits: 0 })} (${sign}${changePct.toFixed(2)}%)`;
+                        chgEl.style.color = color;
+                    }
+                } catch (e) {
+                    console.warn(`Failed to fetch fallback ${com.name}:`, e.message);
+                    const valEl = document.getElementById(`${com.id}-val`);
+                    if (valEl) valEl.textContent = 'N/A';
+                }
             }
         }
     } catch (e) {
