@@ -3324,14 +3324,66 @@ async function fetchGainersLivePrices(symbols) {
 
 // Fetch SENSEX, NIFTY 50, Gold and Silver live prices
 async function fetchMarketIndices() {
-    // --- Nifty & Sensex ---
+    // --- Nifty & Sensex (Primary: Official NSE/BSE APIs, Fallback: Yahoo Finance) ---
+    let officialNiftySuccess = false;
+    let officialSensexSuccess = false;
+
+    try {
+        console.log("[Market Indices] Fetching Nifty & Sensex from official APIs...");
+        const res = await fetch('/api/indices');
+        if (res.ok) {
+            const data = await res.json();
+            
+            // 1. Process Sensex
+            if (data && data.sensex) {
+                const sData = data.sensex;
+                const valEl = document.getElementById('sensex-val');
+                const chgEl = document.getElementById('sensex-chg');
+                if (valEl && chgEl) {
+                    valEl.textContent = sData.price.toLocaleString('en-IN', { 
+                        minimumFractionDigits: 0, 
+                        maximumFractionDigits: 0 
+                    });
+                    const sign = sData.change >= 0 ? '+' : '';
+                    const color = sData.change >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+                    chgEl.textContent = `${sign}${sData.change.toFixed(2)} (${sign}${sData.changePercent.toFixed(2)}%)`;
+                    chgEl.style.color = color;
+                    officialSensexSuccess = true;
+                }
+            }
+
+            // 2. Process Nifty
+            if (data && data.nifty) {
+                const nData = data.nifty;
+                const valEl = document.getElementById('nifty-val');
+                const chgEl = document.getElementById('nifty-chg');
+                if (valEl && chgEl) {
+                    valEl.textContent = nData.price.toLocaleString('en-IN', { 
+                        minimumFractionDigits: 2, 
+                        maximumFractionDigits: 2 
+                    });
+                    const sign = nData.change >= 0 ? '+' : '';
+                    const color = nData.change >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+                    chgEl.textContent = `${sign}${nData.change.toFixed(2)} (${sign}${nData.changePercent.toFixed(2)}%)`;
+                    chgEl.style.color = color;
+                    officialNiftySuccess = true;
+                }
+            }
+        }
+    } catch (e) {
+        console.warn('[Market Indices] Official indices API failed, using Yahoo Finance fallbacks:', e.message);
+    }
+
+    // Fallbacks
     const indices = [
-        { id: 'nifty',  ticker: '^NSEI',  name: 'NIFTY 50' },
-        { id: 'sensex', ticker: '^BSESN', name: 'SENSEX'   }
+        { id: 'nifty',  ticker: '^NSEI',  name: 'NIFTY 50', success: officialNiftySuccess },
+        { id: 'sensex', ticker: '^BSESN', name: 'SENSEX',   success: officialSensexSuccess }
     ];
 
     for (const item of indices) {
+        if (item.success) continue; // skip if already successfully fetched from official API
         try {
+            console.log(`[Market Indices] Fetching ${item.name} fallback from Yahoo...`);
             const data = await fetchYahooFinanceData(item.ticker);
             const meta = data.chart.result[0].meta;
             const currentPrice = meta.regularMarketPrice;
@@ -3355,7 +3407,7 @@ async function fetchMarketIndices() {
                 }
             }
         } catch (e) {
-            console.error(`Failed to fetch index ${item.name}:`, e.message);
+            console.error(`Failed to fetch fallback index ${item.name}:`, e.message);
         }
     }
 
