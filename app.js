@@ -105,6 +105,18 @@ const movementTable = document.getElementById('movement-table');
 
 // Initialize Event Listeners
 function initEvents() {
+    // Sync password from Cloud database
+    if (db) {
+        db.collection('metadata').doc('auth').get().then(doc => {
+            if (doc.exists) {
+                const cloudPass = doc.data().password;
+                if (cloudPass) {
+                    localStorage.setItem('appPassword', cloudPass);
+                }
+            }
+        }).catch(err => console.warn('Could not sync password from Firestore:', err));
+    }
+
     // Login Screen Check
     const sessionLoggedIn = sessionStorage.getItem('isLoggedIn');
     const loginOverlay = document.getElementById('login-screen');
@@ -122,7 +134,8 @@ function initEvents() {
             const usernameInput = document.getElementById('username').value.trim();
             const passwordInput = document.getElementById('password').value.trim();
             
-            if (usernameInput === 'RAHUL' && passwordInput === '22780') {
+            const currentPassword = localStorage.getItem('appPassword') || '22780';
+            if (usernameInput === 'RAHUL' && passwordInput === currentPassword) {
                 sessionStorage.setItem('isLoggedIn', 'true');
                 loginOverlay.classList.add('hidden');
                 mainApp.classList.remove('hidden');
@@ -698,6 +711,157 @@ function initEvents() {
         console.log('Rahul Finance App installed successfully!');
         if (installBtn) {
             installBtn.style.display = 'none';
+        }
+    });
+
+    // --- CHANGE PASSWORD DIALOG LOGIC ---
+    const passwordModal = document.getElementById('password-modal');
+    const changePasswordBtn = document.getElementById('change-password-btn');
+    const passwordModalCloseBtn = document.getElementById('password-modal-close-btn');
+    const changePasswordForm = document.getElementById('change-password-form');
+    const changePasswordError = document.getElementById('change-password-error');
+
+    if (changePasswordBtn) {
+        changePasswordBtn.addEventListener('click', () => {
+            if (changePasswordError) changePasswordError.classList.add('hidden');
+            if (changePasswordForm) changePasswordForm.reset();
+            if (passwordModal) passwordModal.classList.remove('hidden');
+        });
+    }
+
+    if (passwordModalCloseBtn) {
+        passwordModalCloseBtn.addEventListener('click', () => {
+            if (passwordModal) passwordModal.classList.add('hidden');
+        });
+    }
+
+    if (passwordModal) {
+        passwordModal.addEventListener('click', (e) => {
+            if (e.target.id === 'password-modal') {
+                passwordModal.classList.add('hidden');
+            }
+        });
+    }
+
+    if (changePasswordForm) {
+        changePasswordForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const currentInput = document.getElementById('current-password-input').value;
+            const newInput = document.getElementById('new-password-input').value;
+            const confirmInput = document.getElementById('confirm-password-input').value;
+
+            const storedPass = localStorage.getItem('appPassword') || '22780';
+
+            if (currentInput !== storedPass) {
+                if (changePasswordError) {
+                    changePasswordError.classList.remove('hidden');
+                    changePasswordError.querySelector('span').textContent = 'Current password is incorrect!';
+                }
+                return;
+            }
+
+            if (newInput !== confirmInput) {
+                if (changePasswordError) {
+                    changePasswordError.classList.remove('hidden');
+                    changePasswordError.querySelector('span').textContent = 'New passwords do not match!';
+                }
+                return;
+            }
+
+            if (newInput.length < 4) {
+                if (changePasswordError) {
+                    changePasswordError.classList.remove('hidden');
+                    changePasswordError.querySelector('span').textContent = 'New password must be at least 4 characters!';
+                }
+                return;
+            }
+
+            // Save password locally
+            localStorage.setItem('appPassword', newInput);
+
+            // Sync to Firestore if available
+            if (db) {
+                try {
+                    showNotification('Syncing new password to cloud...', 'info');
+                    await db.collection('metadata').doc('auth').set({
+                        password: newInput,
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                    showNotification('Password updated and synced to cloud!', 'success');
+                } catch (err) {
+                    console.error('Failed to sync password to Firestore:', err);
+                    showNotification('Password updated locally. Sync failed.', 'warning');
+                }
+            } else {
+                showNotification('Password updated locally.', 'success');
+            }
+
+            if (passwordModal) passwordModal.classList.add('hidden');
+        });
+    }
+
+    // --- SCREENSHOT / SCREEN RECORD / COPY PROTECTION LOGIC ---
+    // 1. Prevent clipboard copy events
+    document.addEventListener('copy', (e) => {
+        e.preventDefault();
+        if (e.clipboardData) {
+            e.clipboardData.setData('text/plain', '[Protected Data - Rahul Finance]');
+        }
+        showNotification('Copying dashboard content is disabled for security!', 'error');
+    });
+
+    // 2. Prevent right-click context menus (inspect element / save page)
+    document.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        showNotification('Right-click is disabled to protect content!', 'error');
+    });
+
+    // 3. Prevent keyboard screenshot/printing/dev shortcut keys
+    document.addEventListener('keydown', (e) => {
+        // Intercept Print Screen (Keycode 44)
+        if (e.key === 'PrintScreen' || e.keyCode === 44) {
+            e.preventDefault();
+            navigator.clipboard.writeText('[Screen Protections Active]').catch(() => {});
+            showNotification('Screenshots are restricted on this website!', 'error');
+        }
+
+        // Prevent Print shortcut (Ctrl + P)
+        if ((e.ctrlKey || e.metaKey) && (e.key === 'p' || e.key === 'P' || e.keyCode === 80)) {
+            e.preventDefault();
+            showNotification('Printing or PDF export is disabled!', 'error');
+        }
+
+        // Prevent Save page shortcut (Ctrl + S)
+        if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S' || e.keyCode === 83)) {
+            e.preventDefault();
+            showNotification('Saving page source is disabled!', 'error');
+        }
+
+        // Prevent Developer Console shortcuts (F12, Ctrl + Shift + I, Ctrl + Shift + J, Ctrl + Shift + C)
+        if (
+            e.key === 'F12' || e.keyCode === 123 ||
+            ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'I' || e.keyCode === 73 || e.key === 'J' || e.keyCode === 74 || e.key === 'C' || e.keyCode === 67))
+        ) {
+            e.preventDefault();
+            showNotification('Developer Tools access is restricted!', 'error');
+        }
+    });
+
+    // 4. Blur page when window loses focus or document changes visibility
+    const handleProtectionBlur = () => {
+        document.body.classList.add('blurred-screen');
+    };
+    const handleProtectionFocus = () => {
+        document.body.classList.remove('blurred-screen');
+    };
+
+    window.addEventListener('blur', handleProtectionBlur);
+    window.addEventListener('focus', handleProtectionFocus);
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            handleProtectionBlur();
+        } else {
+            handleProtectionFocus();
         }
     });
 }

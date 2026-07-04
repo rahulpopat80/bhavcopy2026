@@ -38,6 +38,10 @@ body {
     overflow-x: hidden;
     position: relative;
     font-size: 0.85rem;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
 }
 
 /* Background decorations */
@@ -1754,6 +1758,21 @@ table {
 @media (max-width: 1024px) {
     .header-indices-widget {
         display: none !important;
+    }
+}
+
+/* Screen Protection Blur */
+.blurred-screen {
+    filter: blur(25px) grayscale(100%) !important;
+    pointer-events: none !important;
+}
+
+/* Print/PDF Export Protection */
+@media print {
+    body, html, #main-app, .login-overlay, .modal-overlay, #chart-modal, #advice-details-modal {
+        display: none !important;
+        opacity: 0 !important;
+        visibility: hidden !important;
     }
 }
 

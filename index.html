@@ -74,6 +74,9 @@
                 <button id="pwa-install-btn" class="btn" style="display: none; align-items: center; gap: 0.35rem; font-size: 0.78rem; padding: 0.4rem 0.75rem; background: linear-gradient(135deg, var(--accent-color) 0%, #b89626 100%); border: none; color: #000; font-weight: bold; border-radius: 6px; cursor: pointer; box-shadow: 0 4px 10px rgba(212,175,55,0.25); margin-right: 0.5rem;">
                     <i class="fa-solid fa-download"></i> Install App
                 </button>
+                <button id="change-password-btn" class="btn btn-secondary no-print" style="display: flex; align-items: center; gap: 0.35rem; font-size: 0.78rem; padding: 0.4rem 0.75rem; border: 1px solid var(--card-border); background: rgba(59,130,246,0.1); color: #fff; border-radius: 6px; cursor: pointer; margin-right: 0.5rem;">
+                    <i class="fa-solid fa-key"></i> Change Password
+                </button>
             </div>
             <p class="subtitle">Upload your Master Excel file and daily Bhavcopy (CSV) files to process and update stock prices in real-time.</p>
         </header>
@@ -858,6 +861,48 @@
             </div>
             <div class="modal-body" id="advice-details-body" style="color: var(--text-primary); font-size: 0.9rem; display: flex; flex-direction: column; gap: 1.2rem; padding: 1rem 0; max-height: 80vh; overflow-y: auto;">
                 <!-- Filled dynamically by JavaScript -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Change Password Modal -->
+    <div class="modal-overlay hidden" id="password-modal">
+        <div class="modal-card" style="max-width: 400px;">
+            <div class="modal-header">
+                <div>
+                    <h2 style="color: var(--accent-color);"><i class="fa-solid fa-key"></i> Change Password</h2>
+                    <span style="color: var(--text-secondary); font-size: 0.85rem;">Update your account credentials</span>
+                </div>
+                <button class="modal-close" id="password-modal-close-btn">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 1rem 0;">
+                <form id="change-password-form" style="display: flex; flex-direction: column; gap: 1rem;">
+                    <div class="form-group" style="display: flex; flex-direction: column; gap: 0.4rem;">
+                        <label for="current-password-input" style="font-weight: 500; color: var(--text-secondary);">Current Password</label>
+                        <div class="input-wrapper">
+                            <i class="fa-solid fa-lock" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: var(--text-secondary);"></i>
+                            <input type="password" id="current-password-input" required placeholder="Enter current password..." style="width: 100%; padding: 0.65rem 1rem 0.65rem 2.5rem; background: rgba(3, 7, 18, 0.5); border: 1px solid var(--card-border); border-radius: 8px; color: #ffffff;">
+                        </div>
+                    </div>
+                    <div class="form-group" style="display: flex; flex-direction: column; gap: 0.4rem;">
+                        <label for="new-password-input" style="font-weight: 500; color: var(--text-secondary);">New Password</label>
+                        <div class="input-wrapper">
+                            <i class="fa-solid fa-key" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: var(--text-secondary);"></i>
+                            <input type="password" id="new-password-input" required placeholder="Enter new password..." style="width: 100%; padding: 0.65rem 1rem 0.65rem 2.5rem; background: rgba(3, 7, 18, 0.5); border: 1px solid var(--card-border); border-radius: 8px; color: #ffffff;">
+                        </div>
+                    </div>
+                    <div class="form-group" style="display: flex; flex-direction: column; gap: 0.4rem;">
+                        <label for="confirm-password-input" style="font-weight: 500; color: var(--text-secondary);">Confirm New Password</label>
+                        <div class="input-wrapper">
+                            <i class="fa-solid fa-key" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: var(--text-secondary);"></i>
+                            <input type="password" id="confirm-password-input" required placeholder="Confirm new password..." style="width: 100%; padding: 0.65rem 1rem 0.65rem 2.5rem; background: rgba(3, 7, 18, 0.5); border: 1px solid var(--card-border); border-radius: 8px; color: #ffffff;">
+                        </div>
+                    </div>
+                    <div id="change-password-error" class="login-error hidden" style="margin-top: 0.5rem;">
+                        <i class="fa-solid fa-triangle-exclamation"></i> <span></span>
+                    </div>
+                    <button type="submit" class="btn btn-primary login-btn" style="margin-top: 0.5rem; justify-content: center;">Update Password</button>
+                </form>
             </div>
         </div>
     </div>
