@@ -1464,6 +1464,39 @@ function renderPortfolioTable() {
         return;
     }
 
+    // Helper to get profit ratio of any item for sorting
+    const getProfitRatio = (item) => {
+        const buyRate = parseFloat(item.buyRate) || 0;
+        if (buyRate <= 0) return -999999;
+        
+        const hasSold = item.sellRate && item.sellDate;
+        if (hasSold) {
+            const sellRate = parseFloat(item.sellRate) || 0;
+            return ((sellRate - buyRate) / buyRate) * 100;
+        } else {
+            let currentPrice = state.portfolioLivePrices.get(item.companySymbol);
+            if (currentPrice === undefined) {
+                currentPrice = getLastKnownPrice(item.companySymbol);
+            }
+            if (currentPrice !== null && currentPrice !== undefined) {
+                return ((currentPrice - buyRate) / buyRate) * 100;
+            }
+            return -999999;
+        }
+    };
+
+    // Sort: Active first, Sold last. Within each group, sort by profit ratio descending
+    const sortedItems = [...portfolioItems].sort((a, b) => {
+        const aSold = a.sellRate && a.sellDate ? 1 : 0;
+        const bSold = b.sellRate && b.sellDate ? 1 : 0;
+        
+        if (aSold !== bSold) {
+            return aSold - bSold;
+        }
+        
+        return getProfitRatio(b) - getProfitRatio(a);
+    });
+
     let html = '';
     let totalInvested = 0;
     let totalProfit = 0;
@@ -1473,7 +1506,7 @@ function renderPortfolioTable() {
     let soldCount = 0;
     let totalDaysSold = 0;
 
-    portfolioItems.forEach(item => {
+    sortedItems.forEach(item => {
         const qty = parseInt(item.quantity) || 0;
         const buyRate = parseFloat(item.buyRate) || 0;
         const buyAmt = qty * buyRate;
