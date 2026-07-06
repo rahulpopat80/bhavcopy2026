@@ -345,34 +345,59 @@ function initEvents() {
     setupPortfolioFormSubmit();
 
     // Gainers range toggles
+    const toggle1 = document.getElementById('gainer-toggle-1');
+    const toggle2 = document.getElementById('gainer-toggle-2');
     const toggle3 = document.getElementById('gainer-toggle-3');
     const toggle5 = document.getElementById('gainer-toggle-5');
     const toggle30 = document.getElementById('gainer-toggle-30');
     
-    if (toggle3 && toggle5 && toggle30) {
+    const allToggles = [toggle1, toggle2, toggle3, toggle5, toggle30];
+    const setGainerToggleActive = (activeToggle) => {
+        allToggles.forEach(t => {
+            if (t) t.classList.remove('active');
+        });
+        if (activeToggle) activeToggle.classList.add('active');
+    };
+
+    if (toggle1) {
+        toggle1.addEventListener('click', () => {
+            setGainerToggleActive(toggle1);
+            state.gainersWindow = 1;
+            renderGainersAnalysis();
+        });
+    }
+
+    if (toggle2) {
+        toggle2.addEventListener('click', () => {
+            setGainerToggleActive(toggle2);
+            state.gainersWindow = 2;
+            renderGainersAnalysis();
+        });
+    }
+
+    if (toggle3) {
         toggle3.addEventListener('click', () => {
-            toggle3.classList.add('active');
-            toggle5.classList.remove('active');
-            toggle30.classList.remove('active');
+            setGainerToggleActive(toggle3);
             state.gainersWindow = 3;
             renderGainersAnalysis();
         });
+    }
 
+    if (toggle5) {
         toggle5.addEventListener('click', () => {
-            toggle5.classList.add('active');
-            toggle3.classList.remove('active');
-            toggle30.classList.remove('active');
+            setGainerToggleActive(toggle5);
             state.gainersWindow = 5;
             renderGainersAnalysis();
         });
+    }
 
+    if (toggle30) {
         toggle30.addEventListener('click', () => {
-            toggle30.classList.add('active');
-            toggle3.classList.remove('active');
-            toggle5.classList.remove('active');
+            setGainerToggleActive(toggle30);
             state.gainersWindow = 30;
             renderGainersAnalysis();
         });
+    }
     }
 
     // Auto Fetch Modal Toggle
@@ -2885,8 +2910,8 @@ function renderGainersAnalysis() {
     
     // Update card title and descriptions
     const cardTitle = document.getElementById('gainer-card-title');
-    const sliceLimit = windowDays === 30 ? 50 : 10;
-    if (cardTitle) cardTitle.textContent = `Top ${sliceLimit} Gainers (${windowDays} Days)`;
+    const sliceLimit = 50;
+    if (cardTitle) cardTitle.textContent = `Top ${sliceLimit} Gainers (${windowDays} Day${windowDays > 1 ? 's' : ''})`;
     
     const cardDesc = document.getElementById('gainer-card-desc');
     if (cardDesc) cardDesc.textContent = `Companies showing the highest net positive close-to-close change over the last ${windowDays} active trading days.`;
@@ -2894,7 +2919,7 @@ function renderGainersAnalysis() {
     const tableHeaderOld = document.getElementById('gainer-table-old-price-header');
     if (tableHeaderOld) tableHeaderOld.textContent = `Price (${windowDays}d)`;
     
-    // Select top 10 or 50 based on window
+    // Select top 50
     const topGainers = gainersRows.slice(0, sliceLimit);
     
     // Render to table
