@@ -4851,7 +4851,7 @@ window.setVolumePromoterSource = function(source) {
     renderVolumePromoterPicks();
 };
 
-window.renderVolumePromoterPicks = async function() {
+window.renderVolumePromoterPicks = async function(forceRefresh = false) {
     const emptyState   = document.getElementById('vol-promoter-empty-state');
     const tableWrapper = document.getElementById('vol-promoter-table-wrapper');
     const badge        = document.getElementById('vol-promoter-count-badge');
@@ -4873,52 +4873,78 @@ window.renderVolumePromoterPicks = async function() {
             </tr>
         `;
 
+        if (forceRefresh) {
+            globalPromoterCache = null;
+            removeLocalStorageItem('global_promoter_cache');
+            removeLocalStorageItem('global_promoter_cache_time');
+        }
+
+        // Try to load from localStorage cache
+        const storedCache = getLocalStorageItem('global_promoter_cache');
+        const storedCacheTime = getLocalStorageItem('global_promoter_cache_time');
+        const now = Date.now();
+        
+        if (storedCache && storedCacheTime && (now - parseInt(storedCacheTime)) < 10 * 60 * 1000) {
+            try {
+                globalPromoterCache = JSON.parse(storedCache);
+                console.log("[Global Promoter] Loaded from local cache successfully!");
+            } catch (e) {
+                console.warn("[Global Promoter] Failed to parse local cache:", e);
+                globalPromoterCache = null;
+            }
+        }
+
         if (!globalPromoterCache) {
-            console.log("[Global Promoter] Cache empty, fetching real-time data for high-promoter stocks...");
+            console.log("[Global Promoter] Cache empty or expired, fetching real-time data in parallel...");
             
             const fetchedResults = [];
-            const batchSize = 10;
-            for (let i = 0; i < globalHighPromoterStocks.length; i += batchSize) {
-                const batch = globalHighPromoterStocks.slice(i, i + batchSize);
-                await Promise.all(batch.map(async (stock) => {
-                    try {
-                        const ticker = stock.symbol.toUpperCase().trim() + '.NS';
-                        const data = await fetchYahooFinanceData(ticker);
+            // Execute all 50 fetches concurrently in parallel
+            await Promise.all(globalHighPromoterStocks.map(async (stock) => {
+                try {
+                    const ticker = stock.symbol.toUpperCase().trim() + '.NS';
+                    const data = await fetchYahooFinanceData(ticker);
+                    
+                    if (data && data.chart && data.chart.result && data.chart.result[0]) {
+                        const result = data.chart.result[0];
+                        const meta = result.meta;
+                        const currentPrice = meta.regularMarketPrice;
+                        const volume = meta.regularMarketVolume || 0;
                         
-                        if (data && data.chart && data.chart.result && data.chart.result[0]) {
-                            const result = data.chart.result[0];
-                            const meta = result.meta;
-                            const currentPrice = meta.regularMarketPrice;
-                            const volume = meta.regularMarketVolume || 0;
-                            
-                            let prices = [];
-                            if (result.indicators && result.indicators.quote && result.indicators.quote[0]) {
-                                const rawCloses = result.indicators.quote[0].close || [];
-                                const validCloses = rawCloses.filter(p => p !== null && p !== undefined && !isNaN(p));
-                                if (validCloses.length >= 5) {
-                                    prices = validCloses.slice(-5).reverse();
-                                }
+                        let prices = [];
+                        if (result.indicators && result.indicators.quote && result.indicators.quote[0]) {
+                            const rawCloses = result.indicators.quote[0].close || [];
+                            const validCloses = rawCloses.filter(p => p !== null && p !== undefined && !isNaN(p));
+                            if (validCloses.length >= 5) {
+                                prices = validCloses.slice(-5).reverse();
                             }
-                            
-                            if (prices.length < 5 && currentPrice) {
-                                prices = [currentPrice, currentPrice*0.99, currentPrice*0.98, currentPrice*0.97, currentPrice*0.96];
-                            }
-                            
-                            fetchedResults.push({
-                                symbol: stock.symbol,
-                                latestPrice: currentPrice || prices[0] || 0,
-                                volume,
-                                promoterHolding: stock.promoterHolding,
-                                prices
-                            });
                         }
-                    } catch (e) {
-                        console.warn(`[Global Promoter] Failed to fetch data for ${stock.symbol}:`, e.message);
+                        
+                        if (prices.length < 5 && currentPrice) {
+                            prices = [currentPrice, currentPrice*0.99, currentPrice*0.98, currentPrice*0.97, currentPrice*0.96];
+                        }
+                        
+                        fetchedResults.push({
+                            symbol: stock.symbol,
+                            latestPrice: currentPrice || prices[0] || 0,
+                            volume,
+                            promoterHolding: stock.promoterHolding,
+                            prices
+                        });
                     }
-                }));
-            }
+                } catch (e) {
+                    console.warn(`[Global Promoter] Failed to fetch data for ${stock.symbol}:`, e.message);
+                }
+            }));
             
             globalPromoterCache = fetchedResults;
+            
+            // Save to local cache
+            try {
+                setLocalStorageItem('global_promoter_cache', JSON.stringify(fetchedResults));
+                setLocalStorageItem('global_promoter_cache_time', now.toString());
+            } catch (err) {
+                console.warn("[Global Promoter] Cache save failed:", err);
+            }
         }
 
         const results = globalPromoterCache.filter(item => {
