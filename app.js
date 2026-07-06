@@ -398,7 +398,6 @@ function initEvents() {
             renderGainersAnalysis();
         });
     }
-    }
 
     // Auto Fetch Modal Toggle
     const autoFetchTrigger = document.getElementById('btn-auto-fetch-trigger');
