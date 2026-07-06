@@ -2844,9 +2844,9 @@ function renderGainersAnalysis() {
         
         if (!symbol) continue;
         
-        // Collect prices from last windowDays date columns going forward
+        // Collect prices from last windowDays + 1 date columns going forward to compare today vs N days ago
         const prices = [];
-        const limit = Math.min(row.length, insertIdx + windowDays);
+        const limit = Math.min(row.length, insertIdx + windowDays + 1);
         for (let colIdx = insertIdx; colIdx < limit; colIdx++) {
             const pVal = parseFloat(row[colIdx]);
             if (!isNaN(pVal)) {
