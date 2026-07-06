@@ -672,14 +672,20 @@
                 <div class="movement-header" style="margin-bottom:0.75rem; flex-wrap:wrap; gap:0.5rem;">
                     <i class="fa-solid fa-fire movement-icon" style="color:#ef4444;"></i>
                     <h2 style="color:var(--text-primary);">High Volume &amp; Promoter Stocks <span class="results-badge" id="vol-promoter-count-badge" style="background:rgba(239,68,68,0.15);color:#ef4444;border-color:rgba(239,68,68,0.3);">0 Stocks</span></h2>
-                    <button onclick="renderVolumePromoterPicks()" class="btn" style="margin-left:auto;font-size:0.78rem;padding:0.35rem 0.9rem;background:linear-gradient(135deg,#ef4444,#dc2626);border:none;color:#fff;font-weight:700;border-radius:6px;cursor:pointer;">
-                        <i class="fa-solid fa-rotate"></i> Refresh Analysis
+                    
+                    <div class="gainer-toggle-group" style="margin-left:auto; display:flex; gap:0.35rem; align-items:center;">
+                        <button class="toggle-btn active" id="btn-vol-promoter-local" onclick="setVolumePromoterSource('LOCAL')">Local Master</button>
+                        <button class="toggle-btn" id="btn-vol-promoter-global" onclick="setVolumePromoterSource('GLOBAL')">Global (Real-Time)</button>
+                    </div>
+
+                    <button onclick="renderVolumePromoterPicks()" class="btn" style="font-size:0.78rem;padding:0.35rem 0.9rem;background:linear-gradient(135deg,#ef4444,#dc2626);border:none;color:#fff;font-weight:700;border-radius:6px;cursor:pointer;">
+                        <i class="fa-solid fa-rotate"></i> Refresh
                     </button>
                 </div>
                 <div style="background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.2);border-radius:8px;padding:0.65rem 1rem;margin-bottom:0.9rem;">
                     <p style="font-size:0.82rem;color:var(--text-secondary);margin:0;">
                         <i class="fa-solid fa-circle-info" style="color:#ef4444;margin-right:5px;"></i>
-                        <strong style="color:#ef4444;">નિયમો:</strong> ૧) છેલ્લા ૫ દિવસથી ભાવ સતત વધતો હોય, ૨) પ્રમોટરનો હિસ્સો ૭૦% થી વધુ હોય, ૩) સૌથી વધુ ટ્રેડિંગ વોલ્યુમ ધરાવતી કંપનીઓ પહેલા દર્શાવવામાં આવી છે. <strong>ઍક્શન:</strong> કંપની પર ક્લિક કરવાથી તેનો ચાર્ટ અને વિગતો ઓપન થશે.
+                        <strong style="color:#ef4444;">નિયમો:</strong> ૧) છેલ્લા ૫ દિવસથી ભાવ સતત વધતો હોય, ૨) પ્રમોટરનો હિસ્સો ૭૦% થી વધુ હોય, ૩) સૌથી વધુ વોલ્યુમ વાળા શેર્સ ઉપર આવશે. **Global Mode** માં ૫૦+ કી કંપનીઓના લાઈવ ડેટા યાહુ ફાયનાન્સથી ડાયરેક્ટ ઓપન થાય છે.
                     </p>
                 </div>
 

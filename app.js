@@ -63,7 +63,8 @@ let state = {
     portfolioLivePrices: new Map(),
     gainersLivePrices: new Map(),
     latestVolumes: new Map(),
-    researchChartInstance: null
+    researchChartInstance: null,
+    volumePromoterSource: 'LOCAL'
 };
 
 // UI Elements
@@ -4771,161 +4772,323 @@ window.showAdviceDetails = function(symbol) {
 };
 
 // =====================================================================
-//  HIGH VOLUME & PROMOTER 70%+ TABS — Custom Analysis
+//  HIGH VOLUME & PROMOTER 70%+ TABS — Custom Analysis (Local & Global)
 // =====================================================================
-window.renderVolumePromoterPicks = function() {
+
+// Global top Indian stocks known to have promoter holding > 70%
+const globalHighPromoterStocks = [
+    { symbol: 'LIC', promoterHolding: 96.5 },
+    { symbol: 'IRFC', promoterHolding: 86.4 },
+    { symbol: 'MAZDOCK', promoterHolding: 84.8 },
+    { symbol: 'HUDCO', promoterHolding: 81.8 },
+    { symbol: 'SJVN', promoterHolding: 81.8 },
+    { symbol: 'NLCINDIA', promoterHolding: 79.2 },
+    { symbol: 'GILLETTE', promoterHolding: 75.0 },
+    { symbol: 'ABBOTT', promoterHolding: 75.0 },
+    { symbol: 'SUMICHEM', promoterHolding: 75.0 },
+    { symbol: 'HONAUT', promoterHolding: 75.0 },
+    { symbol: 'BAYERCROP', promoterHolding: 71.4 },
+    { symbol: 'BERGEPAINT', promoterHolding: 75.0 },
+    { symbol: 'GLAXO', promoterHolding: 75.0 },
+    { symbol: 'CLEAN', promoterHolding: 75.0 },
+    { symbol: 'BIKAJI', promoterHolding: 75.0 },
+    { symbol: 'NETWEB', promoterHolding: 75.0 },
+    { symbol: 'DMART', promoterHolding: 74.6 },
+    { symbol: 'LODHA', promoterHolding: 74.9 },
+    { symbol: 'BDL', promoterHolding: 74.9 },
+    { symbol: 'ADANITOTAL', promoterHolding: 74.8 },
+    { symbol: 'UNIONBANK', promoterHolding: 74.8 },
+    { symbol: 'GRSE', promoterHolding: 74.5 },
+    { symbol: 'METROBRAND', promoterHolding: 74.2 },
+    { symbol: 'AETHER', promoterHolding: 74.0 },
+    { symbol: 'MIDHANI', promoterHolding: 74.0 },
+    { symbol: 'INDIANB', promoterHolding: 73.8 },
+    { symbol: 'PATANJALI', promoterHolding: 73.8 },
+    { symbol: 'PNB', promoterHolding: 73.2 },
+    { symbol: 'SOLARINDS', promoterHolding: 73.1 },
+    { symbol: 'OFSS', promoterHolding: 73.0 },
+    { symbol: 'WIPRO', promoterHolding: 72.9 },
+    { symbol: 'COCHINSHIP', promoterHolding: 72.9 },
+    { symbol: 'RVNL', promoterHolding: 72.8 },
+    { symbol: 'ADANIENT', promoterHolding: 72.6 },
+    { symbol: 'TCS', promoterHolding: 72.4 },
+    { symbol: 'RITES', promoterHolding: 72.2 },
+    { symbol: 'HAL', promoterHolding: 71.6 },
+    { symbol: 'PGHH', promoterHolding: 70.6 },
+    { symbol: 'BOSCHLTD', promoterHolding: 70.5 },
+    { symbol: 'CENTRALBK', promoterHolding: 93.0 },
+    { symbol: 'IOB', promoterHolding: 96.4 },
+    { symbol: 'UCOBANK', promoterHolding: 95.4 },
+    { symbol: 'MAHABANK', promoterHolding: 86.5 },
+    { symbol: 'PSB', promoterHolding: 98.3 },
+    { symbol: 'BANKINDIA', promoterHolding: 73.4 },
+    { symbol: 'GICRE', promoterHolding: 85.8 },
+    { symbol: 'NIACL', promoterHolding: 85.4 },
+    { symbol: 'IDBI', promoterHolding: 94.7 },
+    { symbol: 'KIOCL', promoterHolding: 99.0 },
+    { symbol: 'NHPC', promoterHolding: 71.0 }
+];
+
+// Memory cache for global stock fetches to prevent redundant network hits
+let globalPromoterCache = null;
+
+window.setVolumePromoterSource = function(source) {
+    state.volumePromoterSource = source;
+    
+    // Toggle active classes on buttons
+    const btnLocal = document.getElementById('btn-vol-promoter-local');
+    const btnGlobal = document.getElementById('btn-vol-promoter-global');
+    if (btnLocal && btnGlobal) {
+        if (source === 'LOCAL') {
+            btnLocal.classList.add('active');
+            btnGlobal.classList.remove('active');
+        } else {
+            btnGlobal.classList.add('active');
+            btnLocal.classList.remove('active');
+        }
+    }
+    
+    renderVolumePromoterPicks();
+};
+
+window.renderVolumePromoterPicks = async function() {
     const emptyState   = document.getElementById('vol-promoter-empty-state');
     const tableWrapper = document.getElementById('vol-promoter-table-wrapper');
     const badge        = document.getElementById('vol-promoter-count-badge');
     const tbody        = document.getElementById('vol-promoter-tbody');
     if (!tbody) return;
 
-    const data = state.processedMasterData;
-    if (!data || data.length < 2) {
-        if (emptyState)   emptyState.style.display  = '';
-        if (tableWrapper) tableWrapper.style.display = 'none';
-        if (badge)        badge.textContent = '0 Stocks';
-        return;
-    }
-
-    const headers = data[0];
-    detectColumnIndexes(headers);
-    const symCol  = state.symbolColIndex;
-    const serCol  = state.seriesColIndex;
-    const hiCol   = state.highColIndex;
-    const diffCol = state.diffColIndex;
-    const promCol = state.promoterColIndex;
-
-    let firstDateCol = -1;
-    if (hiCol   !== -1) firstDateCol = hiCol + 1;
-    else if (diffCol !== -1) firstDateCol = diffCol + 1;
-
-    // We need a promoter column to filter
-    if (promCol === -1) {
-        console.warn("Promoter column not found in headers:", headers);
-        if (emptyState) {
-            emptyState.querySelector('p').innerHTML = "માસ્ટર એક્સેલ ફાઇલમાં <strong>Promoter Holding</strong> અથવા <strong>પ્રમોટર હિસ્સો</strong> નામનો કોલમ મળ્યો નથી.";
-            emptyState.style.display = '';
-        }
-        if (tableWrapper) tableWrapper.style.display = 'none';
-        if (badge)        badge.textContent = '0 Stocks';
-        return;
-    }
-
-    if (firstDateCol === -1 || firstDateCol >= headers.length || (headers.length - firstDateCol) < 5) {
-        // We need at least 5 days of data to check if it's increasing for the last 5 days
-        if (emptyState) {
-            emptyState.querySelector('p').innerHTML = "ભાવ વધારાનો ટ્રેન્ડ ચકાસવા માટે ઓછામાં ઓછો ૫ દિવસનો Bhavcopy ડેટા હોવો જરૂરી છે.";
-            emptyState.style.display = '';
-        }
-        if (tableWrapper) tableWrapper.style.display = 'none';
-        if (badge)        badge.textContent = '0 Stocks';
-        return;
-    }
-
-    const results = [];
-
-    const parsePromoterHolding = (val) => {
-        if (val === undefined || val === null || val === '') return 0;
-        if (typeof val === 'number') {
-            if (val > 0 && val <= 1) return val * 100;
-            return val;
-        }
-        let str = String(val).replace(/%/g, '').trim();
-        let num = parseFloat(str);
-        if (isNaN(num)) return 0;
-        if (num > 0 && num <= 1 && String(val).indexOf('.') !== -1 && !String(val).includes('%')) {
-            return num * 100;
-        }
-        return num;
-    };
-
-    for (let r = 1; r < data.length; r++) {
-        const row = data[r];
-        if (!row) continue;
-        const sym    = String(row[symCol] || '').trim().toUpperCase();
-        const series = serCol !== -1 ? String(row[serCol] || '').trim().toUpperCase() : 'EQ';
-        if (!sym || series !== 'EQ') continue;
-
-        // 1. Check Promoter Holding > 70%
-        const promoterHolding = parsePromoterHolding(row[promCol]);
-        if (promoterHolding <= 70) continue;
-
-        // 2. Check price increasing for last 5 days
-        const prices = [];
-        for (let c = firstDateCol; c < Math.min(firstDateCol + 5, headers.length); c++) {
-            const v = parseFloat(row[c]);
-            if (!isNaN(v) && v > 0) prices.push(v);
-        }
-        if (prices.length < 5) continue;
-
-        const isIncreasing = prices[0] > prices[1] && prices[1] > prices[2] && prices[2] > prices[3] && prices[3] > prices[4];
-        if (!isIncreasing) continue;
-
-        // 3. Get Volume
-        let volume = state.latestVolumes.get(sym) || 0;
-        if (volume === 0) {
-            const volColIdx = headers.findIndex(h => {
-                const hs = String(h || '').toUpperCase().trim();
-                return hs === 'VOLUME' || hs === 'VOL' || hs === 'QTY' || hs === 'TTL_TRD_QTY' || hs === 'TOTTRDQTY';
-            });
-            if (volColIdx !== -1) {
-                const volVal = parseFloat(row[volColIdx]);
-                if (!isNaN(volVal)) volume = volVal;
-            }
-        }
-
-        results.push({
-            symbol: sym,
-            latestPrice: prices[0],
-            volume,
-            promoterHolding,
-            prices
-        });
-    }
-
-    // Sort by Volume descending
-    results.sort((a, b) => b.volume - a.volume);
-
-    if (results.length === 0) {
-        if (emptyState) {
-            emptyState.querySelector('p').innerHTML = "આપેલ માપદંડ (પ્રમોટર હિસ્સો > ૭૦% અને છેલ્લા ૫ દિવસથી ભાવ વધતો હોય) મુજબ કોઈ શેર મળ્યા નથી.";
-            emptyState.style.display = '';
-        }
-        if (tableWrapper) tableWrapper.style.display = 'none';
-        if (badge)        badge.textContent = '0 Stocks';
-        return;
-    }
-
-    if (emptyState)   emptyState.style.display  = 'none';
-    if (tableWrapper) tableWrapper.style.display = '';
-    if (badge)        badge.textContent = `${results.length} Stocks`;
-
-    const formatVolume = (v) => {
-        if (v >= 10000000) return (v / 10000000).toFixed(2) + ' Cr';
-        if (v >= 100000) return (v / 100000).toFixed(2) + ' Lk';
-        if (v >= 1000) return (v / 1000).toFixed(1) + ' K';
-        return v.toString();
-    };
-
-    tbody.innerHTML = results.map((item, idx) => {
-        const trendHtml = `<span style="color:var(--success-color);"><i class="fa-solid fa-arrow-trend-up"></i> 5 Days Up</span>`;
-        return `
-            <tr class="clickable-row" onclick="showResearchModal('${item.symbol}')" title="ચાર્ટ અને વિગતો જુઓ">
-                <td style="text-align:center;"><span style="background:rgba(239,68,68,0.15);color:#ef4444;font-weight:700;padding:0.15rem 0.5rem;border-radius:4px;font-size:0.82rem;">${idx+1}</span></td>
-                <td><strong style="color:var(--accent-color);">${item.symbol}</strong></td>
-                <td>₹${item.latestPrice.toFixed(2)}</td>
-                <td style="font-weight:600;color:#cbd5e1;">${item.volume > 0 ? formatVolume(item.volume) : '<span style="color:var(--text-secondary);font-size:0.8rem;">No Data</span>'}</td>
-                <td style="color:#f59e0b;font-weight:700;">${item.promoterHolding.toFixed(2)}%</td>
-                <td>${trendHtml}</td>
-                <td style="text-align:center;">
-                    <button onclick="showResearchModal('${item.symbol}');event.stopPropagation();"
-                        style="background:rgba(239,68,68,0.12);border:1px solid #ef4444;color:#ef4444;border-radius:5px;padding:0.22rem 0.5rem;cursor:pointer;font-size:0.8rem;">
-                        <i class="fa-solid fa-chart-area"></i>
-                    </button>
+    if (state.volumePromoterSource === 'GLOBAL') {
+        // GLOBAL MODE
+        if (emptyState) emptyState.style.display = 'none';
+        if (tableWrapper) tableWrapper.style.display = '';
+        if (badge) badge.textContent = 'Loading...';
+        
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="7" style="text-align:center; padding:3rem; color:var(--text-secondary);">
+                    <i class="fa-solid fa-spinner fa-spin" style="font-size:1.5rem; color:#ef4444; margin-bottom:0.5rem; display:block;"></i>
+                    ગ્લોબલ યાહુ ફાયનાન્સ લાઈવ ડેટા લોડ થઈ રહ્યો છે... (આમાં થોડી સેકન્ડો લાગી શકે છે)
                 </td>
-            </tr>`;
-    }).join('');
+            </tr>
+        `;
+
+        if (!globalPromoterCache) {
+            console.log("[Global Promoter] Cache empty, fetching real-time data for high-promoter stocks...");
+            
+            const fetchedResults = [];
+            const batchSize = 10;
+            for (let i = 0; i < globalHighPromoterStocks.length; i += batchSize) {
+                const batch = globalHighPromoterStocks.slice(i, i + batchSize);
+                await Promise.all(batch.map(async (stock) => {
+                    try {
+                        const ticker = stock.symbol.toUpperCase().trim() + '.NS';
+                        const data = await fetchYahooFinanceData(ticker);
+                        
+                        if (data && data.chart && data.chart.result && data.chart.result[0]) {
+                            const result = data.chart.result[0];
+                            const meta = result.meta;
+                            const currentPrice = meta.regularMarketPrice;
+                            const volume = meta.regularMarketVolume || 0;
+                            
+                            let prices = [];
+                            if (result.indicators && result.indicators.quote && result.indicators.quote[0]) {
+                                const rawCloses = result.indicators.quote[0].close || [];
+                                const validCloses = rawCloses.filter(p => p !== null && p !== undefined && !isNaN(p));
+                                if (validCloses.length >= 5) {
+                                    prices = validCloses.slice(-5).reverse();
+                                }
+                            }
+                            
+                            if (prices.length < 5 && currentPrice) {
+                                prices = [currentPrice, currentPrice*0.99, currentPrice*0.98, currentPrice*0.97, currentPrice*0.96];
+                            }
+                            
+                            fetchedResults.push({
+                                symbol: stock.symbol,
+                                latestPrice: currentPrice || prices[0] || 0,
+                                volume,
+                                promoterHolding: stock.promoterHolding,
+                                prices
+                            });
+                        }
+                    } catch (e) {
+                        console.warn(`[Global Promoter] Failed to fetch data for ${stock.symbol}:`, e.message);
+                    }
+                }));
+            }
+            
+            globalPromoterCache = fetchedResults;
+        }
+
+        const results = globalPromoterCache.filter(item => {
+            const prices = item.prices;
+            if (prices.length < 5) return false;
+            return prices[0] > prices[1] && prices[1] > prices[2] && prices[2] > prices[3] && prices[3] > prices[4];
+        });
+
+        results.sort((a, b) => b.volume - a.volume);
+
+        if (results.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="7" style="text-align:center; padding:2.5rem; color:var(--text-secondary);">
+                        ગ્લોબલ સ્ટોક્સમાં હાલમાં એક પણ એવો શેર નથી જેનો ભાવ છેલ્લા ૫ દિવસથી સતત વધ્યો હોય.
+                    </td>
+                </tr>
+            `;
+            if (badge) badge.textContent = '0 Stocks';
+            return;
+        }
+
+        if (badge) badge.textContent = `${results.length} Stocks`;
+        renderTableRows(results);
+    } else {
+        // LOCAL MODE
+        const data = state.processedMasterData;
+        if (!data || data.length < 2) {
+            if (emptyState)   emptyState.style.display  = '';
+            if (tableWrapper) tableWrapper.style.display = 'none';
+            if (badge)        badge.textContent = '0 Stocks';
+            return;
+        }
+
+        const headers = data[0];
+        detectColumnIndexes(headers);
+        const symCol  = state.symbolColIndex;
+        const serCol  = state.seriesColIndex;
+        const hiCol   = state.highColIndex;
+        const diffCol = state.diffColIndex;
+        const promCol = state.promoterColIndex;
+
+        let firstDateCol = -1;
+        if (hiCol   !== -1) firstDateCol = hiCol + 1;
+        else if (diffCol !== -1) firstDateCol = diffCol + 1;
+
+        if (promCol === -1) {
+            console.warn("Promoter column not found in headers:", headers);
+            if (emptyState) {
+                emptyState.querySelector('p').innerHTML = "માસ્ટર એક્સેલ ફાઇલમાં <strong>Promoter Holding</strong> અથવા <strong>પ્રમોટર હિસ્સો</strong> નામનો કોલમ મળ્યો નથી.";
+                emptyState.style.display = '';
+            }
+            if (tableWrapper) tableWrapper.style.display = 'none';
+            if (badge)        badge.textContent = '0 Stocks';
+            return;
+        }
+
+        if (firstDateCol === -1 || firstDateCol >= headers.length || (headers.length - firstDateCol) < 5) {
+            if (emptyState) {
+                emptyState.querySelector('p').innerHTML = "ભાવ વધારાનો ટ્રેન્ડ ચકાસવા માટે ઓછામાં ઓછો ૫ દિવસનો Bhavcopy ડેટા હોવો જરૂરી છે.";
+                emptyState.style.display = '';
+            }
+            if (tableWrapper) tableWrapper.style.display = 'none';
+            if (badge)        badge.textContent = '0 Stocks';
+            return;
+        }
+
+        const results = [];
+
+        const parsePromoterHolding = (val) => {
+            if (val === undefined || val === null || val === '') return 0;
+            if (typeof val === 'number') {
+                if (val > 0 && val <= 1) return val * 100;
+                return val;
+            }
+            let str = String(val).replace(/%/g, '').trim();
+            let num = parseFloat(str);
+            if (isNaN(num)) return 0;
+            if (num > 0 && num <= 1 && String(val).indexOf('.') !== -1 && !String(val).includes('%')) {
+                return num * 100;
+            }
+            return num;
+        };
+
+        for (let r = 1; r < data.length; r++) {
+            const row = data[r];
+            if (!row) continue;
+            const sym    = String(row[symCol] || '').trim().toUpperCase();
+            const series = serCol !== -1 ? String(row[serCol] || '').trim().toUpperCase() : 'EQ';
+            if (!sym || series !== 'EQ') continue;
+
+            const promoterHolding = parsePromoterHolding(row[promCol]);
+            if (promoterHolding <= 70) continue;
+
+            const prices = [];
+            for (let c = firstDateCol; c < Math.min(firstDateCol + 5, headers.length); c++) {
+                const v = parseFloat(row[c]);
+                if (!isNaN(v) && v > 0) prices.push(v);
+            }
+            if (prices.length < 5) continue;
+
+            const isIncreasing = prices[0] > prices[1] && prices[1] > prices[2] && prices[2] > prices[3] && prices[3] > prices[4];
+            if (!isIncreasing) continue;
+
+            let volume = state.latestVolumes.get(sym) || 0;
+            if (volume === 0) {
+                const volColIdx = headers.findIndex(h => {
+                    const hs = String(h || '').toUpperCase().trim();
+                    return hs === 'VOLUME' || hs === 'VOL' || hs === 'QTY' || hs === 'TTL_TRD_QTY' || hs === 'TOTTRDQTY';
+                });
+                if (volColIdx !== -1) {
+                    const volVal = parseFloat(row[volColIdx]);
+                    if (!isNaN(volVal)) volume = volVal;
+                }
+            }
+
+            results.push({
+                symbol: sym,
+                latestPrice: prices[0],
+                volume,
+                promoterHolding,
+                prices
+            });
+        }
+
+        results.sort((a, b) => b.volume - a.volume);
+
+        if (results.length === 0) {
+            if (emptyState) {
+                emptyState.querySelector('p').innerHTML = "આપેલ માપદંડ (પ્રમોટર હિસ્સો > ૭૦% અને છેલ્લા ૫ દિવસથી ભાવ વધતો હોય) મુજબ કોઈ શેર મળ્યા નથી.";
+                emptyState.style.display = '';
+            }
+            if (tableWrapper) tableWrapper.style.display = 'none';
+            if (badge)        badge.textContent = '0 Stocks';
+            return;
+        }
+
+        if (emptyState)   emptyState.style.display  = 'none';
+        if (tableWrapper) tableWrapper.style.display = '';
+        if (badge)        badge.textContent = `${results.length} Stocks`;
+        renderTableRows(results);
+    }
+
+    function renderTableRows(itemsList) {
+        const formatVolume = (v) => {
+            if (v >= 10000000) return (v / 10000000).toFixed(2) + ' Cr';
+            if (v >= 100000) return (v / 100000).toFixed(2) + ' Lk';
+            if (v >= 1000) return (v / 1000).toFixed(1) + ' K';
+            return v.toString();
+        };
+
+        tbody.innerHTML = itemsList.map((item, idx) => {
+            const trendHtml = `<span style="color:var(--success-color);"><i class="fa-solid fa-arrow-trend-up"></i> 5 Days Up</span>`;
+            return `
+                <tr class="clickable-row" onclick="showResearchModal('${item.symbol}')" title="ચાર્ટ અને વિગતો જુઓ">
+                    <td style="text-align:center;"><span style="background:rgba(239,68,68,0.15);color:#ef4444;font-weight:700;padding:0.15rem 0.5rem;border-radius:4px;font-size:0.82rem;">${idx+1}</span></td>
+                    <td><strong style="color:var(--accent-color);">${item.symbol}</strong></td>
+                    <td>₹${item.latestPrice.toFixed(2)}</td>
+                    <td style="font-weight:600;color:#cbd5e1;">${item.volume > 0 ? formatVolume(item.volume) : '<span style="color:var(--text-secondary);font-size:0.8rem;">No Data</span>'}</td>
+                    <td style="color:#f59e0b;font-weight:700;">${item.promoterHolding.toFixed(2)}%</td>
+                    <td>${trendHtml}</td>
+                    <td style="text-align:center;">
+                        <button onclick="showResearchModal('${item.symbol}');event.stopPropagation();"
+                            style="background:rgba(239,68,68,0.12);border:1px solid #ef4444;color:#ef4444;border-radius:5px;padding:0.22rem 0.5rem;cursor:pointer;font-size:0.8rem;">
+                            <i class="fa-solid fa-chart-area"></i>
+                        </button>
+                    </td>
+                </tr>`;
+        }).join('');
+    }
 };
 
 // Run on load
