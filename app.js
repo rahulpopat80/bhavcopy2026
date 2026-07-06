@@ -56,11 +56,13 @@ let state = {
     diffColIndex: -1,
     latestDateColIndex: -1,
     isinColIndex: -1,
+    promoterColIndex: -1,
     
     // Gainers Window Active Selection (5 or 30)
     gainersWindow: 5,
     portfolioLivePrices: new Map(),
     gainersLivePrices: new Map(),
+    latestVolumes: new Map(),
     researchChartInstance: null
 };
 
@@ -258,17 +260,19 @@ function initEvents() {
     const tabWatchlist   = document.getElementById('tab-watchlist');
     const tabMorning     = document.getElementById('tab-morning-picks');
     const tabAdvice      = document.getElementById('tab-investor-advice');
+    const tabVolPromoter = document.getElementById('tab-volume-promoter');
     const researchTabContent      = document.getElementById('research-tab-content');
     const portfolioTabContent     = document.getElementById('portfolio-tab-content');
     const resultsTabContent       = document.getElementById('results-tab-content');
     const watchlistTabContent     = document.getElementById('watchlist-tab-content');
     const morningPicksTabContent  = document.getElementById('morning-picks-tab-content');
     const adviceTabContent        = document.getElementById('investor-advice-tab-content');
+    const volPromoterTabContent   = document.getElementById('volume-promoter-tab-content');
 
     const hideAllTabs = () => {
-        [researchTabContent, portfolioTabContent, resultsTabContent, watchlistTabContent, morningPicksTabContent, adviceTabContent]
+        [researchTabContent, portfolioTabContent, resultsTabContent, watchlistTabContent, morningPicksTabContent, adviceTabContent, volPromoterTabContent]
             .forEach(el => el && el.classList.add('hidden'));
-        [tabResearch, tabPortfolio, tabResults, tabWatchlist, tabMorning, tabAdvice]
+        [tabResearch, tabPortfolio, tabResults, tabWatchlist, tabMorning, tabAdvice, tabVolPromoter]
             .forEach(el => el && el.classList.remove('active'));
     };
 
@@ -322,6 +326,15 @@ function initEvents() {
             tabResults.classList.add('active');
             resultsTabContent.classList.remove('hidden');
             renderResultsAndDividendsTable();
+        });
+    }
+
+    if (tabVolPromoter && volPromoterTabContent) {
+        tabVolPromoter.addEventListener('click', () => {
+            hideAllTabs();
+            tabVolPromoter.classList.add('active');
+            volPromoterTabContent.classList.remove('hidden');
+            renderVolumePromoterPicks();
         });
     }
 
@@ -980,6 +993,7 @@ function detectColumnIndexes(headers) {
     state.highColIndex = -1;
     state.diffColIndex = -1;
     state.isinColIndex = -1;
+    state.promoterColIndex = -1;
     
     headers.forEach((h, idx) => {
         const hStr = String(h || '').toUpperCase().trim();
@@ -989,6 +1003,7 @@ function detectColumnIndexes(headers) {
         if (hStr === 'HIGH') state.highColIndex = idx;
         if (hStr === 'DIFF') state.diffColIndex = idx;
         if (hStr === 'ISIN') state.isinColIndex = idx;
+        if (hStr.includes('PROMOTER') || hStr.includes('પ્રમોટર')) state.promoterColIndex = idx;
     });
     
     // Automatically set latestDateColIndex as the first column after HIGH or DIFF
@@ -1066,7 +1081,8 @@ async function saveMasterToCloud() {
             headers: headers,
             updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
             chunkCount: chunkCount,
-            totalRows: totalRows
+            totalRows: totalRows,
+            volumesJson: state.latestVolumes ? JSON.stringify(Array.from(state.latestVolumes.entries())) : "[]"
         });
 
         // Save chunks
@@ -1119,6 +1135,18 @@ async function loadMasterFromCloud() {
         const chunkCount = metaData.chunkCount;
         const filename = metaData.filename || 'Master_Cloud.xlsx';
         const filesize = metaData.filesize || 'Cloud Stored';
+
+        if (metaData.volumesJson) {
+            try {
+                state.latestVolumes = new Map(JSON.parse(metaData.volumesJson));
+                setLocalStorageItem('latest_volumes', metaData.volumesJson);
+            } catch (e) {
+                console.error("Failed to parse cloud volumes:", e);
+                state.latestVolumes = new Map();
+            }
+        } else {
+            state.latestVolumes = new Map();
+        }
 
         log(`Found cloud master database: ${filename} (Total Chunks: ${chunkCount})`, 'info');
 
@@ -1240,6 +1268,7 @@ function autoRenderIfProcessed() {
             renderGainersAnalysis();
             renderMorningPicks();
             renderInvestorAdvice();
+            renderVolumePromoterPicks();
             
             researchSection.classList.remove('hidden');
             downloadBtn.disabled = false;
@@ -1811,6 +1840,9 @@ function saveMasterToLocalStorage() {
             setLocalStorageItem('master_excel_sheet_name', state.masterSheetName || 'Sheet1');
             setLocalStorageItem('master_excel_filename', state.masterFile ? state.masterFile.name : 'Master_Stored.xlsx');
             setLocalStorageItem('master_excel_filesize', state.masterFile ? formatBytes(state.masterFile.size) : 'Saved Data');
+            if (state.latestVolumes) {
+                setLocalStorageItem('latest_volumes', JSON.stringify(Array.from(state.latestVolumes.entries())));
+            }
         } catch (e) {
             console.error(e);
             showNotification('Could not save data to browser storage.', 'error');
@@ -1825,6 +1857,18 @@ function loadMasterFromLocalStorage() {
             const rawData = JSON.parse(storedDataStr);
             state.masterSheetName = getLocalStorageItem('master_excel_sheet_name') || 'Sheet1';
             
+            const storedVolumes = getLocalStorageItem('latest_volumes');
+            if (storedVolumes) {
+                try {
+                    state.latestVolumes = new Map(JSON.parse(storedVolumes));
+                } catch (e) {
+                    console.error("Failed to parse stored volumes:", e);
+                    state.latestVolumes = new Map();
+                }
+            } else {
+                state.latestVolumes = new Map();
+            }
+
             // Strictly keep only SERIES = "EQ" when loading
             state.masterData = filterMasterForEQOnly(rawData);
             
@@ -2360,6 +2404,22 @@ async function processFiles() {
             }
             if (!prevCloseKey) prevCloseKey = csvKeys.find(k => k.toUpperCase().includes('PREV') && k.toUpperCase().includes('CLOSE'));
             
+            // Detect Volume column if this is the newest file in the chronological batch
+            const isNewestFile = (fIdx === filesToProcess.length - 1);
+            let volumeKey = null;
+            if (isNewestFile && csvKeys.length > 0) {
+                const volumeCandidates = ['TTL_TRD_QTY', 'TOTTRDQTY', 'VOLUME', 'QTY', 'NO_OF_SHRS', 'NO_OF_SHARES', 'NET_QTY', 'TOTAL_TRADED_QUANTITY', 'TOTAL_TRADED_QTY', 'TRADED_QTY', 'TRD_QTY'];
+                volumeKey = csvKeys.find(k => volumeCandidates.includes(k.toUpperCase().trim()));
+                if (!volumeKey) {
+                    volumeKey = csvKeys.find(k => k.toUpperCase().includes('VOLUME') || k.toUpperCase().includes('QTY') || k.toUpperCase().includes('SHRS'));
+                }
+                if (volumeKey) {
+                    log(`- Detected Volume column in CSV: ${volumeKey}`, 'info');
+                } else {
+                    log(`- Warning: Could not find volume column in daily CSV.`, 'warning');
+                }
+            }
+
             // Build map for CSV lookups
             const bhavcopyRowMap = new Map();
             csvData.forEach(row => {
@@ -2451,6 +2511,13 @@ async function processFiles() {
                     const closePriceVal = parseFloat(csvRow[closePriceKey]);
                     const prevCloseVal = prevCloseKey ? parseFloat(csvRow[prevCloseKey]) : NaN;
                     
+                    if (isNewestFile && volumeKey) {
+                        const volVal = parseFloat(csvRow[volumeKey]);
+                        if (!isNaN(volVal)) {
+                            state.latestVolumes.set(companySymbol, volVal);
+                        }
+                    }
+
                     if (existingDateColIndex !== -1) {
                         row[existingDateColIndex] = isNaN(closePriceVal) ? csvRow[closePriceKey] : closePriceVal;
                     } else {
@@ -2677,6 +2744,7 @@ async function processFiles() {
         renderGainersAnalysis();
         renderMorningPicks();
         renderInvestorAdvice();
+        renderVolumePromoterPicks();
         
         researchSection.classList.remove('hidden');
         downloadBtn.disabled = false;
@@ -4667,6 +4735,164 @@ window.showAdviceDetails = function(symbol) {
     `;
 
     modal.classList.remove('hidden');
+};
+
+// =====================================================================
+//  HIGH VOLUME & PROMOTER 70%+ TABS — Custom Analysis
+// =====================================================================
+window.renderVolumePromoterPicks = function() {
+    const emptyState   = document.getElementById('vol-promoter-empty-state');
+    const tableWrapper = document.getElementById('vol-promoter-table-wrapper');
+    const badge        = document.getElementById('vol-promoter-count-badge');
+    const tbody        = document.getElementById('vol-promoter-tbody');
+    if (!tbody) return;
+
+    const data = state.processedMasterData;
+    if (!data || data.length < 2) {
+        if (emptyState)   emptyState.style.display  = '';
+        if (tableWrapper) tableWrapper.style.display = 'none';
+        if (badge)        badge.textContent = '0 Stocks';
+        return;
+    }
+
+    const headers = data[0];
+    detectColumnIndexes(headers);
+    const symCol  = state.symbolColIndex;
+    const serCol  = state.seriesColIndex;
+    const hiCol   = state.highColIndex;
+    const diffCol = state.diffColIndex;
+    const promCol = state.promoterColIndex;
+
+    let firstDateCol = -1;
+    if (hiCol   !== -1) firstDateCol = hiCol + 1;
+    else if (diffCol !== -1) firstDateCol = diffCol + 1;
+
+    // We need a promoter column to filter
+    if (promCol === -1) {
+        console.warn("Promoter column not found in headers:", headers);
+        if (emptyState) {
+            emptyState.querySelector('p').innerHTML = "માસ્ટર એક્સેલ ફાઇલમાં <strong>Promoter Holding</strong> અથવા <strong>પ્રમોટર હિસ્સો</strong> નામનો કોલમ મળ્યો નથી.";
+            emptyState.style.display = '';
+        }
+        if (tableWrapper) tableWrapper.style.display = 'none';
+        if (badge)        badge.textContent = '0 Stocks';
+        return;
+    }
+
+    if (firstDateCol === -1 || firstDateCol >= headers.length || (headers.length - firstDateCol) < 5) {
+        // We need at least 5 days of data to check if it's increasing for the last 5 days
+        if (emptyState) {
+            emptyState.querySelector('p').innerHTML = "ભાવ વધારાનો ટ્રેન્ડ ચકાસવા માટે ઓછામાં ઓછો ૫ દિવસનો Bhavcopy ડેટા હોવો જરૂરી છે.";
+            emptyState.style.display = '';
+        }
+        if (tableWrapper) tableWrapper.style.display = 'none';
+        if (badge)        badge.textContent = '0 Stocks';
+        return;
+    }
+
+    const results = [];
+
+    const parsePromoterHolding = (val) => {
+        if (val === undefined || val === null || val === '') return 0;
+        if (typeof val === 'number') {
+            if (val > 0 && val <= 1) return val * 100;
+            return val;
+        }
+        let str = String(val).replace(/%/g, '').trim();
+        let num = parseFloat(str);
+        if (isNaN(num)) return 0;
+        if (num > 0 && num <= 1 && String(val).indexOf('.') !== -1 && !String(val).includes('%')) {
+            return num * 100;
+        }
+        return num;
+    };
+
+    for (let r = 1; r < data.length; r++) {
+        const row = data[r];
+        if (!row) continue;
+        const sym    = String(row[symCol] || '').trim().toUpperCase();
+        const series = serCol !== -1 ? String(row[serCol] || '').trim().toUpperCase() : 'EQ';
+        if (!sym || series !== 'EQ') continue;
+
+        // 1. Check Promoter Holding > 70%
+        const promoterHolding = parsePromoterHolding(row[promCol]);
+        if (promoterHolding <= 70) continue;
+
+        // 2. Check price increasing for last 5 days
+        const prices = [];
+        for (let c = firstDateCol; c < Math.min(firstDateCol + 5, headers.length); c++) {
+            const v = parseFloat(row[c]);
+            if (!isNaN(v) && v > 0) prices.push(v);
+        }
+        if (prices.length < 5) continue;
+
+        const isIncreasing = prices[0] > prices[1] && prices[1] > prices[2] && prices[2] > prices[3] && prices[3] > prices[4];
+        if (!isIncreasing) continue;
+
+        // 3. Get Volume
+        let volume = state.latestVolumes.get(sym) || 0;
+        if (volume === 0) {
+            const volColIdx = headers.findIndex(h => {
+                const hs = String(h || '').toUpperCase().trim();
+                return hs === 'VOLUME' || hs === 'VOL' || hs === 'QTY' || hs === 'TTL_TRD_QTY' || hs === 'TOTTRDQTY';
+            });
+            if (volColIdx !== -1) {
+                const volVal = parseFloat(row[volColIdx]);
+                if (!isNaN(volVal)) volume = volVal;
+            }
+        }
+
+        results.push({
+            symbol: sym,
+            latestPrice: prices[0],
+            volume,
+            promoterHolding,
+            prices
+        });
+    }
+
+    // Sort by Volume descending
+    results.sort((a, b) => b.volume - a.volume);
+
+    if (results.length === 0) {
+        if (emptyState) {
+            emptyState.querySelector('p').innerHTML = "આપેલ માપદંડ (પ્રમોટર હિસ્સો > ૭૦% અને છેલ્લા ૫ દિવસથી ભાવ વધતો હોય) મુજબ કોઈ શેર મળ્યા નથી.";
+            emptyState.style.display = '';
+        }
+        if (tableWrapper) tableWrapper.style.display = 'none';
+        if (badge)        badge.textContent = '0 Stocks';
+        return;
+    }
+
+    if (emptyState)   emptyState.style.display  = 'none';
+    if (tableWrapper) tableWrapper.style.display = '';
+    if (badge)        badge.textContent = `${results.length} Stocks`;
+
+    const formatVolume = (v) => {
+        if (v >= 10000000) return (v / 10000000).toFixed(2) + ' Cr';
+        if (v >= 100000) return (v / 100000).toFixed(2) + ' Lk';
+        if (v >= 1000) return (v / 1000).toFixed(1) + ' K';
+        return v.toString();
+    };
+
+    tbody.innerHTML = results.map((item, idx) => {
+        const trendHtml = `<span style="color:var(--success-color);"><i class="fa-solid fa-arrow-trend-up"></i> 5 Days Up</span>`;
+        return `
+            <tr class="clickable-row" onclick="showResearchModal('${item.symbol}')" title="ચાર્ટ અને વિગતો જુઓ">
+                <td style="text-align:center;"><span style="background:rgba(239,68,68,0.15);color:#ef4444;font-weight:700;padding:0.15rem 0.5rem;border-radius:4px;font-size:0.82rem;">${idx+1}</span></td>
+                <td><strong style="color:var(--accent-color);">${item.symbol}</strong></td>
+                <td>₹${item.latestPrice.toFixed(2)}</td>
+                <td style="font-weight:600;color:#cbd5e1;">${item.volume > 0 ? formatVolume(item.volume) : '<span style="color:var(--text-secondary);font-size:0.8rem;">No Data</span>'}</td>
+                <td style="color:#f59e0b;font-weight:700;">${item.promoterHolding.toFixed(2)}%</td>
+                <td>${trendHtml}</td>
+                <td style="text-align:center;">
+                    <button onclick="showResearchModal('${item.symbol}');event.stopPropagation();"
+                        style="background:rgba(239,68,68,0.12);border:1px solid #ef4444;color:#ef4444;border-radius:5px;padding:0.22rem 0.5rem;cursor:pointer;font-size:0.8rem;">
+                        <i class="fa-solid fa-chart-area"></i>
+                    </button>
+                </td>
+            </tr>`;
+    }).join('');
 };
 
 // Run on load
