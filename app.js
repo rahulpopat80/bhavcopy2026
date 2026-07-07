@@ -3800,7 +3800,7 @@ async function fetchMarketIndices() {
             const data = await fetchYahooFinanceData(item.ticker);
             const meta = data.chart.result[0].meta;
             const currentPrice = meta.regularMarketPrice;
-            const prevClose    = meta.previousClose;
+            const prevClose    = meta.previousClose !== undefined ? meta.previousClose : meta.chartPreviousClose;
 
             if (currentPrice !== undefined && prevClose !== undefined) {
                 const change    = currentPrice - prevClose;
