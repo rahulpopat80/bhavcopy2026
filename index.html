@@ -291,6 +291,59 @@
 
                 <!-- Right Side: Top Performer + Gainers List -->
                 <div class="movement-column-wrapper">
+                    <!-- Market Cap Segment Analyzer Card -->
+                    <div class="card segment-analyzer-card" id="segment-analyzer-card" style="margin-bottom: 1.25rem;">
+                        <div class="movement-header" style="margin-bottom: 0.5rem;">
+                            <i class="fa-solid fa-chart-pie movement-icon" style="color: var(--accent-color);"></i>
+                            <h2 style="color: var(--text-primary); font-size: 1.1rem;">સેગમેન્ટ પર્ફોર્મન્સ (Large, Mid &amp; Small Cap)</h2>
+                        </div>
+                        <p class="card-desc" style="margin-bottom: 1rem;">આજે ક્યો સેગમેન્ટ (લાર્જકેપ, મિડકેપ કે સ્મોલકેપ) બજારમાં વધુ મજબૂત છે તેનું રીઅલ-ટાઇમ વિશ્લેષણ.</p>
+                        
+                        <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                            <!-- Large Cap Row -->
+                            <div class="segment-row" id="seg-large" style="display: flex; align-items: center; justify-content: space-between; padding: 0.65rem 0.85rem; background: rgba(255,255,255,0.03); border: 1px solid var(--card-border); border-radius: 8px;">
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <span class="badge" style="background: rgba(59,130,246,0.15); color: #3b82f6; font-size: 0.72rem; padding: 0.2rem 0.5rem; font-weight: 700; border-radius: 4px;">LARGE CAP</span>
+                                    <span style="font-weight: 600; font-size: 0.88rem; color: #fff;">NIFTY 100</span>
+                                </div>
+                                <div style="text-align: right;">
+                                    <div id="seg-large-val" style="font-weight: 700; font-size: 0.95rem; color: #fff;">Loading...</div>
+                                    <div id="seg-large-chg" style="font-size: 0.78rem; font-weight: 600; color: var(--text-secondary);">-</div>
+                                </div>
+                            </div>
+
+                            <!-- Mid Cap Row -->
+                            <div class="segment-row" id="seg-mid" style="display: flex; align-items: center; justify-content: space-between; padding: 0.65rem 0.85rem; background: rgba(255,255,255,0.03); border: 1px solid var(--card-border); border-radius: 8px;">
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <span class="badge" style="background: rgba(168,85,247,0.15); color: #a855f7; font-size: 0.72rem; padding: 0.2rem 0.5rem; font-weight: 700; border-radius: 4px;">MID CAP</span>
+                                    <span style="font-weight: 600; font-size: 0.88rem; color: #fff;">NIFTY MID 100</span>
+                                </div>
+                                <div style="text-align: right;">
+                                    <div id="seg-mid-val" style="font-weight: 700; font-size: 0.95rem; color: #fff;">Loading...</div>
+                                    <div id="seg-mid-chg" style="font-size: 0.78rem; font-weight: 600; color: var(--text-secondary);">-</div>
+                                </div>
+                            </div>
+
+                            <!-- Small Cap Row -->
+                            <div class="segment-row" id="seg-small" style="display: flex; align-items: center; justify-content: space-between; padding: 0.65rem 0.85rem; background: rgba(255,255,255,0.03); border: 1px solid var(--card-border); border-radius: 8px;">
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <span class="badge" style="background: rgba(236,72,153,0.15); color: #ec4899; font-size: 0.72rem; padding: 0.2rem 0.5rem; font-weight: 700; border-radius: 4px;">SMALL CAP</span>
+                                    <span style="font-weight: 600; font-size: 0.88rem; color: #fff;">NIFTY SMALL 100</span>
+                                </div>
+                                <div style="text-align: right;">
+                                    <div id="seg-small-val" style="font-weight: 700; font-size: 0.95rem; color: #fff;">Loading...</div>
+                                    <div id="seg-small-chg" style="font-size: 0.78rem; font-weight: 600; color: var(--text-secondary);">-</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Leaderboard Badge -->
+                        <div id="segment-leader-container" style="margin-top: 1rem; padding: 0.65rem 0.85rem; background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.25); border-radius: 8px; display: flex; align-items: center; justify-content: space-between; font-size: 0.85rem;">
+                            <span style="color: var(--text-secondary); font-weight: 500;">સૌથી મજબૂત સેગમેન્ટ:</span>
+                            <span id="segment-leader-badge" style="font-weight: 700; color: #10b981; text-transform: uppercase;">Determining...</span>
+                        </div>
+                    </div>
+
                     <!-- Top Performer Widget -->
                     <div class="card top-performer-card hidden" id="top-performer-card">
                         <div class="performer-header">
@@ -319,6 +372,7 @@
                                 <button class="toggle-btn" id="gainer-toggle-3">3-Day</button>
                                 <button class="toggle-btn active" id="gainer-toggle-5">5-Day</button>
                                 <button class="toggle-btn" id="gainer-toggle-30">30-Day</button>
+                                <button class="toggle-btn" id="gainer-toggle-common" style="border-color: var(--success-color); color: var(--success-color);"><i class="fa-solid fa-arrows-spin"></i> Common</button>
                             </div>
                         </div>
                         <p class="card-desc" id="gainer-card-desc">Companies showing the highest net positive close-to-close change over the last 5 active trading days.</p>
@@ -527,7 +581,7 @@
                                 <th>Trend</th>
                                 <th>Score</th>
                                 <th>Suggestion</th>
-                                <th style="text-align:center;">Research</th>
+                                <th style="text-align:center;">ઍક્શન (Action)</th>
                             </tr>
                         </thead>
                         <tbody id="picks-tbody"></tbody>
@@ -709,7 +763,7 @@
                                 <th>વોલ્યુમ (Volume)</th>
                                 <th>પ્રમોટર હિસ્સો (Promoter %)</th>
                                 <th>૫ દિવસનો ટ્રેન્ડ (5-Day Trend)</th>
-                                <th style="text-align:center;">રિસર્ચ (Research)</th>
+                                <th style="text-align:center;">ઍક્શન (Action)</th>
                             </tr>
                         </thead>
                         <tbody id="vol-promoter-tbody"></tbody>

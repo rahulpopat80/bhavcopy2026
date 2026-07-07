@@ -350,8 +350,9 @@ function initEvents() {
     const toggle3 = document.getElementById('gainer-toggle-3');
     const toggle5 = document.getElementById('gainer-toggle-5');
     const toggle30 = document.getElementById('gainer-toggle-30');
+    const toggleCommon = document.getElementById('gainer-toggle-common');
     
-    const allToggles = [toggle1, toggle2, toggle3, toggle5, toggle30];
+    const allToggles = [toggle1, toggle2, toggle3, toggle5, toggle30, toggleCommon];
     const setGainerToggleActive = (activeToggle) => {
         allToggles.forEach(t => {
             if (t) t.classList.remove('active');
@@ -395,6 +396,14 @@ function initEvents() {
         toggle30.addEventListener('click', () => {
             setGainerToggleActive(toggle30);
             state.gainersWindow = 30;
+            renderGainersAnalysis();
+        });
+    }
+
+    if (toggleCommon) {
+        toggleCommon.addEventListener('click', () => {
+            setGainerToggleActive(toggleCommon);
+            state.gainersWindow = 'common';
             renderGainersAnalysis();
         });
     }
@@ -2844,30 +2853,70 @@ function renderGainersAnalysis() {
         
         if (!symbol) continue;
         
-        // Collect prices from last windowDays + 1 date columns going forward to compare today vs N days ago
-        const prices = [];
-        const limit = Math.min(row.length, insertIdx + windowDays + 1);
-        for (let colIdx = insertIdx; colIdx < limit; colIdx++) {
-            const pVal = parseFloat(row[colIdx]);
-            if (!isNaN(pVal)) {
-                prices.push(pVal);
+        if (windowDays === 'common') {
+            // Collect up to 31 prices (30 trading days + today)
+            const prices = [];
+            const limit = Math.min(row.length, insertIdx + 31);
+            for (let colIdx = insertIdx; colIdx < limit; colIdx++) {
+                const pVal = parseFloat(row[colIdx]);
+                if (!isNaN(pVal)) prices.push(pVal);
             }
-        }
-        
-        // Need today's price (prices[0]) and at least one older price to compute gain
-        if (prices.length >= 2) {
-            const todayPrice = prices[0];
-            const oldestPrice = prices[prices.length - 1]; // oldest available date in the window
-            const gain = parseFloat((todayPrice - oldestPrice).toFixed(2));
-            const gainPct = oldestPrice > 0 ? parseFloat(((gain / oldestPrice) * 100).toFixed(2)) : 0;
             
-            gainersRows.push({
-                symbol: symbol,
-                old: oldestPrice,
-                today: todayPrice,
-                gain: gain,
-                pct: gainPct
-            });
+            if (prices.length >= 2) {
+                const todayPrice = prices[0];
+                const p1 = prices[Math.min(1, prices.length - 1)];
+                const p2 = prices[Math.min(2, prices.length - 1)];
+                const p3 = prices[Math.min(3, prices.length - 1)];
+                const p5 = prices[Math.min(5, prices.length - 1)];
+                const p30 = prices[Math.min(30, prices.length - 1)];
+                
+                const g1 = todayPrice - p1;
+                const g2 = todayPrice - p2;
+                const g3 = todayPrice - p3;
+                const g5 = todayPrice - p5;
+                const g30 = todayPrice - p30;
+                
+                // If the price increased in all 5 periods (positive net gains)
+                if (g1 > 0 && g2 > 0 && g3 > 0 && g5 > 0 && g30 > 0) {
+                    const oldestPrice = p5; // default old price for display benchmark
+                    const gain = parseFloat((todayPrice - oldestPrice).toFixed(2));
+                    const gainPct = oldestPrice > 0 ? parseFloat(((gain / oldestPrice) * 100).toFixed(2)) : 0;
+                    
+                    gainersRows.push({
+                        symbol: symbol,
+                        old: oldestPrice,
+                        today: todayPrice,
+                        gain: gain,
+                        pct: gainPct
+                    });
+                }
+            }
+        } else {
+            // Collect prices from last windowDays + 1 date columns going forward to compare today vs N days ago
+            const prices = [];
+            const limit = Math.min(row.length, insertIdx + windowDays + 1);
+            for (let colIdx = insertIdx; colIdx < limit; colIdx++) {
+                const pVal = parseFloat(row[colIdx]);
+                if (!isNaN(pVal)) {
+                    prices.push(pVal);
+                }
+            }
+            
+            // Need today's price (prices[0]) and at least one older price to compute gain
+            if (prices.length >= 2) {
+                const todayPrice = prices[0];
+                const oldestPrice = prices[prices.length - 1]; // oldest available date in the window
+                const gain = parseFloat((todayPrice - oldestPrice).toFixed(2));
+                const gainPct = oldestPrice > 0 ? parseFloat(((gain / oldestPrice) * 100).toFixed(2)) : 0;
+                
+                gainersRows.push({
+                    symbol: symbol,
+                    old: oldestPrice,
+                    today: todayPrice,
+                    gain: gain,
+                    pct: gainPct
+                });
+            }
         }
     }
     
@@ -2895,11 +2944,13 @@ function renderGainersAnalysis() {
         
         // Update labels dynamically based on window selection
         const performerHeader = topPerformerCard.querySelector('.performer-header h2');
-        if (performerHeader) performerHeader.textContent = `${windowDays}-Day Leader`;
+        if (performerHeader) {
+            performerHeader.textContent = windowDays === 'common' ? 'Common Leader' : `${windowDays}-Day Leader`;
+        }
         
         const oldPriceLabel = document.getElementById('performer-old-price').parentNode;
         if (oldPriceLabel) {
-            oldPriceLabel.childNodes[0].textContent = `Old Price (${windowDays}d): `;
+            oldPriceLabel.childNodes[0].textContent = windowDays === 'common' ? 'Old Price (5d): ' : `Old Price (${windowDays}d): `;
         }
         
         topPerformerCard.classList.remove('hidden');
@@ -2910,13 +2961,19 @@ function renderGainersAnalysis() {
     // Update card title and descriptions
     const cardTitle = document.getElementById('gainer-card-title');
     const sliceLimit = 50;
-    if (cardTitle) cardTitle.textContent = `Top ${sliceLimit} Gainers (${windowDays} Day${windowDays > 1 ? 's' : ''})`;
-    
-    const cardDesc = document.getElementById('gainer-card-desc');
-    if (cardDesc) cardDesc.textContent = `Companies showing the highest net positive close-to-close change over the last ${windowDays} active trading days.`;
-    
-    const tableHeaderOld = document.getElementById('gainer-table-old-price-header');
-    if (tableHeaderOld) tableHeaderOld.textContent = `Price (${windowDays}d)`;
+    if (windowDays === 'common') {
+        if (cardTitle) cardTitle.textContent = `Common Gainers (1d, 2d, 3d, 5d, 30d)`;
+        const cardDesc = document.getElementById('gainer-card-desc');
+        if (cardDesc) cardDesc.textContent = `કોમન સ્ક્રિપ્ટ્સ જે 1, 2, 3, 5 અને 30 દિવસના તમામ સમયગાળામાં સતત પોઝિટિવ વળતર ધરાવે છે.`;
+        const tableHeaderOld = document.getElementById('gainer-table-old-price-header');
+        if (tableHeaderOld) tableHeaderOld.textContent = `Price (5d)`;
+    } else {
+        if (cardTitle) cardTitle.textContent = `Top ${sliceLimit} Gainers (${windowDays} Day${windowDays > 1 ? 's' : ''})`;
+        const cardDesc = document.getElementById('gainer-card-desc');
+        if (cardDesc) cardDesc.textContent = `Companies showing the highest net positive close-to-close change over the last ${windowDays} active trading days.`;
+        const tableHeaderOld = document.getElementById('gainer-table-old-price-header');
+        if (tableHeaderOld) tableHeaderOld.textContent = `Price (${windowDays}d)`;
+    }
     
     // Select top 50
     const topGainers = gainersRows.slice(0, sliceLimit);
@@ -3730,7 +3787,10 @@ async function fetchMarketIndices() {
     // Fallbacks
     const indices = [
         { id: 'nifty',  ticker: '^NSEI',  name: 'NIFTY 50', success: officialNiftySuccess },
-        { id: 'sensex', ticker: '^BSESN', name: 'SENSEX',   success: officialSensexSuccess }
+        { id: 'sensex', ticker: '^BSESN', name: 'SENSEX',   success: officialSensexSuccess },
+        { id: 'seg-large', ticker: '^CNX100', name: 'NIFTY 100', success: false },
+        { id: 'seg-mid',   ticker: '^CRSMID', name: 'NIFTY MIDCAP 100', success: false },
+        { id: 'seg-small', ticker: '^CNXSC',  name: 'NIFTY SMALLCAP 100', success: false }
     ];
 
     for (const item of indices) {
@@ -3748,7 +3808,7 @@ async function fetchMarketIndices() {
                 const valEl = document.getElementById(`${item.id}-val`);
                 const chgEl = document.getElementById(`${item.id}-chg`);
                 if (valEl && chgEl) {
-                    const decimals = item.id === 'sensex' ? 0 : 2;
+                    const decimals = (item.id === 'sensex' || item.id === 'seg-large' || item.id === 'seg-mid' || item.id === 'seg-small') ? 2 : 2;
                     valEl.textContent = currentPrice.toLocaleString('en-IN', {
                         minimumFractionDigits: decimals,
                         maximumFractionDigits: decimals
@@ -3757,11 +3817,55 @@ async function fetchMarketIndices() {
                     const color = change >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
                     chgEl.textContent = `${sign}${change.toFixed(2)} (${sign}${changePct.toFixed(2)}%)`;
                     chgEl.style.color = color;
+                    
+                    // Save the percent change for segment analysis comparison
+                    valEl.setAttribute('data-pct', changePct);
                 }
             }
         } catch (e) {
             console.error(`Failed to fetch fallback index ${item.name}:`, e.message);
         }
+    }
+
+    // Calculate Segment Leader (Large vs Mid vs Small Cap)
+    try {
+        const largeValEl = document.getElementById('seg-large-val');
+        const midValEl = document.getElementById('seg-mid-val');
+        const smallValEl = document.getElementById('seg-small-val');
+        
+        if (largeValEl && midValEl && smallValEl) {
+            const largePct = parseFloat(largeValEl.getAttribute('data-pct')) || 0;
+            const midPct = parseFloat(midValEl.getAttribute('data-pct')) || 0;
+            const smallPct = parseFloat(smallValEl.getAttribute('data-pct')) || 0;
+            
+            let leaderName = 'LARGE CAP (NIFTY 100)';
+            let leaderPct = largePct;
+            let leaderColor = '#3b82f6';
+            
+            if (midPct > leaderPct) {
+                leaderName = 'MID CAP (NIFTY MID 100)';
+                leaderPct = midPct;
+                leaderColor = '#a855f7';
+            }
+            if (smallPct > leaderPct) {
+                leaderName = 'SMALL CAP (NIFTY SMALL 100)';
+                leaderPct = smallPct;
+                leaderColor = '#ec4899';
+            }
+            
+            const leaderBadge = document.getElementById('segment-leader-badge');
+            const leaderContainer = document.getElementById('segment-leader-container');
+            if (leaderBadge) {
+                leaderBadge.textContent = `${leaderName} (${leaderPct >= 0 ? '+' : ''}${leaderPct.toFixed(2)}%)`;
+                leaderBadge.style.color = leaderColor;
+                if (leaderContainer) {
+                    leaderContainer.style.borderColor = leaderColor;
+                    leaderContainer.style.background = `${leaderColor}10`;
+                }
+            }
+        }
+    } catch (err) {
+        console.warn("Failed to compute segment leader:", err);
     }
 
     // --- Gold & Silver (Primary: IBJA Scraper, Fallback: COMEX GC=F / SI=F) ---
@@ -4075,7 +4179,12 @@ window.addToWatchlist = function(symbol, addedPrice) {
     saveWatchlistToStorage();
     saveWatchlistItem(newItem); // Firebase (async)
     showNotification(`⭐ ${symbol} Watchlist માં ઉમેરાયું!`, 'success');
+    
+    // Refresh all views
     renderGainersAnalysis();
+    renderWatchlist();
+    if (typeof renderMorningPicks === 'function') renderMorningPicks();
+    if (typeof renderVolumePromoterPicks === 'function') renderVolumePromoterPicks();
 };
 
 // Remove a stock
@@ -4084,8 +4193,12 @@ window.removeFromWatchlist = function(symbol) {
     saveWatchlistToStorage();
     deleteWatchlistItem(symbol); // Firebase (async)
     showNotification(`${symbol} Watchlist માંથી કાઢ્યું.`, 'info');
+    
+    // Refresh all views
     renderGainersAnalysis();
     renderWatchlist();
+    if (typeof renderMorningPicks === 'function') renderMorningPicks();
+    if (typeof renderVolumePromoterPicks === 'function') renderVolumePromoterPicks();
 };
 
 // Clear all
@@ -4095,7 +4208,13 @@ window.clearWatchlist = function() {
     watchlistItems = [];
     saveWatchlistToStorage();
     clearWatchlistInCloud(); // Firebase (async)
+    
+    // Refresh all views
+    renderGainersAnalysis();
     renderWatchlist();
+    if (typeof renderMorningPicks === 'function') renderMorningPicks();
+    if (typeof renderVolumePromoterPicks === 'function') renderVolumePromoterPicks();
+    
     showNotification('Watchlist ખાલી કરવામાં આવી.', 'info');
 };
 
@@ -4330,6 +4449,12 @@ window.renderMorningPicks = function() {
         const col5   = item.mom5 >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
         const rankBg = idx === 0 ? '#f59e0b' : idx === 1 ? '#94a3b8' : idx === 2 ? '#b87333' : 'transparent';
         const rankColor = idx < 3 ? '#000' : 'var(--text-secondary)';
+        
+        const inWatchlist = watchlistItems.some(w => w.symbol === item.symbol);
+        const starBtn = inWatchlist
+            ? `<button onclick="removeFromWatchlist('${item.symbol}'); event.stopPropagation();" title="Watchlistમાંથી કાઢો" style="background:rgba(245,158,11,0.18); border:1px solid #f59e0b; color:#f59e0b; border-radius:5px; padding:0.22rem 0.5rem; cursor:pointer; font-size:0.8rem; margin-right:5px;"><i class='fa-solid fa-star'></i></button>`
+            : `<button onclick="addToWatchlist('${item.symbol}', ${item.latestPrice}); event.stopPropagation();" title="Watchlistમાં ઉમેરો" style="background:none; border:1px solid rgba(255,255,255,0.15); color:var(--text-secondary); border-radius:5px; padding:0.22rem 0.5rem; cursor:pointer; font-size:0.8rem; margin-right:5px;"><i class='fa-regular fa-star'></i></button>`;
+
         return `
             <tr class="clickable-row" onclick="showResearchModal('${item.symbol}')" title="Chart \u0a85\u0aa8\u0ac7 \u0ab5\u0abf\u0a97\u0aa4">
                 <td style="text-align:center;"><span style="background:${rankBg};color:${rankColor};font-weight:700;padding:0.15rem 0.5rem;border-radius:4px;font-size:0.82rem;">${idx+1}</span></td>
@@ -4347,7 +4472,8 @@ window.renderMorningPicks = function() {
                     </div>
                 </td>
                 <td><span style="color:${item.suggColor};font-weight:600;font-size:0.82rem;">${item.suggestion}</span></td>
-                <td style="text-align:center;">
+                <td style="text-align:center; white-space:nowrap;">
+                    ${starBtn}
                     <button onclick="showResearchModal('${item.symbol}');event.stopPropagation();"
                         style="background:rgba(59,130,246,0.12);border:1px solid var(--accent-color);color:var(--accent-color);border-radius:5px;padding:0.22rem 0.5rem;cursor:pointer;font-size:0.8rem;">
                         <i class="fa-solid fa-chart-area"></i>
@@ -5122,6 +5248,12 @@ window.renderVolumePromoterPicks = async function(forceRefresh = false) {
 
         tbody.innerHTML = itemsList.map((item, idx) => {
             const trendHtml = `<span style="color:var(--success-color);"><i class="fa-solid fa-arrow-trend-up"></i> 5 Days Up</span>`;
+            
+            const inWatchlist = watchlistItems.some(w => w.symbol === item.symbol);
+            const starBtn = inWatchlist
+                ? `<button onclick="removeFromWatchlist('${item.symbol}'); event.stopPropagation();" title="Watchlistમાંથી કાઢો" style="background:rgba(245,158,11,0.18); border:1px solid #f59e0b; color:#f59e0b; border-radius:5px; padding:0.22rem 0.5rem; cursor:pointer; font-size:0.8rem; margin-right:5px;"><i class='fa-solid fa-star'></i></button>`
+                : `<button onclick="addToWatchlist('${item.symbol}', ${item.latestPrice}); event.stopPropagation();" title="Watchlistમાં ઉમેરો" style="background:none; border:1px solid rgba(255,255,255,0.15); color:var(--text-secondary); border-radius:5px; padding:0.22rem 0.5rem; cursor:pointer; font-size:0.8rem; margin-right:5px;"><i class='fa-regular fa-star'></i></button>`;
+
             return `
                 <tr class="clickable-row" onclick="showResearchModal('${item.symbol}')" title="ચાર્ટ અને વિગતો જુઓ">
                     <td style="text-align:center;"><span style="background:rgba(239,68,68,0.15);color:#ef4444;font-weight:700;padding:0.15rem 0.5rem;border-radius:4px;font-size:0.82rem;">${idx+1}</span></td>
@@ -5130,7 +5262,8 @@ window.renderVolumePromoterPicks = async function(forceRefresh = false) {
                     <td style="font-weight:600;color:#cbd5e1;">${item.volume > 0 ? formatVolume(item.volume) : '<span style="color:var(--text-secondary);font-size:0.8rem;">No Data</span>'}</td>
                     <td style="color:#f59e0b;font-weight:700;">${item.promoterHolding.toFixed(2)}%</td>
                     <td>${trendHtml}</td>
-                    <td style="text-align:center;">
+                    <td style="text-align:center; white-space:nowrap;">
+                        ${starBtn}
                         <button onclick="showResearchModal('${item.symbol}');event.stopPropagation();"
                             style="background:rgba(239,68,68,0.12);border:1px solid #ef4444;color:#ef4444;border-radius:5px;padding:0.22rem 0.5rem;cursor:pointer;font-size:0.8rem;">
                             <i class="fa-solid fa-chart-area"></i>
