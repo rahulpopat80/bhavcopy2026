@@ -216,6 +216,16 @@ function initEvents() {
             if (typeof fetchGlobalIndices === 'function') {
                 fetchGlobalIndices(false);
             }
+        } else if (tabId === 'tab-intraday') {
+            const visibleSymbols = Array.from(document.querySelectorAll('#intraday-table tbody tr')).map(tr => {
+                const symCell = tr.cells[1];
+                return symCell ? symCell.textContent.trim().toUpperCase() : null;
+            }).filter(s => s);
+            if (visibleSymbols.length > 0) {
+                if (typeof fetchIntradayLivePrices === 'function') {
+                    await fetchIntradayLivePrices(visibleSymbols);
+                }
+            }
         }
     }, 10000);
 
@@ -304,6 +314,7 @@ function initEvents() {
     const tabVolPromoter = document.getElementById('tab-volume-promoter');
     const tabCircuits    = document.getElementById('tab-circuits');
     const tabGlobalIndices = document.getElementById('tab-global-indices');
+    const tabIntraday    = document.getElementById('tab-intraday');
     
     const researchTabContent      = document.getElementById('research-tab-content');
     const portfolioTabContent     = document.getElementById('portfolio-tab-content');
@@ -314,11 +325,12 @@ function initEvents() {
     const volPromoterTabContent   = document.getElementById('volume-promoter-tab-content');
     const circuitsTabContent     = document.getElementById('circuits-tab-content');
     const globalIndicesTabContent = document.getElementById('global-indices-tab-content');
+    const intradayTabContent      = document.getElementById('intraday-tab-content');
 
     const hideAllTabs = () => {
-        [researchTabContent, portfolioTabContent, resultsTabContent, watchlistTabContent, morningPicksTabContent, adviceTabContent, volPromoterTabContent, circuitsTabContent, globalIndicesTabContent]
+        [researchTabContent, portfolioTabContent, resultsTabContent, watchlistTabContent, morningPicksTabContent, adviceTabContent, volPromoterTabContent, circuitsTabContent, globalIndicesTabContent, intradayTabContent]
             .forEach(el => el && el.classList.add('hidden'));
-        [tabResearch, tabPortfolio, tabResults, tabWatchlist, tabMorning, tabAdvice, tabVolPromoter, tabCircuits, tabGlobalIndices]
+        [tabResearch, tabPortfolio, tabResults, tabWatchlist, tabMorning, tabAdvice, tabVolPromoter, tabCircuits, tabGlobalIndices, tabIntraday]
             .forEach(el => el && el.classList.remove('active'));
     };
 
@@ -399,6 +411,15 @@ function initEvents() {
             tabGlobalIndices.classList.add('active');
             globalIndicesTabContent.classList.remove('hidden');
             fetchGlobalIndices();
+        });
+    }
+
+    if (tabIntraday && intradayTabContent) {
+        tabIntraday.addEventListener('click', () => {
+            hideAllTabs();
+            tabIntraday.classList.add('active');
+            intradayTabContent.classList.remove('hidden');
+            renderIntraday();
         });
     }
 
@@ -5609,6 +5630,233 @@ window.fetchGlobalIndices = async function(showLoading = false) {
             </div>
         `;
     }).join('');
+};
+
+// =====================================================================
+// INTRADAY SCANNER ENGINE
+// =====================================================================
+
+let intradayLivePrices = new Map();
+
+window.renderIntraday = function(forceRefresh = false) {
+    const emptyState   = document.getElementById('intraday-empty-state');
+    const tableWrapper = document.getElementById('intraday-table-wrapper');
+    const badge        = document.getElementById('intraday-count-badge');
+    const tbody        = document.getElementById('intraday-tbody');
+    if (!tbody) return;
+
+    const data = state.processedMasterData;
+    if (!data || data.length < 2) {
+        if (emptyState)   emptyState.style.display  = '';
+        if (tableWrapper) tableWrapper.style.display = 'none';
+        if (badge)        badge.textContent = '0 Stocks';
+        return;
+    }
+
+    const headers = data[0];
+    detectColumnIndexes(headers);
+    const symCol  = state.symbolColIndex;
+    const serCol  = state.seriesColIndex;
+    const hiCol   = state.highColIndex;
+    const loCol   = state.lowColIndex;
+    const clsCol  = state.closeColIndex;
+    const prevCol = state.prevCloseColIndex;
+
+    let firstDateCol = -1;
+    if (hiCol !== -1) firstDateCol = hiCol + 1;
+    else if (state.diffColIndex !== -1) firstDateCol = state.diffColIndex + 1;
+
+    if (symCol === -1 || firstDateCol === -1 || firstDateCol >= headers.length || (headers.length - firstDateCol) < 2) {
+        if (emptyState)   emptyState.style.display  = '';
+        if (tableWrapper) tableWrapper.style.display = 'none';
+        if (badge)        badge.textContent = '0 Stocks';
+        return;
+    }
+
+    const results = [];
+
+    // Columns index determination for High, Low, Close, PrevClose from Excel
+    const highColIdx = headers.findIndex(h => ['HIGH', 'HI'].includes(String(h || '').toUpperCase().trim()));
+    const lowColIdx  = headers.findIndex(h => ['LOW', 'LO'].includes(String(h || '').toUpperCase().trim()));
+    const volColIdx  = headers.findIndex(h => ['VOLUME', 'VOL', 'QTY', 'TTL_TRD_QTY', 'TOTTRDQTY'].includes(String(h || '').toUpperCase().trim()));
+
+    for (let r = 1; r < data.length; r++) {
+        const row = data[r];
+        if (!row) continue;
+        const sym    = String(row[symCol] || '').trim().toUpperCase();
+        const series = serCol !== -1 ? String(row[serCol] || '').trim().toUpperCase() : 'EQ';
+        if (!sym || series !== 'EQ') continue;
+
+        // Get EOD prices
+        const todayClose     = parseFloat(row[firstDateCol]);
+        const yesterdayClose = parseFloat(row[firstDateCol + 1]);
+        const dailyHigh      = highColIdx !== -1 ? parseFloat(row[highColIdx]) : todayClose * 1.01;
+        const dailyLow       = lowColIdx !== -1 ? parseFloat(row[lowColIdx]) : todayClose * 0.99;
+
+        if (isNaN(todayClose) || isNaN(yesterdayClose) || yesterdayClose <= 0) continue;
+
+        // Get Volume
+        let volume = state.latestVolumes.get(sym) || 0;
+        if (volume === 0 && volColIdx !== -1) {
+            const volVal = parseFloat(row[volColIdx]);
+            if (!isNaN(volVal)) volume = volVal;
+        }
+
+        // Intraday Filtering:
+        // 1. High liquidity: volume >= 80,000 shares
+        if (volume < 80000) continue;
+
+        // 2. Volatility percentage: (High - Low) / Close * 100
+        const volatilityPct = todayClose > 0 ? ((dailyHigh - dailyLow) / todayClose) * 100 : 0;
+        // Optimal intraday volatility range (between 1.2% and 8.0%)
+        if (volatilityPct < 1.2 || volatilityPct > 8.0) continue;
+
+        const changePercent = ((todayClose - yesterdayClose) / yesterdayClose) * 100;
+        
+        // Pivot Point calculations
+        const P = (dailyHigh + dailyLow + todayClose) / 3;
+        const S1 = (2 * P) - dailyHigh;
+        const R1 = (2 * P) - dailyLow;
+
+        // Suggested SL & Target
+        let stopLoss = 0;
+        let target = 0;
+        let trend = 'Neutral ⚪';
+        let technicalRating = 'HOLD 🟡';
+        let ratingColor = '#f59e0b';
+        let ratingBg = 'rgba(245,158,11,0.12)';
+
+        if (changePercent >= 1.0) {
+            trend = 'Bullish 🟢';
+            stopLoss = Math.min(S1, todayClose * 0.985);
+            target = Math.max(R1, todayClose * 1.025);
+            if (changePercent >= 2.5) {
+                technicalRating = 'STRONG BUY 🟢';
+                ratingColor = 'var(--success-color)';
+                ratingBg = 'rgba(16,185,129,0.12)';
+            } else {
+                technicalRating = 'BUY 🟢';
+                ratingColor = '#4ade80';
+                ratingBg = 'rgba(74,222,128,0.12)';
+            }
+        } else if (changePercent <= -1.0) {
+            trend = 'Bearish 🔴';
+            stopLoss = Math.max(R1, todayClose * 1.015);
+            target = Math.min(S1, todayClose * 0.975);
+            if (changePercent <= -2.5) {
+                technicalRating = 'STRONG SELL 🔴';
+                ratingColor = 'var(--danger-color)';
+                ratingBg = 'rgba(239,68,68,0.12)';
+            } else {
+                technicalRating = 'SELL 🔴';
+                ratingColor = '#f87171';
+                ratingBg = 'rgba(248,113,113,0.12)';
+            }
+        } else {
+            // Neutral close-to-close, set target/SL based on today's range
+            stopLoss = todayClose * 0.99;
+            target = todayClose * 1.01;
+        }
+
+        results.push({
+            symbol: sym,
+            latestClose: todayClose,
+            volume,
+            volatilityPct,
+            changePercent,
+            trend,
+            stopLoss,
+            target,
+            technicalRating,
+            ratingColor,
+            ratingBg
+        });
+    }
+
+    // Sort by Volume descending to list most liquid first
+    results.sort((a, b) => b.volume - a.volume);
+
+    // Limit to top 50 intraday opportunities
+    const topIntraday = results.slice(0, 50);
+
+    if (topIntraday.length === 0) {
+        if (emptyState)   emptyState.style.display  = '';
+        if (tableWrapper) tableWrapper.style.display = 'none';
+        if (badge)        badge.textContent = '0 Stocks';
+        return;
+    }
+
+    if (emptyState)   emptyState.style.display  = 'none';
+    if (tableWrapper) tableWrapper.style.display = '';
+    if (badge)        badge.textContent = `${topIntraday.length} Opportunities`;
+
+    const formatVolume = (v) => {
+        if (v >= 10000000) return (v / 10000000).toFixed(2) + ' Cr';
+        if (v >= 100000) return (v / 100000).toFixed(2) + ' Lk';
+        if (v >= 1000) return (v / 1000).toFixed(1) + ' K';
+        return v.toString();
+    };
+
+    tbody.innerHTML = topIntraday.map((item, idx) => {
+        const livePriceVal = intradayLivePrices.get(item.symbol);
+        const livePriceHtml = livePriceVal 
+            ? `₹${livePriceVal.toFixed(2)} <span class="live-pulse" style="width:6px;height:6px;box-shadow:0 0 0 0 rgba(16,185,129,0.7);animation:pulse 1.5s infinite;margin-left:0.2rem;display:inline-block;border-radius:50%;background:#10b981;"></span>`
+            : `₹${item.latestClose.toFixed(2)} <span style="font-size:0.7rem;color:var(--text-secondary);">(EOD)</span>`;
+
+        const changeSign = item.changePercent >= 0 ? '+' : '';
+        const changeColor = item.changePercent >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+
+        const inWatchlist = watchlistItems.some(w => w.symbol === item.symbol);
+        const starBtn = inWatchlist
+            ? `<button onclick="removeFromWatchlist('${item.symbol}'); event.stopPropagation();" title="Watchlistમાંથી કાઢો" style="background:rgba(245,158,11,0.18); border:1px solid #f59e0b; color:#f59e0b; border-radius:5px; padding:0.22rem 0.5rem; cursor:pointer; font-size:0.8rem; margin-right:5px;"><i class='fa-solid fa-star'></i></button>`
+            : `<button onclick="addToWatchlist('${item.symbol}', ${item.latestClose}); event.stopPropagation();" title="Watchlistમાં ઉમેરો" style="background:none; border:1px solid rgba(255,255,255,0.15); color:var(--text-secondary); border-radius:5px; padding:0.22rem 0.5rem; cursor:pointer; font-size:0.8rem; margin-right:5px;"><i class='fa-regular fa-star'></i></button>`;
+
+        return `
+            <tr class="clickable-row" onclick="showResearchModal('${item.symbol}')" title="ચાર્ટ અને વિગતો જુઓ">
+                <td style="text-align:center;"><span style="background:rgba(16,185,129,0.15);color:#10b981;font-weight:700;padding:0.15rem 0.5rem;border-radius:4px;font-size:0.82rem;">${idx+1}</span></td>
+                <td><strong style="color:var(--accent-color);">${item.symbol}</strong></td>
+                <td>₹${item.latestClose.toFixed(2)}</td>
+                <td class="intraday-live-cell" data-symbol="${item.symbol}">${livePriceHtml}</td>
+                <td style="font-weight:600;color:#cbd5e1;">${formatVolume(item.volume)}</td>
+                <td style="color:#a855f7;font-weight:600;">${item.volatilityPct.toFixed(2)}%</td>
+                <td style="font-weight:700;color:${changeColor};">${item.trend}</td>
+                <td style="color:var(--danger-color);font-weight:700;">₹${item.stopLoss.toFixed(2)}</td>
+                <td style="color:var(--success-color);font-weight:700;">₹${item.target.toFixed(2)}</td>
+                <td><span style="background:${item.ratingBg};color:${item.ratingColor};font-weight:700;padding:0.2rem 0.6rem;border-radius:6px;font-size:0.75rem;border:1px solid ${item.ratingColor}30;">${item.technicalRating}</span></td>
+                <td style="text-align:center; white-space:nowrap;">
+                    ${starBtn}
+                    <button onclick="showResearchModal('${item.symbol}');event.stopPropagation();"
+                        style="background:rgba(16,185,129,0.12);border:1px solid #10b981;color:#10b981;border-radius:5px;padding:0.22rem 0.5rem;cursor:pointer;font-size:0.8rem;">
+                        <i class="fa-solid fa-chart-area"></i>
+                    </button>
+                </td>
+            </tr>`;
+    }).join('');
+
+    const symbolsToFetch = topIntraday.map(r => r.symbol);
+    if (symbolsToFetch.length > 0 && (forceRefresh || intradayLivePrices.size === 0)) {
+        fetchIntradayLivePrices(symbolsToFetch);
+    }
+};
+
+window.fetchIntradayLivePrices = async function(symbols) {
+    console.log(`[Intraday Live Update] Fetching live prices for ${symbols.length} symbols...`);
+    await Promise.all(symbols.map(async (symbol) => {
+        try {
+            const data = await fetchYahooFinanceData(symbol + '.NS');
+            if (data && data.chart && data.chart.result && data.chart.result[0]) {
+                const price = data.chart.result[0].meta.regularMarketPrice;
+                if (price) {
+                    intradayLivePrices.set(symbol, price);
+                    document.querySelectorAll(`.intraday-live-cell[data-symbol="${symbol}"]`).forEach(cell => {
+                        cell.innerHTML = `₹${price.toFixed(2)} <span class="live-pulse" style="width:6px;height:6px;box-shadow:0 0 0 0 rgba(16,185,129,0.7);animation:pulse 1.5s infinite;margin-left:0.2rem;display:inline-block;border-radius:50%;background:#10b981;"></span>`;
+                    });
+                }
+            }
+        } catch (e) {
+            console.warn(`[Intraday Live Update] Error for ${symbol}:`, e.message);
+        }
+    }));
 };
 
 // Run on load
