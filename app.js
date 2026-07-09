@@ -226,6 +226,15 @@ function initEvents() {
                     await fetchIntradayLivePrices(visibleSymbols);
                 }
             }
+        } else if (tabId === 'tab-master-piece') {
+            if (typeof renderMasterPiece === 'function') {
+                renderMasterPiece(false); // update UI
+            }
+        }
+
+        // Always check Master Piece price changes and alert user
+        if (typeof checkMasterPieceAlerts === 'function') {
+            await checkMasterPieceAlerts();
         }
     }, 10000);
 
@@ -315,6 +324,7 @@ function initEvents() {
     const tabCircuits    = document.getElementById('tab-circuits');
     const tabGlobalIndices = document.getElementById('tab-global-indices');
     const tabIntraday    = document.getElementById('tab-intraday');
+    const tabMasterPiece = document.getElementById('tab-master-piece');
     
     const researchTabContent      = document.getElementById('research-tab-content');
     const portfolioTabContent     = document.getElementById('portfolio-tab-content');
@@ -326,11 +336,12 @@ function initEvents() {
     const circuitsTabContent     = document.getElementById('circuits-tab-content');
     const globalIndicesTabContent = document.getElementById('global-indices-tab-content');
     const intradayTabContent      = document.getElementById('intraday-tab-content');
+    const masterPieceTabContent   = document.getElementById('master-piece-tab-content');
 
     const hideAllTabs = () => {
-        [researchTabContent, portfolioTabContent, resultsTabContent, watchlistTabContent, morningPicksTabContent, adviceTabContent, volPromoterTabContent, circuitsTabContent, globalIndicesTabContent, intradayTabContent]
+        [researchTabContent, portfolioTabContent, resultsTabContent, watchlistTabContent, morningPicksTabContent, adviceTabContent, volPromoterTabContent, circuitsTabContent, globalIndicesTabContent, intradayTabContent, masterPieceTabContent]
             .forEach(el => el && el.classList.add('hidden'));
-        [tabResearch, tabPortfolio, tabResults, tabWatchlist, tabMorning, tabAdvice, tabVolPromoter, tabCircuits, tabGlobalIndices, tabIntraday]
+        [tabResearch, tabPortfolio, tabResults, tabWatchlist, tabMorning, tabAdvice, tabVolPromoter, tabCircuits, tabGlobalIndices, tabIntraday, tabMasterPiece]
             .forEach(el => el && el.classList.remove('active'));
     };
 
@@ -420,6 +431,15 @@ function initEvents() {
             tabIntraday.classList.add('active');
             intradayTabContent.classList.remove('hidden');
             renderIntraday();
+        });
+    }
+
+    if (tabMasterPiece && masterPieceTabContent) {
+        tabMasterPiece.addEventListener('click', () => {
+            hideAllTabs();
+            tabMasterPiece.classList.add('active');
+            masterPieceTabContent.classList.remove('hidden');
+            renderMasterPiece();
         });
     }
 
@@ -5858,6 +5878,332 @@ window.fetchIntradayLivePrices = async function(symbols) {
         }
     }));
 };
+
+};
+
+// =====================================================================
+// MASTER PIECE (TOP 5 GEMS) SECTION
+// =====================================================================
+
+let masterPieceSymbols = [];
+let masterPieceLastPrices = new Map();
+let currentMasterPieceData = [];
+
+function getAdviceSymbolsList() {
+    const list = [];
+    const data = state.processedMasterData;
+    if (!data || data.length < 2) return list;
+    const headers = data[0];
+    const symCol  = state.symbolColIndex;
+    const serCol  = state.seriesColIndex;
+    const hiCol   = state.highColIndex;
+    let firstDateCol = hiCol !== -1 ? hiCol + 1 : (state.diffColIndex !== -1 ? state.diffColIndex + 1 : 1);
+    
+    for (let r = 1; r < data.length; r++) {
+        const row = data[r];
+        if (!row) continue;
+        const sym = String(row[symCol] || '').trim().toUpperCase();
+        const series = serCol !== -1 ? String(row[serCol] || '').trim().toUpperCase() : 'EQ';
+        if (!sym || series !== 'EQ' || sym.length > 10) continue;
+        
+        const prices = [];
+        for (let c = firstDateCol; c < Math.min(firstDateCol + 5, headers.length); c++) {
+            const v = parseFloat(row[c]);
+            if (!isNaN(v) && v > 0) prices.push(v);
+        }
+        if (prices.length < 2) continue;
+        
+        const mom5 = prices.length >= 5 && prices[4] > 0 ? ((prices[0] - prices[4]) / prices[4]) * 100 : 0;
+        if (mom5 > 2.0) { 
+            list.push(sym);
+        }
+    }
+    return list;
+}
+
+function getCircuitSymbolsList() {
+    const list = [];
+    const data = state.processedMasterData;
+    if (!data || data.length < 2) return list;
+    const symCol  = state.symbolColIndex;
+    const serCol  = state.seriesColIndex;
+    const hiCol   = state.highColIndex;
+    let firstDateCol = hiCol !== -1 ? hiCol + 1 : (state.diffColIndex !== -1 ? state.diffColIndex + 1 : 1);
+    
+    for (let r = 1; r < data.length; r++) {
+        const row = data[r];
+        if (!row) continue;
+        const sym = String(row[symCol] || '').trim().toUpperCase();
+        const series = serCol !== -1 ? String(row[serCol] || '').trim().toUpperCase() : 'EQ';
+        if (!sym || series !== 'EQ') continue;
+        
+        const todayClose = parseFloat(row[firstDateCol]);
+        const yesterdayClose = parseFloat(row[firstDateCol + 1]);
+        if (isNaN(todayClose) || isNaN(yesterdayClose) || yesterdayClose <= 0) continue;
+        
+        const changePercent = ((todayClose - yesterdayClose) / yesterdayClose) * 100;
+        if (changePercent >= 4.7) {
+            list.push(sym);
+        }
+    }
+    return list;
+}
+
+function getIntradaySymbolsList() {
+    const list = [];
+    const data = state.processedMasterData;
+    if (!data || data.length < 2) return list;
+    const symCol  = state.symbolColIndex;
+    const serCol  = state.seriesColIndex;
+    const hiCol   = state.highColIndex;
+    
+    const volColIdx  = data[0].findIndex(h => ['VOLUME', 'VOL', 'QTY', 'TTL_TRD_QTY', 'TOTTRDQTY'].includes(String(h || '').toUpperCase().trim()));
+    
+    for (let r = 1; r < data.length; r++) {
+        const row = data[r];
+        if (!row) continue;
+        const sym = String(row[symCol] || '').trim().toUpperCase();
+        const series = serCol !== -1 ? String(row[serCol] || '').trim().toUpperCase() : 'EQ';
+        if (!sym || series !== 'EQ') continue;
+        
+        let volume = state.latestVolumes.get(sym) || 0;
+        if (volume === 0 && volColIdx !== -1) {
+            const volVal = parseFloat(row[volColIdx]);
+            if (!isNaN(volVal)) volume = volVal;
+        }
+        if (volume < 80000) continue;
+        list.push(sym);
+    }
+    return list;
+}
+
+function getMasterPieceSymbolsList() {
+    const adviceList = getAdviceSymbolsList(); 
+    const circuitList = getCircuitSymbolsList();
+    const intradayList = getIntradaySymbolsList();
+    
+    const counts = {};
+    const reasons = {};
+    
+    const addToCount = (sym, sourceName) => {
+        counts[sym] = (counts[sym] || 0) + 1;
+        if (!reasons[sym]) reasons[sym] = [];
+        reasons[sym].push(sourceName);
+    };
+    
+    adviceList.forEach(s => addToCount(s, 'Investor Advice'));
+    circuitList.forEach(s => addToCount(s, 'Circuits'));
+    intradayList.forEach(s => addToCount(s, 'Intraday'));
+    
+    const candidates = Object.keys(counts).map(sym => {
+        let volume = state.latestVolumes.get(sym) || 0;
+        return {
+            symbol: sym,
+            count: counts[sym],
+            reasons: reasons[sym],
+            volume: volume
+        };
+    });
+    
+    candidates.sort((a, b) => {
+        if (b.count !== a.count) return b.count - a.count;
+        return b.volume - a.volume;
+    });
+    
+    let selected = candidates.slice(0, 5);
+    
+    if (selected.length < 5) {
+        const selectedSet = new Set(selected.map(s => s.symbol));
+        for (const sym of intradayList) {
+            if (selected.length >= 5) break;
+            if (!selectedSet.has(sym)) {
+                selected.push({
+                    symbol: sym,
+                    count: 1,
+                    reasons: ['Intraday (Fallback)'],
+                    volume: state.latestVolumes.get(sym) || 0
+                });
+                selectedSet.add(sym);
+            }
+        }
+        for (const sym of circuitList) {
+            if (selected.length >= 5) break;
+            if (!selectedSet.has(sym)) {
+                selected.push({
+                    symbol: sym,
+                    count: 1,
+                    reasons: ['Circuits (Fallback)'],
+                    volume: state.latestVolumes.get(sym) || 0
+                });
+                selectedSet.add(sym);
+            }
+        }
+    }
+    
+    return selected.slice(0, 5);
+}
+
+window.renderMasterPiece = function(forceRefresh = false) {
+    const emptyState   = document.getElementById('master-piece-empty-state');
+    const tableWrapper = document.getElementById('master-piece-table-wrapper');
+    const tbody        = document.getElementById('master-piece-tbody');
+    if (!tbody) return;
+
+    const data = state.processedMasterData;
+    if (!data || data.length < 2) {
+        if (emptyState)   emptyState.style.display  = '';
+        if (tableWrapper) tableWrapper.style.display = 'none';
+        return;
+    }
+
+    if (currentMasterPieceData.length === 0 || forceRefresh) {
+        const selected = getMasterPieceSymbolsList();
+        
+        currentMasterPieceData = selected.map(item => {
+            const sym = item.symbol;
+            const symCol = state.symbolColIndex;
+            const row = data.find((r, idx) => idx > 0 && String(r[symCol] || '').trim().toUpperCase() === sym);
+            
+            let todayClose = 100;
+            let dailyHigh = 101;
+            let dailyLow = 99;
+            
+            if (row) {
+                const hiColIdx = data[0].findIndex(h => ['HIGH', 'HI'].includes(String(h || '').toUpperCase().trim()));
+                const loColIdx = data[0].findIndex(h => ['LOW', 'LO'].includes(String(h || '').toUpperCase().trim()));
+                const hiCol  = state.highColIndex;
+                let firstDateCol = hiCol !== -1 ? hiCol + 1 : (state.diffColIndex !== -1 ? state.diffColIndex + 1 : 1);
+                
+                todayClose = parseFloat(row[firstDateCol]) || 100;
+                dailyHigh = hiColIdx !== -1 ? (parseFloat(row[hiColIdx]) || todayClose * 1.01) : todayClose * 1.01;
+                dailyLow = loColIdx !== -1 ? (parseFloat(row[loColIdx]) || todayClose * 0.99) : todayClose * 0.99;
+            }
+            
+            const P = (dailyHigh + dailyLow + todayClose) / 3;
+            const S1 = (2 * P) - dailyHigh;
+            const R1 = (2 * P) - dailyLow;
+            
+            return {
+                symbol: sym,
+                latestClose: todayClose,
+                volume: item.volume,
+                reasons: item.reasons,
+                stopLoss: S1,
+                target: R1
+            };
+        });
+        
+        // Save initial prices for alerts comparison
+        currentMasterPieceData.forEach(item => {
+            if (!masterPieceLastPrices.has(item.symbol)) {
+                masterPieceLastPrices.set(item.symbol, item.latestClose);
+            }
+        });
+    }
+
+    if (currentMasterPieceData.length === 0) {
+        if (emptyState)   emptyState.style.display  = '';
+        if (tableWrapper) tableWrapper.style.display = 'none';
+        return;
+    }
+
+    if (emptyState)   emptyState.style.display  = 'none';
+    if (tableWrapper) tableWrapper.style.display = '';
+
+    const formatVolume = (v) => {
+        if (v >= 10000000) return (v / 10000000).toFixed(2) + ' Cr';
+        if (v >= 100000) return (v / 100000).toFixed(2) + ' Lk';
+        if (v >= 1000) return (v / 1000).toFixed(1) + ' K';
+        return v.toString();
+    };
+
+    tbody.innerHTML = currentMasterPieceData.map((item, idx) => {
+        const livePriceVal = intradayLivePrices.get(item.symbol) || circuitsLivePrices.get(item.symbol) || state.gainersLivePrices.get(item.symbol) || masterPieceLastPrices.get(item.symbol);
+        const livePriceHtml = livePriceVal 
+            ? `₹${livePriceVal.toFixed(2)} <span class="live-pulse" style="width:6px;height:6px;box-shadow:0 0 0 0 rgba(16,185,129,0.7);animation:pulse 1.5s infinite;margin-left:0.2rem;display:inline-block;border-radius:50%;background:#10b981;"></span>`
+            : `₹${item.latestClose.toFixed(2)} <span style="font-size:0.7rem;color:var(--text-secondary);">(EOD)</span>`;
+
+        let changePercent = 0;
+        if (livePriceVal) {
+            changePercent = ((livePriceVal - item.latestClose) / item.latestClose) * 100;
+        }
+
+        const changeSign = changePercent >= 0 ? '+' : '';
+        const changeColor = changePercent >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+        
+        const reasonsHtml = item.reasons.map(r => {
+            const color = r.includes('Advice') ? '#ec4899' : r.includes('Circuits') ? '#eab308' : '#3b82f6';
+            return `<span style="background:${color}15;color:${color};font-weight:700;padding:0.15rem 0.4rem;border-radius:4px;font-size:0.7rem;margin-right:4px;border:1px solid ${color}35;">${r}</span>`;
+        }).join(' ');
+
+        const inWatchlist = watchlistItems.some(w => w.symbol === item.symbol);
+        const starBtn = inWatchlist
+            ? `<button onclick="removeFromWatchlist('${item.symbol}'); event.stopPropagation();" title="Watchlistમાંથી કાઢો" style="background:rgba(245,158,11,0.18); border:1px solid #f59e0b; color:#f59e0b; border-radius:5px; padding:0.22rem 0.5rem; cursor:pointer; font-size:0.8rem; margin-right:5px;"><i class='fa-solid fa-star'></i></button>`
+            : `<button onclick="addToWatchlist('${item.symbol}', ${item.latestClose}); event.stopPropagation();" title="Watchlistમાં ઉમેરો" style="background:none; border:1px solid rgba(255,255,255,0.15); color:var(--text-secondary); border-radius:5px; padding:0.22rem 0.5rem; cursor:pointer; font-size:0.8rem; margin-right:5px;"><i class='fa-regular fa-star'></i></button>`;
+
+        return `
+            <tr class="clickable-row" onclick="showResearchModal('${item.symbol}')" title="ચાર્ટ અને વિગતો જુઓ">
+                <td style="text-align:center;"><span style="background:linear-gradient(135deg,#ec4899,#e11d48);color:#fff;font-weight:700;padding:0.15rem 0.6rem;border-radius:4px;font-size:0.82rem;">#${idx+1}</span></td>
+                <td><strong style="color:var(--accent-color); font-size:1rem;">${item.symbol}</strong></td>
+                <td>₹${item.latestClose.toFixed(2)}</td>
+                <td class="master-piece-live-cell" data-symbol="${item.symbol}">${livePriceHtml}</td>
+                <td style="color:${changeColor}; font-weight:700;">${changeSign}${changePercent.toFixed(2)}%</td>
+                <td style="font-weight:600;color:#cbd5e1;">${formatVolume(item.volume)}</td>
+                <td style="color:var(--danger-color);font-weight:700;">₹${item.stopLoss.toFixed(2)}</td>
+                <td style="color:var(--success-color);font-weight:700;">₹${item.target.toFixed(2)}</td>
+                <td>${reasonsHtml}</td>
+                <td style="text-align:center; white-space:nowrap;">
+                    ${starBtn}
+                    <button onclick="showResearchModal('${item.symbol}');event.stopPropagation();"
+                        style="background:rgba(236,72,153,0.12);border:1px solid #ec4899;color:#ec4899;border-radius:5px;padding:0.22rem 0.5rem;cursor:pointer;font-size:0.8rem;">
+                        <i class="fa-solid fa-chart-area"></i>
+                    </button>
+                </td>
+            </tr>`;
+    }).join('');
+};
+
+window.checkMasterPieceAlerts = async function() {
+    if (currentMasterPieceData.length === 0) {
+        renderMasterPiece();
+    }
+    if (currentMasterPieceData.length === 0) return;
+
+    console.log(`[Master Piece Alert Check] Fetching live prices for alerts...`);
+    await Promise.all(currentMasterPieceData.map(async (item) => {
+        try {
+            const symbol = item.symbol;
+            const data = await fetchYahooFinanceData(symbol + '.NS');
+            if (data && data.chart && data.chart.result && data.chart.result[0]) {
+                const price = data.chart.result[0].meta.regularMarketPrice;
+                if (price) {
+                    const lastKnownLivePrice = masterPieceLastPrices.get(symbol);
+                    if (lastKnownLivePrice !== undefined && lastKnownLivePrice !== price) {
+                        const pctDiff = ((price - lastKnownLivePrice) / lastKnownLivePrice) * 100;
+                        if (Math.abs(pctDiff) >= 1.5) {
+                            triggerSuddenPriceAlert(symbol, lastKnownLivePrice, price, pctDiff);
+                        }
+                    }
+                    masterPieceLastPrices.set(symbol, price);
+                    document.querySelectorAll(`.master-piece-live-cell[data-symbol="${symbol}"]`).forEach(cell => {
+                        cell.innerHTML = `₹${price.toFixed(2)} <span class="live-pulse" style="width:6px;height:6px;box-shadow:0 0 0 0 rgba(16,185,129,0.7);animation:pulse 1.5s infinite;margin-left:0.2rem;display:inline-block;border-radius:50%;background:#10b981;"></span>`;
+                    });
+                }
+            }
+        } catch (e) {
+            console.warn(`[Master Piece Alert Check] Error for ${item.symbol}:`, e.message);
+        }
+    }));
+};
+
+function triggerSuddenPriceAlert(symbol, oldPrice, newPrice, pctDiff) {
+    const direction = pctDiff > 0 ? "વધારો 📈" : "ઘટાડો 📉";
+    const msg = `⚠️ MASTER PIECE ALERT!\n\n${symbol} ના ભાવમાં અચાનક ${Math.abs(pctDiff).toFixed(2)}% નો ${direction} આવ્યો છે!\nજૂનો ભાવ: ₹${oldPrice.toFixed(2)} -> નવો ભાવ: ₹${newPrice.toFixed(2)}`;
+    
+    showNotification(`⚡ ${symbol}: ${Math.abs(pctDiff).toFixed(2)}% ${direction} (₹${oldPrice.toFixed(2)} -> ₹${newPrice.toFixed(2)})`, pctDiff > 0 ? 'success' : 'danger');
+    
+    alert(msg);
+}
 
 // Run on load
 document.addEventListener('DOMContentLoaded', initEvents);

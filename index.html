@@ -112,6 +112,9 @@
             <button class="nav-btn" id="tab-intraday">
                 <i class="fa-solid fa-gauge-high"></i> Intraday
             </button>
+            <button class="nav-btn" id="tab-master-piece" style="border-color: #ec4899; color: #ec4899; font-weight: bold;">
+                <i class="fa-solid fa-gem"></i> MASTER PIECE
+            </button>
         </nav>
 
         <!-- Tab 1: Stock Research Content -->
@@ -894,6 +897,53 @@
                             </tr>
                         </thead>
                         <tbody id="intraday-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: MASTER PIECE (Hidden by default) -->
+        <div id="master-piece-tab-content" class="hidden">
+            <div class="card" style="margin-bottom:0; border: 1px solid rgba(236,72,153,0.3); background: radial-gradient(circle at top right, rgba(236,72,153,0.05), transparent 60%);">
+                <div class="movement-header" style="margin-bottom:0.75rem; flex-wrap:wrap; gap:0.5rem;">
+                    <i class="fa-solid fa-gem movement-icon" style="color:#ec4899; text-shadow: 0 0 10px rgba(236,72,153,0.4);"></i>
+                    <h2 style="color:var(--text-primary); background: linear-gradient(90deg, #ec4899, #f43f5e); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">MASTER PIECE (મહામૂલા ૫ મોતી)</h2>
+                    
+                    <button onclick="renderMasterPiece(true)" class="btn" style="margin-left:auto;font-size:0.78rem;padding:0.35rem 0.9rem;background:linear-gradient(135deg,#ec4899,#e11d48);border:none;color:#fff;font-weight:700;border-radius:6px;cursor:pointer;box-shadow: 0 4px 12px rgba(236,72,153,0.3);">
+                        <i class="fa-solid fa-rotate"></i> Refresh
+                    </button>
+                </div>
+                <div style="background:rgba(236,72,153,0.07);border:1px solid rgba(236,72,153,0.2);border-radius:8px;padding:0.65rem 1rem;margin-bottom:0.9rem;">
+                    <p style="font-size:0.82rem;color:var(--text-secondary);margin:0;">
+                        <i class="fa-solid fa-circle-info" style="color:#ec4899;margin-right:5px;"></i>
+                        <strong style="color:#ec4899;">માસ્ટર પીસ નિયમ:</strong> આ ટેબમાં ચાલુ દિવસના સૌથી મજબૂત ચાલવાની શક્યતા ધરાવતા **માત્ર ૫ ખાસ શેરો** આવશે. આ શેર્સ આપણી **Investor Advice, Circuits અને Intraday** ટેબમાં સૌથી કોમન/કોન્સિલિડેટેડ હોય તેમાંથી પસંદ થાય છે. જો આ ૫ શેરોના લાઈવ ભાવમાં અચાનક **૧.૫% કે તેથી વધુ ફેરફાર (વધારો/ઘટાડો)** થશે, તો સિસ્ટમ તુરંત જ સ્ક્રીન પર પોપ-અપ નોટિફિકેશન આપશે!
+                    </p>
+                </div>
+
+                <!-- No-data state -->
+                <div id="master-piece-empty-state" style="text-align:center;padding:2.5rem 1rem;color:var(--text-secondary);">
+                    <i class="fa-solid fa-gem" style="font-size:2.5rem;opacity:0.25;display:block;margin-bottom:0.75rem;color:#ec4899;"></i>
+                    <p style="font-size:0.9rem;">કોઈ ડેટા મેચ થતો નથી અથવા માસ્ટર ફાઇલ લોડ નથી.</p>
+                </div>
+
+                <!-- Master Piece Table -->
+                <div class="table-wrapper movement-table-wrapper" id="master-piece-table-wrapper" style="display:none;">
+                    <table id="master-piece-table" style="min-width:700px;">
+                        <thead>
+                            <tr>
+                                <th>ક્રમ (Rank)</th>
+                                <th>કંપની (Symbol)</th>
+                                <th>હાલનો ભાવ</th>
+                                <th>લાઇવ ભાવ</th>
+                                <th>આજનો બદલાવ (%)</th>
+                                <th>વોલ્યુમ</th>
+                                <th>સ્ટોપ-લોસ (SL)</th>
+                                <th>ટાર્ગેટ (Target)</th>
+                                <th>એનાલિસિસ સ્રોત / કારણ</th>
+                                <th style="text-align:center;">ઍક્શન (Action)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="master-piece-tbody"></tbody>
                     </table>
                 </div>
             </div>
