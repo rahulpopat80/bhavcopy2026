@@ -850,9 +850,20 @@
                     </p>
                 </div>
 
-                <!-- Global Indices Grid -->
-                <div id="global-indices-grid" style="display:flex; flex-direction:row; flex-wrap:nowrap; overflow-x:auto; gap:1rem; margin-top:1rem; padding-bottom: 0.5rem; scrollbar-width: thin;">
-                    <!-- Cards will be dynamically loaded here -->
+                <!-- Global Indices Table -->
+                <div class="table-wrapper movement-table-wrapper" id="global-indices-table-wrapper" style="margin-top:1rem;">
+                    <table id="global-indices-table" style="min-width:700px;">
+                        <thead>
+                            <tr>
+                                <th>ઇન્ડેક્ષનું નામ</th>
+                                <th>કરંટ ઇન્ડેક્ષ</th>
+                                <th>વધારો-ઘટાડો (પોઇન્ટમાં)</th>
+                                <th>વધારો-ઘટાડો (ટકાવારીમાં)</th>
+                                <th>હાલમાં ઓપન કે કલોઝ</th>
+                            </tr>
+                        </thead>
+                        <tbody id="global-indices-tbody"></tbody>
+                    </table>
                 </div>
             </div>
         </div>

@@ -5679,15 +5679,17 @@ const globalIndicesConfig = [
 ];
 
 window.fetchGlobalIndices = async function(showLoading = false) {
-    const grid = document.getElementById('global-indices-grid');
-    if (!grid) return;
+    const tbody = document.getElementById('global-indices-tbody');
+    if (!tbody) return;
 
     if (showLoading) {
-        grid.innerHTML = `
-            <div style="grid-column: 1/-1; text-align:center; padding:3rem; color:var(--text-secondary);">
-                <i class="fa-solid fa-spinner fa-spin" style="font-size:1.5rem; color:#3b82f6; margin-bottom:0.5rem; display:block;"></i>
-                ગ્લોબલ ઇન્ડેક્સ લાઈવ ડેટા લોડ થઈ રહ્યો છે...
-            </div>
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="5" style="text-align:center; padding:3rem; color:var(--text-secondary);">
+                    <i class="fa-solid fa-spinner fa-spin" style="font-size:1.5rem; color:#3b82f6; margin-bottom:0.5rem; display:block;"></i>
+                    ગ્લોબલ ઇન્ડેક્સ લાઈવ ડેટા લોડ થઈ રહ્યો છે...
+                </td>
+            </tr>
         `;
     }
 
@@ -5727,36 +5729,40 @@ window.fetchGlobalIndices = async function(showLoading = false) {
 
     if (fetchedData.length === 0) {
         if (showLoading) {
-            grid.innerHTML = `
-                <div style="grid-column: 1/-1; text-align:center; padding:2rem; color:var(--text-secondary);">
-                    ડેટા લોડ કરવામાં નિષ્ફળતા. કૃપા કરીને ફરીથી પ્રયાસ કરો.
-                </div>
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="5" style="text-align:center; padding:2rem; color:var(--text-secondary);">
+                        ડેટા લોડ કરવામાં નિષ્ફળતા. કૃપા કરીને ફરીથી પ્રયાસ કરો.
+                    </td>
+                </tr>
             `;
         }
         return;
     }
 
-    grid.innerHTML = fetchedData.map(item => {
+    // Maintain consistent configuration order
+    const orderedData = [];
+    globalIndicesConfig.forEach(cfg => {
+        const found = fetchedData.find(d => d.ticker === cfg.ticker);
+        if (found) orderedData.push(found);
+    });
+
+    tbody.innerHTML = orderedData.map(item => {
         const sign = item.change >= 0 ? '+' : '';
         const color = item.change >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
-        const cardBorderColor = item.change >= 0 ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)';
         
         const statusHtml = item.isOpen 
             ? `<span style="background:rgba(16,185,129,0.12);color:var(--success-color);font-weight:700;padding:0.15rem 0.5rem;border-radius:4px;font-size:0.75rem;display:inline-flex;align-items:center;gap:3px;"><span class="live-pulse" style="width:5px;height:5px;box-shadow:0 0 0 0 rgba(16,185,129,0.7);animation:pulse 1.5s infinite;background:#10b981;border-radius:50%;"></span> OPEN</span>`
-            : `<span style="background:rgba(239,68,68,0.12);color:var(--danger-color);font-weight:700;padding:0.15rem 0.5rem;border-radius:4px;font-size:0.75rem;">CLOSED</span>`;
+            : `<span style="background:rgba(255,255,255,0.06);color:var(--text-secondary);font-weight:700;padding:0.15rem 0.5rem;border-radius:4px;font-size:0.75rem;">CLOSED</span>`;
 
         return `
-            <div class="card" style="margin-bottom:0; border:1px solid ${cardBorderColor}; padding:1rem; display:flex; flex-direction:column; justify-content:space-between; gap:0.5rem;">
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <span style="font-weight:700; color:var(--text-primary); font-size:0.92rem;">${item.name}</span>
-                    ${statusHtml}
-                </div>
-                <div style="font-size:0.75rem; color:var(--text-secondary); font-family:var(--font-family);">${item.ticker}</div>
-                <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-top:0.35rem;">
-                    <span style="font-size:1.4rem; font-weight:800; color:#fff; font-family:var(--font-family);">${item.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                    <span style="font-size:0.9rem; font-weight:700; color:${color}; font-family:var(--font-family);">${sign}${item.change.toFixed(2)} (${sign}${item.changePct.toFixed(2)}%)</span>
-                </div>
-            </div>
+            <tr>
+                <td><strong style="color:var(--accent-color);">${item.name}</strong> <span style="font-size:0.75rem; color:var(--text-secondary); margin-left:5px;">(${item.ticker})</span></td>
+                <td style="font-weight:700; font-family:var(--font-family); color:#fff;">${item.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                <td style="font-weight:600; font-family:var(--font-family); color:${color};">${sign}${item.change.toFixed(2)}</td>
+                <td style="font-weight:700; font-family:var(--font-family); color:${color};">${sign}${item.changePct.toFixed(2)}%</td>
+                <td>${statusHtml}</td>
+            </tr>
         `;
     }).join('');
 };
