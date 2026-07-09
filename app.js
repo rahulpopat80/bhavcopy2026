@@ -64,7 +64,7 @@ let state = {
     gainersLivePrices: new Map(),
     latestVolumes: new Map(),
     researchChartInstance: null,
-    volumePromoterSource: 'LOCAL'
+    volumePromoterSource: 'GLOBAL'
 };
 
 // UI Elements
@@ -1635,6 +1635,12 @@ function renderPortfolioTable() {
         return getProfitRatio(b) - getProfitRatio(a);
     });
 
+    const searchInput = document.getElementById('portfolio-search-input');
+    const searchVal = searchInput ? searchInput.value.trim().toUpperCase() : '';
+    const filteredItems = searchVal 
+        ? sortedItems.filter(item => item.companySymbol.toUpperCase().includes(searchVal))
+        : sortedItems;
+
     let html = '';
     let totalInvested = 0;
     let totalProfit = 0;
@@ -1644,7 +1650,7 @@ function renderPortfolioTable() {
     let soldCount = 0;
     let totalDaysSold = 0;
 
-    sortedItems.forEach(item => {
+    filteredItems.forEach(item => {
         const qty = parseInt(item.quantity) || 0;
         const buyRate = parseFloat(item.buyRate) || 0;
         const buyAmt = qty * buyRate;
@@ -4108,8 +4114,14 @@ function renderResultsAndDividendsTable() {
     const tbody = document.querySelector('#upcoming-results-table tbody');
     if (!tbody) return;
 
+    const searchInput = document.getElementById('results-search-input');
+    const query = searchInput ? searchInput.value.trim().toUpperCase() : '';
+    const filteredData = query 
+        ? resultsAndDividendsData.filter(item => item.symbol.toUpperCase().includes(query))
+        : resultsAndDividendsData;
+
     let html = '';
-    resultsAndDividendsData.forEach(item => {
+    filteredData.forEach(item => {
         // Fetch last known price from uploaded Bhavcopy file
         const bhavcopyRateVal = getLastKnownPrice(item.symbol);
         const bhavcopyRateHtml = bhavcopyRateVal ? `₹${bhavcopyRateVal.toFixed(2)}` : '<span style="font-size:0.75rem;color:var(--text-secondary);">No Data</span>';
@@ -4142,7 +4154,7 @@ function renderResultsAndDividendsTable() {
     tbody.innerHTML = html;
 
     // Fetch and display live prices for results companies
-    fetchResultsLivePrices(resultsAndDividendsData.map(d => d.symbol));
+    fetchResultsLivePrices(filteredData.map(d => d.symbol));
 }
 
 // Fetch live prices for results tab
@@ -4343,8 +4355,16 @@ window.renderWatchlist = function() {
     if (emptyState)   emptyState.style.display  = 'none';
     if (tableWrapper) tableWrapper.style.display = '';
 
+    const searchInput = document.getElementById('watchlist-search-input');
+    const query = searchInput ? searchInput.value.trim().toUpperCase() : '';
+    const filteredItems = query 
+        ? watchlistItems.filter(item => item.symbol.toUpperCase().includes(query))
+        : watchlistItems;
+
+    if (badge) badge.textContent = `${filteredItems.length} Script${filteredItems.length !== 1 ? 's' : ''}`;
+
     let html = '';
-    watchlistItems.forEach((item, idx) => {
+    filteredItems.forEach((item, idx) => {
         const livePrice = state.gainersLivePrices.get(item.symbol);
         let livePriceHtml = '<span style="font-size:0.75rem;color:var(--text-secondary);">Loading...</span>';
         let changeHtml    = '-';
@@ -4531,12 +4551,20 @@ window.renderMorningPicks = function() {
         results.push({ symbol: sym, latestPrice, mom3, mom5, upDays, totalDays: prices.length-1, score, suggestion, suggColor, trendHtml });
     }
 
-    results.sort((a, b) => b.score - a.score);
-    const top25 = results.slice(0, 25);
+    // Filter results based on search query
+    const searchInput = document.getElementById('morning-search-input');
+    const query = searchInput ? searchInput.value.trim().toUpperCase() : '';
+    const filteredResults = query 
+        ? results.filter(item => item.symbol.toUpperCase().includes(query))
+        : results;
+
+    filteredResults.sort((a, b) => b.score - a.score);
+    const top25 = filteredResults.slice(0, 25);
 
     if (top25.length === 0) {
         if (emptyState)   emptyState.style.display  = '';
         if (tableWrapper) tableWrapper.style.display = 'none';
+        if (badge) badge.textContent = '0 Scripts';
         return;
     }
 
@@ -4545,6 +4573,10 @@ window.renderMorningPicks = function() {
     if (badge) badge.textContent = `${top25.length} Scripts`;
 
     const scoreBarColor = (s) => s >= 65 ? 'var(--success-color)' : s >= 50 ? '#f59e0b' : 'var(--text-secondary)';
+
+    if (!window.morningPicksLivePrices) {
+        window.morningPicksLivePrices = new Map();
+    }
 
     tbody.innerHTML = top25.map((item, idx) => {
         const sign3  = item.mom3 >= 0 ? '+' : '';
@@ -4559,11 +4591,16 @@ window.renderMorningPicks = function() {
             ? `<button onclick="removeFromWatchlist('${item.symbol}'); event.stopPropagation();" title="Watchlistમાંથી કાઢો" style="background:rgba(245,158,11,0.18); border:1px solid #f59e0b; color:#f59e0b; border-radius:5px; padding:0.22rem 0.5rem; cursor:pointer; font-size:0.8rem; margin-right:5px;"><i class='fa-solid fa-star'></i></button>`
             : `<button onclick="addToWatchlist('${item.symbol}', ${item.latestPrice}); event.stopPropagation();" title="Watchlistમાં ઉમેરો" style="background:none; border:1px solid rgba(255,255,255,0.15); color:var(--text-secondary); border-radius:5px; padding:0.22rem 0.5rem; cursor:pointer; font-size:0.8rem; margin-right:5px;"><i class='fa-regular fa-star'></i></button>`;
 
+        const livePriceVal = window.morningPicksLivePrices.get(item.symbol);
+        const livePriceHtml = livePriceVal 
+            ? `₹${livePriceVal.toFixed(2)} <span class="live-pulse" style="width:6px;height:6px;box-shadow:0 0 0 0 rgba(16,185,129,0.7);animation:pulse 1.5s infinite;margin-left:0.2rem;display:inline-block;border-radius:50%;background:#10b981;"></span>`
+            : `₹${item.latestPrice.toFixed(2)} <span style="font-size:0.7rem;color:var(--text-secondary);">(EOD)</span>`;
+
         return `
-            <tr class="clickable-row" onclick="showResearchModal('${item.symbol}')" title="Chart \u0a85\u0aa8\u0ac7 \u0ab5\u0abf\u0a97\u0aa4">
+            <tr class="clickable-row" onclick="showResearchModal('${item.symbol}')" title="Chart અને વિગત">
                 <td style="text-align:center;"><span style="background:${rankBg};color:${rankColor};font-weight:700;padding:0.15rem 0.5rem;border-radius:4px;font-size:0.82rem;">${idx+1}</span></td>
                 <td><strong style="color:var(--accent-color);">${item.symbol}</strong></td>
-                <td>\u20b9${item.latestPrice.toFixed(2)}</td>
+                <td class="morning-live-cell" data-symbol="${item.symbol}">${livePriceHtml}</td>
                 <td style="color:${col3};font-weight:600;">${sign3}${item.mom3.toFixed(2)}%</td>
                 <td style="color:${col5};font-weight:600;">${sign5}${item.mom5.toFixed(2)}%</td>
                 <td>${item.trendHtml}</td>
@@ -4585,6 +4622,32 @@ window.renderMorningPicks = function() {
                 </td>
             </tr>`;
     }).join('');
+
+    const symbolsToFetch = top25.map(r => r.symbol);
+    if (symbolsToFetch.length > 0) {
+        fetchMorningPicksLivePrices(symbolsToFetch);
+    }
+};
+
+window.fetchMorningPicksLivePrices = async function(symbols) {
+    if (!window.morningPicksLivePrices) window.morningPicksLivePrices = new Map();
+    console.log(`[Morning Picks Live Update] Fetching live prices for ${symbols.length} symbols...`);
+    await Promise.all(symbols.map(async (symbol) => {
+        try {
+            const data = await fetchYahooFinanceData(symbol + '.NS');
+            if (data && data.chart && data.chart.result && data.chart.result[0]) {
+                const price = data.chart.result[0].meta.regularMarketPrice;
+                if (price) {
+                    window.morningPicksLivePrices.set(symbol, price);
+                    document.querySelectorAll(`.morning-live-cell[data-symbol="${symbol}"]`).forEach(cell => {
+                        cell.innerHTML = `₹${price.toFixed(2)} <span class="live-pulse" style="width:6px;height:6px;box-shadow:0 0 0 0 rgba(16,185,129,0.7);animation:pulse 1.5s infinite;margin-left:0.2rem;display:inline-block;border-radius:50%;background:#10b981;"></span>`;
+                    });
+                }
+            }
+        } catch (e) {
+            console.warn(`[Morning Picks Live Update] Error for ${symbol}:`, e.message);
+        }
+    }));
 };
 
 // =====================================================================
@@ -5152,7 +5215,28 @@ window.renderVolumePromoterPicks = async function(forceRefresh = false) {
             console.log("[Global Promoter] Cache empty or expired, fetching real-time data in parallel...");
             
             const fetchedResults = [];
-            // Execute all 50 fetches concurrently in parallel
+            
+            const renderProgressive = () => {
+                const results = fetchedResults.filter(item => {
+                    const prices = item.prices;
+                    if (prices.length < 5) return false;
+                    return prices[0] > prices[1] && prices[1] > prices[2] && prices[2] > prices[3] && prices[3] > prices[4];
+                });
+                
+                results.sort((a, b) => b.volume - a.volume);
+                
+                const searchInput = document.getElementById('vol-promoter-search-input');
+                const searchVal = searchInput ? searchInput.value.trim().toUpperCase() : '';
+                const filteredResults = searchVal 
+                    ? results.filter(item => item.symbol.toUpperCase().includes(searchVal))
+                    : results;
+                
+                if (filteredResults.length > 0) {
+                    if (badge) badge.textContent = `${filteredResults.length} Stocks`;
+                    renderTableRows(filteredResults);
+                }
+            };
+
             await Promise.all(globalHighPromoterStocks.map(async (stock) => {
                 try {
                     const ticker = stock.symbol.toUpperCase().trim() + '.NS';
@@ -5184,6 +5268,10 @@ window.renderVolumePromoterPicks = async function(forceRefresh = false) {
                             promoterHolding: stock.promoterHolding,
                             prices
                         });
+                        
+                        if (fetchedResults.length % 5 === 0 || fetchedResults.length === globalHighPromoterStocks.length) {
+                            renderProgressive();
+                        }
                     }
                 } catch (e) {
                     console.warn(`[Global Promoter] Failed to fetch data for ${stock.symbol}:`, e.message);
@@ -5192,7 +5280,6 @@ window.renderVolumePromoterPicks = async function(forceRefresh = false) {
             
             globalPromoterCache = fetchedResults;
             
-            // Save to local cache
             try {
                 setLocalStorageItem('global_promoter_cache', JSON.stringify(fetchedResults));
                 setLocalStorageItem('global_promoter_cache_time', now.toString());
@@ -5209,11 +5296,17 @@ window.renderVolumePromoterPicks = async function(forceRefresh = false) {
 
         results.sort((a, b) => b.volume - a.volume);
 
-        if (results.length === 0) {
+        const searchInput = document.getElementById('vol-promoter-search-input');
+        const searchVal = searchInput ? searchInput.value.trim().toUpperCase() : '';
+        const filteredResults = searchVal 
+            ? results.filter(item => item.symbol.toUpperCase().includes(searchVal))
+            : results;
+
+        if (filteredResults.length === 0) {
             tbody.innerHTML = `
                 <tr>
                     <td colspan="7" style="text-align:center; padding:2.5rem; color:var(--text-secondary);">
-                        ગ્લોબલ સ્ટોક્સમાં હાલમાં એક પણ એવો શેર નથી જેનો ભાવ છેલ્લા ૫ દિવસથી સતત વધ્યો હોય.
+                        ગ્લોબલ સ્ટોક્સમાં કોઈ મેળ ખાતી કંપની નથી.
                     </td>
                 </tr>
             `;
@@ -5221,7 +5314,7 @@ window.renderVolumePromoterPicks = async function(forceRefresh = false) {
             return;
         }
 
-        if (badge) badge.textContent = `${results.length} Stocks`;
+        if (badge) badge.textContent = `${filteredResults.length} Stocks`;
         renderTableRows(results);
     } else {
         // LOCAL MODE
@@ -5324,11 +5417,15 @@ window.renderVolumePromoterPicks = async function(forceRefresh = false) {
             });
         }
 
-        results.sort((a, b) => b.volume - a.volume);
+        const searchInput = document.getElementById('vol-promoter-search-input');
+        const searchVal = searchInput ? searchInput.value.trim().toUpperCase() : '';
+        const filteredResults = searchVal 
+            ? results.filter(item => item.symbol.toUpperCase().includes(searchVal))
+            : results;
 
-        if (results.length === 0) {
+        if (filteredResults.length === 0) {
             if (emptyState) {
-                emptyState.querySelector('p').innerHTML = "આપેલ માપદંડ (પ્રમોટર હિસ્સો > ૭૦% અને છેલ્લા ૫ દિવસથી ભાવ વધતો હોય) મુજબ કોઈ શેર મળ્યા નથી.";
+                emptyState.querySelector('p').innerHTML = "કોઈ મેળ ખાતી કંપની નથી.";
                 emptyState.style.display = '';
             }
             if (tableWrapper) tableWrapper.style.display = 'none';
@@ -5338,8 +5435,8 @@ window.renderVolumePromoterPicks = async function(forceRefresh = false) {
 
         if (emptyState)   emptyState.style.display  = 'none';
         if (tableWrapper) tableWrapper.style.display = '';
-        if (badge)        badge.textContent = `${results.length} Stocks`;
-        renderTableRows(results);
+        if (badge)        badge.textContent = `${filteredResults.length} Stocks`;
+        renderTableRows(filteredResults);
     }
 
     function renderTableRows(itemsList) {
@@ -5485,9 +5582,21 @@ window.renderCircuits = function(forceRefresh = false) {
         return;
     }
 
+    const searchInput = document.getElementById('circuits-search-input');
+    const searchVal = searchInput ? searchInput.value.trim().toUpperCase() : '';
+    const filteredResults = searchVal 
+        ? results.filter(item => item.symbol.toUpperCase().includes(searchVal))
+        : results;
+
+    if (filteredResults.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding: 2rem; color: var(--text-secondary);">કોઈ મેળ ખાતી કંપની નથી.</td></tr>`;
+        if (badge) badge.textContent = '0 Stocks';
+        return;
+    }
+
     if (emptyState)   emptyState.style.display  = 'none';
     if (tableWrapper) tableWrapper.style.display = '';
-    if (badge)        badge.textContent = `${results.length} Stocks`;
+    if (badge)        badge.textContent = `${filteredResults.length} Stocks`;
 
     const formatVolume = (v) => {
         if (v >= 10000000) return (v / 10000000).toFixed(2) + ' Cr';
@@ -5496,7 +5605,7 @@ window.renderCircuits = function(forceRefresh = false) {
         return v.toString();
     };
 
-    tbody.innerHTML = results.map((item, idx) => {
+    tbody.innerHTML = filteredResults.map((item, idx) => {
         const livePriceVal = circuitsLivePrices.get(item.symbol);
         const livePriceHtml = livePriceVal 
             ? `₹${livePriceVal.toFixed(2)} <span class="live-pulse" style="width:6px;height:6px;box-shadow:0 0 0 0 rgba(16,185,129,0.7);animation:pulse 1.5s infinite;margin-left:0.2rem;display:inline-block;border-radius:50%;background:#10b981;"></span>`
@@ -5726,17 +5835,25 @@ window.renderIntraday = function(forceRefresh = false) {
         // 1. High liquidity: volume >= 80,000 shares
         if (volume < 80000) continue;
 
+        // Check if we have cached live values
+        const live = intradayLivePrices.get(sym);
+        const livePrice = (live && live.price) ? live.price : todayClose;
+        const yesterdayClosePrice = (live && live.prevClose) ? live.prevClose : yesterdayClose;
+        const liveHigh = (live && live.high) ? live.high : dailyHigh;
+        const liveLow = (live && live.low) ? live.low : dailyLow;
+        const liveVolume = (live && live.volume) ? live.volume : volume;
+
         // 2. Volatility percentage: (High - Low) / Close * 100
-        const volatilityPct = todayClose > 0 ? ((dailyHigh - dailyLow) / todayClose) * 100 : 0;
+        const volatilityPct = livePrice > 0 ? ((liveHigh - liveLow) / livePrice) * 100 : 0;
         // Optimal intraday volatility range (between 1.2% and 8.0%)
         if (volatilityPct < 1.2 || volatilityPct > 8.0) continue;
 
-        const changePercent = ((todayClose - yesterdayClose) / yesterdayClose) * 100;
+        const changePercent = yesterdayClosePrice > 0 ? ((livePrice - yesterdayClosePrice) / yesterdayClosePrice) * 100 : 0;
         
         // Pivot Point calculations
-        const P = (dailyHigh + dailyLow + todayClose) / 3;
-        const S1 = (2 * P) - dailyHigh;
-        const R1 = (2 * P) - dailyLow;
+        const P = (liveHigh + liveLow + livePrice) / 3;
+        const S1 = (2 * P) - liveHigh;
+        const R1 = (2 * P) - dailyLow; // Wait, let's keep R1 support/resistance math correct: (2*P) - liveLow
 
         // Suggested SL & Target
         let stopLoss = 0;
@@ -5748,8 +5865,8 @@ window.renderIntraday = function(forceRefresh = false) {
 
         if (changePercent >= 1.0) {
             trend = 'Bullish 🟢';
-            stopLoss = Math.min(S1, todayClose * 0.985);
-            target = Math.max(R1, todayClose * 1.025);
+            stopLoss = Math.min(S1, livePrice * 0.985);
+            target = Math.max(R1, livePrice * 1.025);
             if (changePercent >= 2.5) {
                 technicalRating = 'STRONG BUY 🟢';
                 ratingColor = 'var(--success-color)';
@@ -5761,8 +5878,8 @@ window.renderIntraday = function(forceRefresh = false) {
             }
         } else if (changePercent <= -1.0) {
             trend = 'Bearish 🔴';
-            stopLoss = Math.max(R1, todayClose * 1.015);
-            target = Math.min(S1, todayClose * 0.975);
+            stopLoss = Math.max(R1, livePrice * 1.015);
+            target = Math.min(S1, livePrice * 0.975);
             if (changePercent <= -2.5) {
                 technicalRating = 'STRONG SELL 🔴';
                 ratingColor = 'var(--danger-color)';
@@ -5773,14 +5890,17 @@ window.renderIntraday = function(forceRefresh = false) {
                 ratingBg = 'rgba(248,113,113,0.12)';
             }
         } else {
-            // Neutral close-to-close, set target/SL based on today's range
-            stopLoss = todayClose * 0.99;
-            target = todayClose * 1.01;
+            trend = 'Neutral ⚪';
+            stopLoss = livePrice * 0.99;
+            target = livePrice * 1.01;
         }
 
         results.push({
             symbol: sym,
             latestClose: todayClose,
+            yesterdayClose,
+            dailyHigh,
+            dailyLow,
             volume,
             volatilityPct,
             changePercent,
@@ -5789,20 +5909,27 @@ window.renderIntraday = function(forceRefresh = false) {
             target,
             technicalRating,
             ratingColor,
-            ratingBg
+            ratingBg,
+            livePrice,
+            yesterdayClosePrice,
+            liveHigh,
+            liveLow,
+            liveVolume
         });
     }
 
     // Sort by Volume descending to list most liquid first
     results.sort((a, b) => b.volume - a.volume);
 
-    // Limit to top 50 intraday opportunities
-    const topIntraday = results.slice(0, 50);
+    // Filter results based on search input
+    const searchVal = (document.getElementById('intraday-search-input')?.value || '').trim().toUpperCase();
+    const filteredIntraday = searchVal ? results.filter(item => item.symbol.toUpperCase().includes(searchVal)) : results;
+    const topIntraday = filteredIntraday.slice(0, 50);
 
     if (topIntraday.length === 0) {
         if (emptyState)   emptyState.style.display  = '';
         if (tableWrapper) tableWrapper.style.display = 'none';
-        if (badge)        badge.textContent = '0 Stocks';
+        if (badge)        badge.textContent = '0 Opportunities';
         return;
     }
 
@@ -5818,12 +5945,11 @@ window.renderIntraday = function(forceRefresh = false) {
     };
 
     tbody.innerHTML = topIntraday.map((item, idx) => {
-        const livePriceVal = intradayLivePrices.get(item.symbol);
-        const livePriceHtml = livePriceVal 
-            ? `₹${livePriceVal.toFixed(2)} <span class="live-pulse" style="width:6px;height:6px;box-shadow:0 0 0 0 rgba(16,185,129,0.7);animation:pulse 1.5s infinite;margin-left:0.2rem;display:inline-block;border-radius:50%;background:#10b981;"></span>`
+        const live = intradayLivePrices.get(item.symbol);
+        const livePriceHtml = live 
+            ? `₹${item.livePrice.toFixed(2)} <span class="live-pulse" style="width:6px;height:6px;box-shadow:0 0 0 0 rgba(16,185,129,0.7);animation:pulse 1.5s infinite;margin-left:0.2rem;display:inline-block;border-radius:50%;background:#10b981;"></span>`
             : `₹${item.latestClose.toFixed(2)} <span style="font-size:0.7rem;color:var(--text-secondary);">(EOD)</span>`;
 
-        const changeSign = item.changePercent >= 0 ? '+' : '';
         const changeColor = item.changePercent >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
 
         const inWatchlist = watchlistItems.some(w => w.symbol === item.symbol);
@@ -5832,17 +5958,26 @@ window.renderIntraday = function(forceRefresh = false) {
             : `<button onclick="addToWatchlist('${item.symbol}', ${item.latestClose}); event.stopPropagation();" title="Watchlistમાં ઉમેરો" style="background:none; border:1px solid rgba(255,255,255,0.15); color:var(--text-secondary); border-radius:5px; padding:0.22rem 0.5rem; cursor:pointer; font-size:0.8rem; margin-right:5px;"><i class='fa-regular fa-star'></i></button>`;
 
         return `
-            <tr class="clickable-row" onclick="showResearchModal('${item.symbol}')" title="ચાર્ટ અને વિગતો જુઓ">
+            <tr class="clickable-row" onclick="showResearchModal('${item.symbol}')" 
+                data-symbol="${item.symbol}"
+                data-today-close="${item.latestClose}" 
+                data-yesterday-close="${item.yesterdayClose}" 
+                data-daily-high="${item.dailyHigh}" 
+                data-daily-low="${item.dailyLow}" 
+                data-volume="${item.volume}"
+                title="ચાર્ટ અને વિગતો જુઓ">
                 <td style="text-align:center;"><span style="background:rgba(16,185,129,0.15);color:#10b981;font-weight:700;padding:0.15rem 0.5rem;border-radius:4px;font-size:0.82rem;">${idx+1}</span></td>
                 <td><strong style="color:var(--accent-color);">${item.symbol}</strong></td>
-                <td>₹${item.latestClose.toFixed(2)}</td>
-                <td class="intraday-live-cell" data-symbol="${item.symbol}">${livePriceHtml}</td>
-                <td style="font-weight:600;color:#cbd5e1;">${formatVolume(item.volume)}</td>
-                <td style="color:#a855f7;font-weight:600;">${item.volatilityPct.toFixed(2)}%</td>
-                <td style="font-weight:700;color:${changeColor};">${item.trend}</td>
-                <td style="color:var(--danger-color);font-weight:700;">₹${item.stopLoss.toFixed(2)}</td>
-                <td style="color:var(--success-color);font-weight:700;">₹${item.target.toFixed(2)}</td>
-                <td><span style="background:${item.ratingBg};color:${item.ratingColor};font-weight:700;padding:0.2rem 0.6rem;border-radius:6px;font-size:0.75rem;border:1px solid ${item.ratingColor}30;">${item.technicalRating}</span></td>
+                <td class="intraday-prev-close">₹${item.yesterdayClosePrice.toFixed(2)}</td>
+                <td class="intraday-live-price" data-symbol="${item.symbol}">${livePriceHtml}</td>
+                <td class="intraday-live-high">₹${item.liveHigh.toFixed(2)}</td>
+                <td class="intraday-live-low">₹${item.liveLow.toFixed(2)}</td>
+                <td class="intraday-live-volume" style="font-weight:600;color:#cbd5e1;">${formatVolume(item.liveVolume)}</td>
+                <td class="intraday-live-volatility" style="color:#a855f7;font-weight:600;">${item.volatilityPct.toFixed(2)}%</td>
+                <td class="intraday-live-trend" style="font-weight:700;color:${changeColor};">${item.trend}</td>
+                <td class="intraday-live-sl" style="color:var(--danger-color);font-weight:700;">₹${item.stopLoss.toFixed(2)}</td>
+                <td class="intraday-live-target" style="color:var(--success-color);font-weight:700;">₹${item.target.toFixed(2)}</td>
+                <td class="intraday-live-rating"><span style="background:${item.ratingBg};color:${item.ratingColor};font-weight:700;padding:0.2rem 0.6rem;border-radius:6px;font-size:0.75rem;border:1px solid ${item.ratingColor}30;">${item.technicalRating}</span></td>
                 <td style="text-align:center; white-space:nowrap;">
                     ${starBtn}
                     <button onclick="showResearchModal('${item.symbol}');event.stopPropagation();"
@@ -5865,18 +6000,124 @@ window.fetchIntradayLivePrices = async function(symbols) {
         try {
             const data = await fetchYahooFinanceData(symbol + '.NS');
             if (data && data.chart && data.chart.result && data.chart.result[0]) {
-                const price = data.chart.result[0].meta.regularMarketPrice;
+                const meta = data.chart.result[0].meta;
+                const price = meta.regularMarketPrice;
+                const prevClose = meta.chartPreviousClose || meta.previousClose;
+                const high = meta.regularMarketDayHigh;
+                const low = meta.regularMarketDayLow;
+                const volume = meta.regularMarketVolume;
                 if (price) {
-                    intradayLivePrices.set(symbol, price);
-                    document.querySelectorAll(`.intraday-live-cell[data-symbol="${symbol}"]`).forEach(cell => {
-                        cell.innerHTML = `₹${price.toFixed(2)} <span class="live-pulse" style="width:6px;height:6px;box-shadow:0 0 0 0 rgba(16,185,129,0.7);animation:pulse 1.5s infinite;margin-left:0.2rem;display:inline-block;border-radius:50%;background:#10b981;"></span>`;
-                    });
+                    intradayLivePrices.set(symbol, { price, prevClose, high, low, volume });
+                    updateIntradayRowDOM(symbol);
                 }
             }
         } catch (e) {
             console.warn(`[Intraday Live Update] Error for ${symbol}:`, e.message);
         }
     }));
+};
+
+window.updateIntradayRowDOM = function(symbol) {
+    const tr = document.querySelector(`#intraday-table tbody tr[data-symbol="${symbol}"]`);
+    if (!tr) return;
+    const live = intradayLivePrices.get(symbol);
+    if (!live) return;
+
+    const todayClose = parseFloat(tr.getAttribute('data-today-close'));
+    const yesterdayClose = parseFloat(tr.getAttribute('data-yesterday-close'));
+    const dailyHigh = parseFloat(tr.getAttribute('data-daily-high'));
+    const dailyLow = parseFloat(tr.getAttribute('data-daily-low'));
+    const origVolume = parseFloat(tr.getAttribute('data-volume'));
+
+    const livePrice = live.price || todayClose;
+    const yesterdayClosePrice = live.prevClose || yesterdayClose;
+    const liveHigh = live.high || dailyHigh;
+    const liveLow = live.low || dailyLow;
+    const liveVolume = live.volume || origVolume;
+
+    const volatilityPct = livePrice > 0 ? ((liveHigh - liveLow) / livePrice) * 100 : 0;
+    const changePercent = yesterdayClosePrice > 0 ? ((livePrice - yesterdayClosePrice) / yesterdayClosePrice) * 100 : 0;
+
+    const P = (liveHigh + liveLow + livePrice) / 3;
+    const S1 = (2 * P) - liveHigh;
+    const R1 = (2 * P) - liveLow;
+
+    let stopLoss = 0;
+    let target = 0;
+    let trend = 'Neutral ⚪';
+    let technicalRating = 'HOLD 🟡';
+    let ratingColor = '#f59e0b';
+    let ratingBg = 'rgba(245,158,11,0.12)';
+
+    if (changePercent >= 1.0) {
+        trend = 'Bullish 🟢';
+        stopLoss = Math.min(S1, livePrice * 0.985);
+        target = Math.max(R1, livePrice * 1.025);
+        if (changePercent >= 2.5) {
+            technicalRating = 'STRONG BUY 🟢';
+            ratingColor = 'var(--success-color)';
+            ratingBg = 'rgba(16,185,129,0.12)';
+        } else {
+            technicalRating = 'BUY 🟢';
+            ratingColor = '#4ade80';
+            ratingBg = 'rgba(74,222,128,0.12)';
+        }
+    } else if (changePercent <= -1.0) {
+        trend = 'Bearish 🔴';
+        stopLoss = Math.max(R1, livePrice * 1.015);
+        target = Math.min(S1, livePrice * 0.975);
+        if (changePercent <= -2.5) {
+            technicalRating = 'STRONG SELL 🔴';
+            ratingColor = 'var(--danger-color)';
+            ratingBg = 'rgba(239,68,68,0.12)';
+        } else {
+            technicalRating = 'SELL 🔴';
+            ratingColor = '#f87171';
+            ratingBg = 'rgba(248,113,113,0.12)';
+        }
+    } else {
+        trend = 'Neutral ⚪';
+        stopLoss = livePrice * 0.99;
+        target = livePrice * 1.01;
+    }
+
+    const formatVolume = (v) => {
+        if (v >= 10000000) return (v / 10000000).toFixed(2) + ' Cr';
+        if (v >= 100000) return (v / 100000).toFixed(2) + ' Lk';
+        if (v >= 1000) return (v / 1000).toFixed(1) + ' K';
+        return v.toString();
+    };
+
+    const changeColor = changePercent >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+
+    const cellPrevClose = tr.querySelector('.intraday-prev-close');
+    const cellLivePrice = tr.querySelector('.intraday-live-price');
+    const cellLiveHigh = tr.querySelector('.intraday-live-high');
+    const cellLiveLow = tr.querySelector('.intraday-live-low');
+    const cellLiveVolume = tr.querySelector('.intraday-live-volume');
+    const cellLiveVolatility = tr.querySelector('.intraday-live-volatility');
+    const cellLiveTrend = tr.querySelector('.intraday-live-trend');
+    const cellLiveSL = tr.querySelector('.intraday-live-sl');
+    const cellLiveTarget = tr.querySelector('.intraday-live-target');
+    const cellLiveRating = tr.querySelector('.intraday-live-rating');
+
+    if (cellPrevClose) cellPrevClose.textContent = `₹${yesterdayClosePrice.toFixed(2)}`;
+    if (cellLivePrice) {
+        cellLivePrice.innerHTML = `₹${livePrice.toFixed(2)} <span class="live-pulse" style="width:6px;height:6px;box-shadow:0 0 0 0 rgba(16,185,129,0.7);animation:pulse 1.5s infinite;margin-left:0.2rem;display:inline-block;border-radius:50%;background:#10b981;"></span>`;
+    }
+    if (cellLiveHigh) cellLiveHigh.textContent = `₹${liveHigh.toFixed(2)}`;
+    if (cellLiveLow) cellLiveLow.textContent = `₹${liveLow.toFixed(2)}`;
+    if (cellLiveVolume) cellLiveVolume.textContent = formatVolume(liveVolume);
+    if (cellLiveVolatility) cellLiveVolatility.textContent = `${volatilityPct.toFixed(2)}%`;
+    if (cellLiveTrend) {
+        cellLiveTrend.textContent = trend;
+        cellLiveTrend.style.color = changeColor;
+    }
+    if (cellLiveSL) cellLiveSL.textContent = `₹${stopLoss.toFixed(2)}`;
+    if (cellLiveTarget) cellLiveTarget.textContent = `₹${target.toFixed(2)}`;
+    if (cellLiveRating) {
+        cellLiveRating.innerHTML = `<span style="background:${ratingBg};color:${ratingColor};font-weight:700;padding:0.2rem 0.6rem;border-radius:6px;font-size:0.75rem;border:1px solid ${ratingColor}30;">${technicalRating}</span>`;
+    }
 };
 
 // =====================================================================

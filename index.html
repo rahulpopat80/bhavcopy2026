@@ -304,7 +304,7 @@
                 <!-- Right Side: Top Performer + Gainers List -->
                 <div class="movement-column-wrapper">
                     <!-- Market Cap Segment Analyzer Card -->
-                    <div class="card segment-analyzer-card" id="segment-analyzer-card" style="margin-bottom: 1.25rem;">
+                    <div class="card segment-analyzer-card" id="segment-analyzer-card" style="display: none; margin-bottom: 1.25rem;">
                         <div class="movement-header" style="margin-bottom: 0.5rem;">
                             <i class="fa-solid fa-chart-pie movement-icon" style="color: var(--accent-color);"></i>
                             <h2 style="color: var(--text-primary); font-size: 1.1rem;">સેગમેન્ટ પર્ફોર્મન્સ (Large, Mid &amp; Small Cap)</h2>
@@ -515,8 +515,9 @@
 
                 <!-- Portfolio Entries List Card -->
                 <div class="card portfolio-list-card">
-                    <div class="portfolio-list-header">
+                    <div class="portfolio-list-header" style="flex-wrap: wrap; gap: 0.5rem; align-items: center;">
                         <h2>Logged Transactions</h2>
+                        <input type="text" id="portfolio-search-input" placeholder="Search Symbol..." oninput="renderPortfolioTable()" style="padding:0.4rem 0.75rem; border:1px solid rgba(255,255,255,0.15); border-radius:6px; background:rgba(0,0,0,0.2); color:#fff; font-size:0.8rem; width:180px; margin-left: auto; margin-right: 0.5rem;">
                         <span class="results-badge" id="portfolio-count">Active Holdings: 0</span>
                     </div>
                     
@@ -562,6 +563,7 @@
                 <div class="movement-header" style="margin-bottom:0.75rem; flex-wrap:wrap; gap:0.5rem;">
                     <i class="fa-solid fa-sun movement-icon" style="color:#f59e0b;"></i>
                     <h2 style="color:var(--text-primary);">Morning Buy Picks <span class="results-badge" id="picks-count-badge" style="background:rgba(245,158,11,0.15);color:#f59e0b;border-color:rgba(245,158,11,0.3);">25 Scripts</span></h2>
+                    <input type="text" id="morning-search-input" placeholder="Search Symbol..." oninput="renderMorningPicks()" style="padding:0.4rem 0.75rem; border:1px solid rgba(255,255,255,0.15); border-radius:6px; background:rgba(0,0,0,0.2); color:#fff; font-size:0.8rem; width:180px; margin-left: auto; margin-right: 0.5rem;">
                     <button onclick="renderMorningPicks()" class="btn" style="margin-left:auto;font-size:0.78rem;padding:0.35rem 0.9rem;background:linear-gradient(135deg,#f59e0b,#d97706);border:none;color:#000;font-weight:700;border-radius:6px;cursor:pointer;">
                         <i class="fa-solid fa-rotate"></i> Refresh Analysis
                     </button>
@@ -587,7 +589,7 @@
                             <tr>
                                 <th>Rank</th>
                                 <th>Symbol</th>
-                                <th>Latest Price</th>
+                                <th>હાલનો લાઇવ બજારનો ભાવ</th>
                                 <th>3-Day %</th>
                                 <th>5-Day %</th>
                                 <th>Trend</th>
@@ -655,10 +657,11 @@
         <!-- Tab: Watchlist (Hidden by default) -->
         <div id="watchlist-tab-content" class="hidden">
             <div class="card" style="margin-bottom: 0;">
-                <div class="movement-header" style="margin-bottom: 0.75rem;">
+                <div class="movement-header" style="margin-bottom: 0.75rem; flex-wrap: wrap; gap: 0.5rem;">
                     <i class="fa-solid fa-star movement-icon" style="color: #f59e0b;"></i>
                     <h2 style="color: var(--text-primary);">My Watchlist <span class="results-badge" id="watchlist-count-badge" style="background: rgba(245,158,11,0.15); color:#f59e0b; border-color:rgba(245,158,11,0.3);">0 Scripts</span></h2>
-                    <button onclick="clearWatchlist()" class="btn btn-secondary" style="margin-left: auto; font-size:0.78rem; padding:0.35rem 0.75rem; color: var(--danger-color); border-color: var(--danger-color);">
+                    <input type="text" id="watchlist-search-input" placeholder="Search Symbol..." oninput="renderWatchlist()" style="padding:0.4rem 0.75rem; border:1px solid rgba(255,255,255,0.15); border-radius:6px; background:rgba(0,0,0,0.2); color:#fff; font-size:0.8rem; width:180px; margin-left: auto; margin-right: 0.5rem;">
+                    <button onclick="clearWatchlist()" class="btn btn-secondary" style="font-size:0.78rem; padding:0.35rem 0.75rem; color: var(--danger-color); border-color: var(--danger-color);">
                         <i class="fa-solid fa-trash"></i> Clear All
                     </button>
                 </div>
@@ -702,11 +705,14 @@
                         <h2 style="color: var(--accent-color); font-size: 1.35rem; display: flex; align-items: center; gap: 0.5rem;">
                             <i class="fa-solid fa-award"></i> પરિણામો અને ડિવિડન્ડ વિશ્લેષણ (Upcoming Results & Dividend)
                         </h2>
-                        <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.25rem;">છેલ્લા ત્રણ ક્વાર્ટરમાં ઉત્કૃષ્ટ પરિણામો અને સારું ડિવિડન્ડ ચુકવતી ટોપ ૨૦ કંપનીઓની વિગતો.</p>
+                        <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.25rem;">છેલ્લા ત્રણ ક્વાર્ટરમાં ઉત્કૃષ્ટ પરિણામો અને સારું ડિવિડન્ડ ચુકવતી ટોપ ૨ો કંપનીઓની વિગતો.</p>
                     </div>
-                    <span class="results-badge" style="background: rgba(34,197,94,0.12); border-color: var(--success-color); color: var(--success-color); font-weight: bold; font-size: 0.8rem; padding: 0.25rem 0.6rem; border-radius: 6px; border: 1px solid;">
-                        Top 20 Leaderboard
-                    </span>
+                    <div style="display: flex; align-items: center; gap: 0.5rem; margin-left: auto;">
+                        <input type="text" id="results-search-input" placeholder="Search Symbol..." oninput="renderResultsAndDividendsTable()" style="padding:0.4rem 0.75rem; border:1px solid rgba(255,255,255,0.15); border-radius:6px; background:rgba(0,0,0,0.2); color:#fff; font-size:0.8rem; width:180px;">
+                        <span class="results-badge" style="background: rgba(34,197,94,0.12); border-color: var(--success-color); color: var(--success-color); font-weight: bold; font-size: 0.8rem; padding: 0.25rem 0.6rem; border-radius: 6px; border: 1px solid;">
+                            Top 20 Leaderboard
+                        </span>
+                    </div>
                 </div>
                 
                 <div class="table-wrapper" style="max-height: 650px;">
@@ -741,10 +747,7 @@
                     <i class="fa-solid fa-fire movement-icon" style="color:#ef4444;"></i>
                     <h2 style="color:var(--text-primary);">High Volume &amp; Promoter Stocks <span class="results-badge" id="vol-promoter-count-badge" style="background:rgba(239,68,68,0.15);color:#ef4444;border-color:rgba(239,68,68,0.3);">0 Stocks</span></h2>
                     
-                    <div class="gainer-toggle-group" style="margin-left:auto; display:flex; gap:0.35rem; align-items:center;">
-                        <button class="toggle-btn active" id="btn-vol-promoter-local" onclick="setVolumePromoterSource('LOCAL')">Local Master</button>
-                        <button class="toggle-btn" id="btn-vol-promoter-global" onclick="setVolumePromoterSource('GLOBAL')">Global (Real-Time)</button>
-                    </div>
+                    <input type="text" id="vol-promoter-search-input" placeholder="Search Symbol..." oninput="renderVolumePromoterPicks()" style="padding:0.4rem 0.75rem; border:1px solid rgba(255,255,255,0.15); border-radius:6px; background:rgba(0,0,0,0.2); color:#fff; font-size:0.8rem; width:180px; margin-left: auto; margin-right: 0.5rem;">
 
                     <button onclick="renderVolumePromoterPicks(true)" class="btn" style="font-size:0.78rem;padding:0.35rem 0.9rem;background:linear-gradient(135deg,#ef4444,#dc2626);border:none;color:#fff;font-weight:700;border-radius:6px;cursor:pointer;">
                         <i class="fa-solid fa-rotate"></i> Refresh
@@ -790,8 +793,8 @@
                 <div class="movement-header" style="margin-bottom:0.75rem; flex-wrap:wrap; gap:0.5rem;">
                     <i class="fa-solid fa-bolt movement-icon" style="color:#eab308;"></i>
                     <h2 style="color:var(--text-primary);">Circuits (સર્કિટ્સ) <span class="results-badge" id="circuits-count-badge" style="background:rgba(234,179,8,0.15);color:#eab308;border-color:rgba(234,179,8,0.3);">0 Stocks</span></h2>
-                    
-                    <button onclick="renderCircuits(true)" class="btn" style="margin-left:auto;font-size:0.78rem;padding:0.35rem 0.9rem;background:linear-gradient(135deg,#eab308,#ca8a04);border:none;color:#000;font-weight:700;border-radius:6px;cursor:pointer;">
+                    <input type="text" id="circuits-search-input" placeholder="Search Symbol..." oninput="renderCircuits()" style="padding:0.4rem 0.75rem; border:1px solid rgba(255,255,255,0.15); border-radius:6px; background:rgba(0,0,0,0.2); color:#fff; font-size:0.8rem; width:180px; margin-left: auto; margin-right: 0.5rem;">
+                    <button onclick="renderCircuits(true)" class="btn" style="font-size:0.78rem;padding:0.35rem 0.9rem;background:linear-gradient(135deg,#eab308,#ca8a04);border:none;color:#000;font-weight:700;border-radius:6px;cursor:pointer;">
                         <i class="fa-solid fa-rotate"></i> Refresh
                     </button>
                 </div>
@@ -848,7 +851,7 @@
                 </div>
 
                 <!-- Global Indices Grid -->
-                <div id="global-indices-grid" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; margin-top: 1rem;">
+                <div id="global-indices-grid" style="display:flex; flex-direction:row; flex-wrap:nowrap; overflow-x:auto; gap:1rem; margin-top:1rem; padding-bottom: 0.5rem; scrollbar-width: thin;">
                     <!-- Cards will be dynamically loaded here -->
                 </div>
             </div>
@@ -860,8 +863,8 @@
                 <div class="movement-header" style="margin-bottom:0.75rem; flex-wrap:wrap; gap:0.5rem;">
                     <i class="fa-solid fa-gauge-high movement-icon" style="color:#10b981;"></i>
                     <h2 style="color:var(--text-primary);">Intraday Scanner (ઇન્ટ્રાડે સ્કેનર) <span class="results-badge" id="intraday-count-badge" style="background:rgba(16,185,129,0.15);color:#10b981;border-color:rgba(16,185,129,0.3);">0 Stocks</span></h2>
-                    
-                    <button onclick="renderIntraday(true)" class="btn" style="margin-left:auto;font-size:0.78rem;padding:0.35rem 0.9rem;background:linear-gradient(135deg,#10b981,#059669);border:none;color:#fff;font-weight:700;border-radius:6px;cursor:pointer;">
+                    <input type="text" id="intraday-search-input" placeholder="Search Symbol..." oninput="renderIntraday()" style="padding:0.4rem 0.75rem; border:1px solid rgba(255,255,255,0.15); border-radius:6px; background:rgba(0,0,0,0.2); color:#fff; font-size:0.8rem; width:180px; margin-left: auto; margin-right: 0.5rem;">
+                    <button onclick="renderIntraday(true)" class="btn" style="font-size:0.78rem;padding:0.35rem 0.9rem;background:linear-gradient(135deg,#10b981,#059669);border:none;color:#fff;font-weight:700;border-radius:6px;cursor:pointer;">
                         <i class="fa-solid fa-rotate"></i> Refresh
                     </button>
                 </div>
@@ -883,17 +886,19 @@
                     <table id="intraday-table" style="min-width:700px;">
                         <thead>
                             <tr>
-                                <th>ક્રમ (Rank)</th>
-                                <th>કંપની (Symbol)</th>
-                                <th>હાલનો ભાવ</th>
-                                <th>લાઇવ ભાવ</th>
-                                <th>વોલ્યુમ</th>
-                                <th>વોલેટિલિટી</th>
-                                <th>ટ્રેન્ડ (Trend)</th>
-                                <th>સ્ટોપ-લોસ (SL)</th>
-                                <th>ટાર્ગેટ (Target)</th>
-                                <th>ટેકનિકલ રેટિંગ</th>
-                                <th style="text-align:center;">ઍક્શન (Action)</th>
+                                <th>ક્રમ</th>
+                                <th>કંપનીનું નામ</th>
+                                <th>ગઇકાલનો બંઘ ભાવ</th>
+                                <th>હાલનો લાઇવ ભાવ</th>
+                                <th>આજનો લાઇવ હાઇ</th>
+                                <th>આજનો લાઇવ લો</th>
+                                <th>લાઇવ વોલ્યુમ</th>
+                                <th>લાઇવ વોલેટિલીટી</th>
+                                <th>લાઇવ ટ્રેન્ડ</th>
+                                <th>લાઇવ સ્ટોપ લોસ</th>
+                                <th>લાઇવ ટાર્ગેટ</th>
+                                <th>લાઇવ ટેકનિકલ રેટીંગ</th>
+                                <th style="text-align:center;">એકશન</th>
                             </tr>
                         </thead>
                         <tbody id="intraday-tbody"></tbody>
