@@ -179,6 +179,46 @@ function initEvents() {
     fetchMarketIndices();
     setInterval(fetchMarketIndices, 30000);
 
+    // Central periodic updater for active views (every 10 seconds)
+    setInterval(async () => {
+        const activeTab = document.querySelector('.nav-btn.active');
+        if (!activeTab) return;
+        
+        const tabId = activeTab.id;
+        
+        if (tabId === 'tab-portfolio') {
+            if (typeof fetchPortfolioLivePrices === 'function') {
+                await fetchPortfolioLivePrices();
+            }
+        } else if (tabId === 'tab-watchlist') {
+            if (typeof renderWatchlist === 'function') {
+                renderWatchlist();
+            }
+        } else if (tabId === 'tab-research') {
+            const visibleSymbols = Array.from(document.querySelectorAll('#movement-table tbody tr')).map(tr => {
+                const symCell = tr.cells[0];
+                return symCell ? symCell.textContent.trim().toUpperCase() : null;
+            }).filter(s => s);
+            if (visibleSymbols.length > 0) {
+                await fetchGainersLivePrices(visibleSymbols);
+            }
+        } else if (tabId === 'tab-circuits') {
+            const visibleSymbols = Array.from(document.querySelectorAll('#circuits-table tbody tr')).map(tr => {
+                const symCell = tr.cells[1];
+                return symCell ? symCell.textContent.trim().toUpperCase() : null;
+            }).filter(s => s);
+            if (visibleSymbols.length > 0) {
+                if (typeof fetchCircuitsLivePrices === 'function') {
+                    await fetchCircuitsLivePrices(visibleSymbols);
+                }
+            }
+        } else if (tabId === 'tab-global-indices') {
+            if (typeof fetchGlobalIndices === 'function') {
+                fetchGlobalIndices(false);
+            }
+        }
+    }, 10000);
+
     // Check if XLSX library loaded
     if (typeof XLSX === 'undefined') {
         processLogContainer.classList.remove('hidden');
@@ -262,6 +302,9 @@ function initEvents() {
     const tabMorning     = document.getElementById('tab-morning-picks');
     const tabAdvice      = document.getElementById('tab-investor-advice');
     const tabVolPromoter = document.getElementById('tab-volume-promoter');
+    const tabCircuits    = document.getElementById('tab-circuits');
+    const tabGlobalIndices = document.getElementById('tab-global-indices');
+    
     const researchTabContent      = document.getElementById('research-tab-content');
     const portfolioTabContent     = document.getElementById('portfolio-tab-content');
     const resultsTabContent       = document.getElementById('results-tab-content');
@@ -269,11 +312,13 @@ function initEvents() {
     const morningPicksTabContent  = document.getElementById('morning-picks-tab-content');
     const adviceTabContent        = document.getElementById('investor-advice-tab-content');
     const volPromoterTabContent   = document.getElementById('volume-promoter-tab-content');
+    const circuitsTabContent     = document.getElementById('circuits-tab-content');
+    const globalIndicesTabContent = document.getElementById('global-indices-tab-content');
 
     const hideAllTabs = () => {
-        [researchTabContent, portfolioTabContent, resultsTabContent, watchlistTabContent, morningPicksTabContent, adviceTabContent, volPromoterTabContent]
+        [researchTabContent, portfolioTabContent, resultsTabContent, watchlistTabContent, morningPicksTabContent, adviceTabContent, volPromoterTabContent, circuitsTabContent, globalIndicesTabContent]
             .forEach(el => el && el.classList.add('hidden'));
-        [tabResearch, tabPortfolio, tabResults, tabWatchlist, tabMorning, tabAdvice, tabVolPromoter]
+        [tabResearch, tabPortfolio, tabResults, tabWatchlist, tabMorning, tabAdvice, tabVolPromoter, tabCircuits, tabGlobalIndices]
             .forEach(el => el && el.classList.remove('active'));
     };
 
@@ -336,6 +381,24 @@ function initEvents() {
             tabVolPromoter.classList.add('active');
             volPromoterTabContent.classList.remove('hidden');
             renderVolumePromoterPicks();
+        });
+    }
+
+    if (tabCircuits && circuitsTabContent) {
+        tabCircuits.addEventListener('click', () => {
+            hideAllTabs();
+            tabCircuits.classList.add('active');
+            circuitsTabContent.classList.remove('hidden');
+            renderCircuits();
+        });
+    }
+
+    if (tabGlobalIndices && globalIndicesTabContent) {
+        tabGlobalIndices.addEventListener('click', () => {
+            hideAllTabs();
+            tabGlobalIndices.classList.add('active');
+            globalIndicesTabContent.classList.remove('hidden');
+            fetchGlobalIndices();
         });
     }
 
@@ -5272,6 +5335,280 @@ window.renderVolumePromoterPicks = async function(forceRefresh = false) {
                 </tr>`;
         }).join('');
     }
+};
+
+// =====================================================================
+// CIRCUITS & GLOBAL INDICES
+// =====================================================================
+
+let circuitsLivePrices = new Map();
+
+window.renderCircuits = function(forceRefresh = false) {
+    const emptyState   = document.getElementById('circuits-empty-state');
+    const tableWrapper = document.getElementById('circuits-table-wrapper');
+    const badge        = document.getElementById('circuits-count-badge');
+    const tbody        = document.getElementById('circuits-tbody');
+    if (!tbody) return;
+
+    const data = state.processedMasterData;
+    if (!data || data.length < 2) {
+        if (emptyState)   emptyState.style.display  = '';
+        if (tableWrapper) tableWrapper.style.display = 'none';
+        if (badge)        badge.textContent = '0 Stocks';
+        return;
+    }
+
+    const headers = data[0];
+    detectColumnIndexes(headers);
+    const symCol  = state.symbolColIndex;
+    const serCol  = state.seriesColIndex;
+    const hiCol   = state.highColIndex;
+    const diffCol = state.diffColIndex;
+
+    let firstDateCol = -1;
+    if (hiCol   !== -1) firstDateCol = hiCol + 1;
+    else if (diffCol !== -1) firstDateCol = diffCol + 1;
+
+    if (firstDateCol === -1 || firstDateCol >= headers.length || (headers.length - firstDateCol) < 2) {
+        if (emptyState)   emptyState.style.display  = '';
+        if (tableWrapper) tableWrapper.style.display = 'none';
+        if (badge)        badge.textContent = '0 Stocks';
+        return;
+    }
+
+    const results = [];
+
+    for (let r = 1; r < data.length; r++) {
+        const row = data[r];
+        if (!row) continue;
+        const sym    = String(row[symCol] || '').trim().toUpperCase();
+        const series = serCol !== -1 ? String(row[serCol] || '').trim().toUpperCase() : 'EQ';
+        if (!sym || series !== 'EQ') continue;
+
+        // Collect today's close and yesterday's close to calculate change %
+        const todayClose = parseFloat(row[firstDateCol]);
+        const yesterdayClose = parseFloat(row[firstDateCol + 1]);
+        if (isNaN(todayClose) || isNaN(yesterdayClose) || yesterdayClose <= 0) continue;
+
+        const changePercent = ((todayClose - yesterdayClose) / yesterdayClose) * 100;
+
+        // Check if change percent hits circuit limit (5%, 10%, 20%, 2%)
+        let circuitLimit = '';
+        let isCircuit = false;
+
+        if (changePercent >= 19.5) {
+            circuitLimit = '20% Upper Circuit';
+            isCircuit = true;
+        } else if (changePercent >= 9.5 && changePercent < 10.5) {
+            circuitLimit = '10% Upper Circuit';
+            isCircuit = true;
+        } else if (changePercent >= 4.7 && changePercent < 5.3) {
+            circuitLimit = '5% Upper Circuit';
+            isCircuit = true;
+        } else if (changePercent >= 1.9 && changePercent < 2.1) {
+            circuitLimit = '2% Upper Circuit';
+            isCircuit = true;
+        }
+
+        if (!isCircuit) continue;
+
+        // Get Volume
+        let volume = state.latestVolumes.get(sym) || 0;
+        if (volume === 0) {
+            const volColIdx = headers.findIndex(h => {
+                const hs = String(h || '').toUpperCase().trim();
+                return hs === 'VOLUME' || hs === 'VOL' || hs === 'QTY' || hs === 'TTL_TRD_QTY' || hs === 'TOTTRDQTY';
+            });
+            if (volColIdx !== -1) {
+                const volVal = parseFloat(row[volColIdx]);
+                if (!isNaN(volVal)) volume = volVal;
+            }
+        }
+
+        results.push({
+            symbol: sym,
+            latestClose: todayClose,
+            volume,
+            circuitLimit,
+            changePercent
+        });
+    }
+
+    // Sort by Volume descending
+    results.sort((a, b) => b.volume - a.volume);
+
+    if (results.length === 0) {
+        if (emptyState)   emptyState.style.display  = '';
+        if (tableWrapper) tableWrapper.style.display = 'none';
+        if (badge)        badge.textContent = '0 Stocks';
+        return;
+    }
+
+    if (emptyState)   emptyState.style.display  = 'none';
+    if (tableWrapper) tableWrapper.style.display = '';
+    if (badge)        badge.textContent = `${results.length} Stocks`;
+
+    const formatVolume = (v) => {
+        if (v >= 10000000) return (v / 10000000).toFixed(2) + ' Cr';
+        if (v >= 100000) return (v / 100000).toFixed(2) + ' Lk';
+        if (v >= 1000) return (v / 1000).toFixed(1) + ' K';
+        return v.toString();
+    };
+
+    tbody.innerHTML = results.map((item, idx) => {
+        const livePriceVal = circuitsLivePrices.get(item.symbol);
+        const livePriceHtml = livePriceVal 
+            ? `₹${livePriceVal.toFixed(2)} <span class="live-pulse" style="width:6px;height:6px;box-shadow:0 0 0 0 rgba(16,185,129,0.7);animation:pulse 1.5s infinite;margin-left:0.2rem;display:inline-block;border-radius:50%;background:#10b981;"></span>`
+            : `₹${item.latestClose.toFixed(2)} <span style="font-size:0.7rem;color:var(--text-secondary);">(EOD)</span>`;
+
+        const badgeColor = item.circuitLimit.startsWith('20') ? '#ef4444' : item.circuitLimit.startsWith('10') ? '#f59e0b' : '#eab308';
+        const badgeBg = item.circuitLimit.startsWith('20') ? 'rgba(239,68,68,0.12)' : item.circuitLimit.startsWith('10') ? 'rgba(245,158,11,0.12)' : 'rgba(234,179,8,0.12)';
+        
+        const inWatchlist = watchlistItems.some(w => w.symbol === item.symbol);
+        const starBtn = inWatchlist
+            ? `<button onclick="removeFromWatchlist('${item.symbol}'); event.stopPropagation();" title="Watchlistમાંથી કાઢો" style="background:rgba(245,158,11,0.18); border:1px solid #f59e0b; color:#f59e0b; border-radius:5px; padding:0.22rem 0.5rem; cursor:pointer; font-size:0.8rem; margin-right:5px;"><i class='fa-solid fa-star'></i></button>`
+            : `<button onclick="addToWatchlist('${item.symbol}', ${item.latestClose}); event.stopPropagation();" title="Watchlistમાં ઉમેરો" style="background:none; border:1px solid rgba(255,255,255,0.15); color:var(--text-secondary); border-radius:5px; padding:0.22rem 0.5rem; cursor:pointer; font-size:0.8rem; margin-right:5px;"><i class='fa-regular fa-star'></i></button>`;
+
+        return `
+            <tr class="clickable-row" onclick="showResearchModal('${item.symbol}')" title="ચાર્ટ અને વિગતો જુઓ">
+                <td style="text-align:center;"><span style="background:rgba(234,179,8,0.15);color:#eab308;font-weight:700;padding:0.15rem 0.5rem;border-radius:4px;font-size:0.82rem;">${idx+1}</span></td>
+                <td><strong style="color:var(--accent-color);">${item.symbol}</strong></td>
+                <td>₹${item.latestClose.toFixed(2)}</td>
+                <td class="circuit-live-cell" data-symbol="${item.symbol}">${livePriceHtml}</td>
+                <td style="font-weight:600;color:#cbd5e1;">${item.volume > 0 ? formatVolume(item.volume) : '<span style="color:var(--text-secondary);font-size:0.8rem;">No Data</span>'}</td>
+                <td><span style="background:${badgeBg};color:${badgeColor};font-weight:700;padding:0.2rem 0.6rem;border-radius:6px;font-size:0.75rem;border:1px solid ${badgeColor}30;">${item.circuitLimit}</span></td>
+                <td style="color:var(--success-color);font-weight:700;">+${item.changePercent.toFixed(2)}%</td>
+                <td style="text-align:center; white-space:nowrap;">
+                    ${starBtn}
+                    <button onclick="showResearchModal('${item.symbol}');event.stopPropagation();"
+                        style="background:rgba(234,179,8,0.12);border:1px solid #eab308;color:#eab308;border-radius:5px;padding:0.22rem 0.5rem;cursor:pointer;font-size:0.8rem;">
+                        <i class="fa-solid fa-chart-area"></i>
+                    </button>
+                </td>
+            </tr>`;
+    }).join('');
+
+    const symbolsToFetch = results.map(r => r.symbol);
+    if (symbolsToFetch.length > 0 && (forceRefresh || circuitsLivePrices.size === 0)) {
+        fetchCircuitsLivePrices(symbolsToFetch);
+    }
+};
+
+window.fetchCircuitsLivePrices = async function(symbols) {
+    console.log(`[Circuits Live Update] Fetching live prices for ${symbols.length} symbols...`);
+    await Promise.all(symbols.map(async (symbol) => {
+        try {
+            const data = await fetchYahooFinanceData(symbol + '.NS');
+            if (data && data.chart && data.chart.result && data.chart.result[0]) {
+                const price = data.chart.result[0].meta.regularMarketPrice;
+                if (price) {
+                    circuitsLivePrices.set(symbol, price);
+                    document.querySelectorAll(`.circuit-live-cell[data-symbol="${symbol}"]`).forEach(cell => {
+                        cell.innerHTML = `₹${price.toFixed(2)} <span class="live-pulse" style="width:6px;height:6px;box-shadow:0 0 0 0 rgba(16,185,129,0.7);animation:pulse 1.5s infinite;margin-left:0.2rem;display:inline-block;border-radius:50%;background:#10b981;"></span>`;
+                    });
+                }
+            }
+        } catch (e) {
+            console.warn(`[Circuits Live Update] Error for ${symbol}:`, e.message);
+        }
+    }));
+};
+
+const globalIndicesConfig = [
+    { name: 'Nifty Bank (India)', ticker: '^NSEBANK' },
+    { name: 'Dow Jones (US)', ticker: '^DJI' },
+    { name: 'S&P 500 (US)', ticker: '^GSPC' },
+    { name: 'Nasdaq (US)', ticker: '^IXIC' },
+    { name: 'DAX (Germany)', ticker: '^GDAXI' },
+    { name: 'Nikkei 225 (Japan)', ticker: '^N225' },
+    { name: 'Hang Seng (Hong Kong)', ticker: '^HSI' },
+    { name: 'Shanghai Composite (China)', ticker: '000001.SS' },
+    { name: 'DJ Shanghai (China)', ticker: '000003.SS' },
+    { name: 'Taiwan Weighted (Taiwan)', ticker: '^TWII' },
+    { name: 'KOSPI (South Korea)', ticker: '^KS11' }
+];
+
+window.fetchGlobalIndices = async function(showLoading = false) {
+    const grid = document.getElementById('global-indices-grid');
+    if (!grid) return;
+
+    if (showLoading) {
+        grid.innerHTML = `
+            <div style="grid-column: 1/-1; text-align:center; padding:3rem; color:var(--text-secondary);">
+                <i class="fa-solid fa-spinner fa-spin" style="font-size:1.5rem; color:#3b82f6; margin-bottom:0.5rem; display:block;"></i>
+                ગ્લોબલ ઇન્ડેક્સ લાઈવ ડેટા લોડ થઈ રહ્યો છે...
+            </div>
+        `;
+    }
+
+    const fetchedData = [];
+
+    await Promise.all(globalIndicesConfig.map(async (item) => {
+        try {
+            const response = await fetchYahooFinanceData(item.ticker);
+            if (response && response.chart && response.chart.result && response.chart.result[0]) {
+                const result = response.chart.result[0];
+                const meta = result.meta;
+                const price = meta.regularMarketPrice;
+                const prevClose = meta.previousClose !== undefined ? meta.previousClose : (meta.chartPreviousClose || price);
+                const change = price - prevClose;
+                const changePct = prevClose > 0 ? (change / prevClose) * 100 : 0;
+                
+                let isOpen = false;
+                if (meta.currentTradingPeriod && meta.currentTradingPeriod.regular) {
+                    const now = Math.floor(Date.now() / 1000);
+                    const reg = meta.currentTradingPeriod.regular;
+                    isOpen = now >= reg.start && now <= reg.end;
+                }
+                
+                fetchedData.push({
+                    name: item.name,
+                    ticker: item.ticker,
+                    price,
+                    change,
+                    changePct,
+                    isOpen
+                });
+            }
+        } catch (e) {
+            console.warn(`[Global Indices] Failed to fetch ${item.name}:`, e.message);
+        }
+    }));
+
+    if (fetchedData.length === 0) {
+        if (showLoading) {
+            grid.innerHTML = `
+                <div style="grid-column: 1/-1; text-align:center; padding:2rem; color:var(--text-secondary);">
+                    ડેટા લોડ કરવામાં નિષ્ફળતા. કૃપા કરીને ફરીથી પ્રયાસ કરો.
+                </div>
+            `;
+        }
+        return;
+    }
+
+    grid.innerHTML = fetchedData.map(item => {
+        const sign = item.change >= 0 ? '+' : '';
+        const color = item.change >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+        const cardBorderColor = item.change >= 0 ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)';
+        
+        const statusHtml = item.isOpen 
+            ? `<span style="background:rgba(16,185,129,0.12);color:var(--success-color);font-weight:700;padding:0.15rem 0.5rem;border-radius:4px;font-size:0.75rem;display:inline-flex;align-items:center;gap:3px;"><span class="live-pulse" style="width:5px;height:5px;box-shadow:0 0 0 0 rgba(16,185,129,0.7);animation:pulse 1.5s infinite;background:#10b981;border-radius:50%;"></span> OPEN</span>`
+            : `<span style="background:rgba(239,68,68,0.12);color:var(--danger-color);font-weight:700;padding:0.15rem 0.5rem;border-radius:4px;font-size:0.75rem;">CLOSED</span>`;
+
+        return `
+            <div class="card" style="margin-bottom:0; border:1px solid ${cardBorderColor}; padding:1rem; display:flex; flex-direction:column; justify-content:space-between; gap:0.5rem;">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <span style="font-weight:700; color:var(--text-primary); font-size:0.92rem;">${item.name}</span>
+                    ${statusHtml}
+                </div>
+                <div style="font-size:0.75rem; color:var(--text-secondary); font-family:var(--font-family);">${item.ticker}</div>
+                <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-top:0.35rem;">
+                    <span style="font-size:1.4rem; font-weight:800; color:#fff; font-family:var(--font-family);">${item.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    <span style="font-size:0.9rem; font-weight:700; color:${color}; font-family:var(--font-family);">${sign}${item.change.toFixed(2)} (${sign}${item.changePct.toFixed(2)}%)</span>
+                </div>
+            </div>
+        `;
+    }).join('');
 };
 
 // Run on load

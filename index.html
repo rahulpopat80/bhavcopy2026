@@ -103,6 +103,12 @@
             <button class="nav-btn" id="tab-volume-promoter">
                 <i class="fa-solid fa-fire"></i> Vol &amp; Promoter
             </button>
+            <button class="nav-btn" id="tab-circuits">
+                <i class="fa-solid fa-bolt"></i> Circuits
+            </button>
+            <button class="nav-btn" id="tab-global-indices">
+                <i class="fa-solid fa-globe"></i> Global Indices
+            </button>
         </nav>
 
         <!-- Tab 1: Stock Research Content -->
@@ -768,6 +774,76 @@
                         </thead>
                         <tbody id="vol-promoter-tbody"></tbody>
                     </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: Circuits Analysis (Hidden by default) -->
+        <div id="circuits-tab-content" class="hidden">
+            <div class="card" style="margin-bottom:0;">
+                <div class="movement-header" style="margin-bottom:0.75rem; flex-wrap:wrap; gap:0.5rem;">
+                    <i class="fa-solid fa-bolt movement-icon" style="color:#eab308;"></i>
+                    <h2 style="color:var(--text-primary);">Circuits (સર્કિટ્સ) <span class="results-badge" id="circuits-count-badge" style="background:rgba(234,179,8,0.15);color:#eab308;border-color:rgba(234,179,8,0.3);">0 Stocks</span></h2>
+                    
+                    <button onclick="renderCircuits(true)" class="btn" style="margin-left:auto;font-size:0.78rem;padding:0.35rem 0.9rem;background:linear-gradient(135deg,#eab308,#ca8a04);border:none;color:#000;font-weight:700;border-radius:6px;cursor:pointer;">
+                        <i class="fa-solid fa-rotate"></i> Refresh
+                    </button>
+                </div>
+                <div style="background:rgba(234,179,8,0.07);border:1px solid rgba(234,179,8,0.2);border-radius:8px;padding:0.65rem 1rem;margin-bottom:0.9rem;">
+                    <p style="font-size:0.82rem;color:var(--text-secondary);margin:0;">
+                        <i class="fa-solid fa-circle-info" style="color:#eab308;margin-right:5px;"></i>
+                        <strong style="color:#eab308;">નિયમો:</strong> ૧) આજે સૌથી વધુ વોલ્યુમ ધરાવતી કંપનીઓ પહેલા આવશે, ૨) જે કંપનીઓ અપર સર્કિટ (20%, 10% અથવા 5%) ની નજીક અથવા ટચ થયેલ હોય તેને અલગ તારવવામાં આવે છે.
+                    </p>
+                </div>
+
+                <!-- No-data state -->
+                <div id="circuits-empty-state" style="text-align:center;padding:2.5rem 1rem;color:var(--text-secondary);">
+                    <i class="fa-solid fa-database" style="font-size:2.2rem;opacity:0.35;display:block;margin-bottom:0.75rem;"></i>
+                    <p style="font-size:0.9rem;">કોઈ ડેટા મેચ થતો નથી અથવા માસ્ટર ફાઇલ લોડ નથી.</p>
+                </div>
+
+                <!-- Circuits Table -->
+                <div class="table-wrapper movement-table-wrapper" id="circuits-table-wrapper" style="display:none;">
+                    <table id="circuits-table" style="min-width:600px;">
+                        <thead>
+                            <tr>
+                                <th>ક્રમ (Rank)</th>
+                                <th>કંપની (Symbol)</th>
+                                <th>હાલનો ભાવ (Latest Close)</th>
+                                <th>લાઇવ ભાવ (Live Price)</th>
+                                <th>વોલ્યુમ (Volume)</th>
+                                <th>સર્કિટ લિમિટ (Circuit Limit)</th>
+                                <th>આજનો બદલાવ (%)</th>
+                                <th style="text-align:center;">ઍક્શન (Action)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="circuits-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: Global Indices (Hidden by default) -->
+        <div id="global-indices-tab-content" class="hidden">
+            <div class="card" style="margin-bottom:0;">
+                <div class="movement-header" style="margin-bottom:0.75rem; flex-wrap:wrap; gap:0.5rem;">
+                    <i class="fa-solid fa-globe movement-icon" style="color:#3b82f6;"></i>
+                    <h2 style="color:var(--text-primary);">Global Stock Market Indices (ગ્લોબલ ઇન્ડેક્સ)</h2>
+                    
+                    <button onclick="fetchGlobalIndices(true)" class="btn" style="margin-left:auto;font-size:0.78rem;padding:0.35rem 0.9rem;background:linear-gradient(135deg,#3b82f6,#2563eb);border:none;color:#fff;font-weight:700;border-radius:6px;cursor:pointer;">
+                        <i class="fa-solid fa-rotate"></i> Refresh
+                    </button>
+                </div>
+                <div style="background:rgba(59,130,246,0.07);border:1px solid rgba(59,130,246,0.2);border-radius:8px;padding:0.65rem 1rem;margin-bottom:0.9rem;">
+                    <p style="font-size:0.82rem;color:var(--text-secondary);margin:0;">
+                        <i class="fa-solid fa-circle-info" style="color:#3b82f6;margin-right:5px;"></i>
+                        વિશ્વભરના મુખ્ય બજાર સૂચકાંકો (Global Indices) ના રીઅલ-ટાઇમ લાઈવ ભાવ અને માર્કેટ સ્થિતિ (ઓપન/ક્લોઝ).
+                    </p>
+                </div>
+
+                <!-- Global Indices Grid -->
+                <div id="global-indices-grid" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; margin-top: 1rem;">
+                    <!-- Cards will be dynamically loaded here -->
                 </div>
             </div>
         </div>
