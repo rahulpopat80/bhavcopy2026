@@ -175,25 +175,122 @@ const movementTable = document.getElementById('movement-table');
 
 // Initialize Event Listeners
 let isAutoRefreshInFlight = false; // FIX: In-flight guard for central 10s interval
+let hasStartedDashboard = false;
+let marketIndicesTimer = null;
+let autoRefreshTimer = null;
 
 function isTabActive(tabId) {
     const activeTab = document.querySelector('.nav-btn.active');
     return activeTab ? activeTab.id === tabId : false;
 }
 
-function initEvents() {
-    // Sync password from Cloud database
-    const cloudPasswordPromise = db
-        ? db.collection('metadata').doc('auth').get().then(doc => {
-            if (doc.exists) {
-                const cloudPass = doc.data().password;
-                if (cloudPass) {
-                    localStorage.setItem('appPassword', cloudPass);
-                    return cloudPass;
+// FIX: Defer all heavy startup work (Master parsing, Firestore downloads, market fetches, intervals, SW)
+// until AFTER user authentication so the login screen & keyboard inputs never freeze or lag.
+function startDashboardAfterLogin() {
+    if (hasStartedDashboard) return;
+    hasStartedDashboard = true;
+
+    // Load Watchlist from localStorage + background Firestore sync
+    if (typeof loadWatchlistFromStorage === 'function') {
+        loadWatchlistFromStorage();
+    }
+
+    // Load Master File from Local Storage after painting UI, then refresh from Cloud in background
+    loadMasterOnStartup();
+
+    // Fetch live market indices (Sensex & Nifty) and keep updated while logged in
+    fetchMarketIndices();
+    if (!marketIndicesTimer) {
+        marketIndicesTimer = setInterval(fetchMarketIndices, 30000);
+    }
+
+    // Central periodic updater for active views (every 10 seconds, guarded by in-flight flag)
+    if (!autoRefreshTimer) {
+        autoRefreshTimer = setInterval(async () => {
+            if (isAutoRefreshInFlight) return;
+            isAutoRefreshInFlight = true;
+            try {
+                const activeTab = document.querySelector('.nav-btn.active');
+                if (!activeTab) return;
+
+                const tabId = activeTab.id;
+
+                if (tabId === 'tab-portfolio') {
+                    if (typeof fetchPortfolioLivePrices === 'function') {
+                        await fetchPortfolioLivePrices();
+                    }
+                } else if (tabId === 'tab-watchlist') {
+                    if (typeof fetchWatchlistLivePrices === 'function' && watchlistItems.length > 0) {
+                        const symbolsToUpdate = watchlistItems
+                            .map(w => w.symbol)
+                            .filter(s => !isPriceFresh(s) && !isFailedSymbolRecent(s));
+                        if (symbolsToUpdate.length > 0) {
+                            await fetchWatchlistLivePrices(symbolsToUpdate);
+                        }
+                    }
+                } else if (tabId === 'tab-research') {
+                    const visibleSymbols = Array.from(document.querySelectorAll('#movement-table tbody tr')).map(tr => {
+                        const symCell = tr.cells[0];
+                        return symCell ? symCell.textContent.trim().toUpperCase() : null;
+                    }).filter(s => s);
+                    if (visibleSymbols.length > 0) {
+                        await fetchGainersLivePrices(visibleSymbols);
+                    }
+                } else if (tabId === 'tab-circuits') {
+                    const visibleSymbols = Array.from(document.querySelectorAll('#circuits-table tbody tr')).map(tr => {
+                        const symCell = tr.cells[1];
+                        return symCell ? symCell.textContent.trim().toUpperCase() : null;
+                    }).filter(s => s);
+                    if (visibleSymbols.length > 0 && typeof fetchCircuitsLivePrices === 'function') {
+                        await fetchCircuitsLivePrices(visibleSymbols);
+                    }
+                } else if (tabId === 'tab-global-indices') {
+                    if (typeof fetchGlobalIndices === 'function') {
+                        await fetchGlobalIndices(false);
+                    }
+                } else if (tabId === 'tab-intraday') {
+                    const visibleSymbols = Array.from(document.querySelectorAll('#intraday-table tbody tr')).map(tr => {
+                        const symCell = tr.cells[1];
+                        return symCell ? symCell.textContent.trim().toUpperCase() : null;
+                    }).filter(s => s);
+                    if (visibleSymbols.length > 0 && typeof fetchIntradayLivePrices === 'function') {
+                        await fetchIntradayLivePrices(visibleSymbols);
+                    }
+                } else if (tabId === 'tab-master-piece') {
+                    if (typeof fetchMasterPieceLivePrices === 'function') {
+                        await fetchMasterPieceLivePrices();
+                    }
                 }
+            } finally {
+                isAutoRefreshInFlight = false;
             }
-            return null;
-        }).catch(err => {
+        }, 10000);
+    }
+
+    // Register Service Worker after dashboard startup so login screen paint stays immediate
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('./sw.js')
+            .then(reg => console.log('Service Worker Registered Successfully!', reg.scope))
+            .catch(err => console.error('Service Worker Registration Failed:', err));
+    }
+}
+
+function initEvents() {
+    // Sync password from Cloud database (with 5s timeout so login never hangs if offline)
+    const cloudPasswordPromise = db
+        ? Promise.race([
+            db.collection('metadata').doc('auth').get().then(doc => {
+                if (doc.exists) {
+                    const cloudPass = doc.data().password;
+                    if (cloudPass) {
+                        localStorage.setItem('appPassword', cloudPass);
+                        return cloudPass;
+                    }
+                }
+                return null;
+            }),
+            new Promise(resolve => setTimeout(() => resolve(null), 5000))
+        ]).catch(err => {
             console.warn('Could not sync password from Firestore:', err);
             return null;
         })
@@ -207,6 +304,7 @@ function initEvents() {
     if (sessionLoggedIn === 'true') {
         loginOverlay.classList.add('hidden');
         mainApp.classList.remove('hidden');
+        setTimeout(startDashboardAfterLogin, 0);
     } else {
         const loginForm = document.getElementById('login-form');
         const loginError = document.getElementById('login-error');
@@ -235,6 +333,7 @@ function initEvents() {
                 loginOverlay.classList.add('hidden');
                 mainApp.classList.remove('hidden');
                 showNotification('Login successful!', 'success');
+                setTimeout(startDashboardAfterLogin, 0);
             } else {
                 if (loginError) {
                     loginError.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Invalid username or password!';
@@ -259,82 +358,28 @@ function initEvents() {
     processBtn.addEventListener('click', processFiles);
     downloadBtn.addEventListener('click', downloadUpdatedFile);
 
-    // Filters
-    searchCompany.addEventListener('input', applyFilters);
-    priceMin.addEventListener('input', applyFilters);
-    priceMax.addEventListener('input', applyFilters);
-    diffMin.addEventListener('input', applyFilters);
-    diffMax.addEventListener('input', applyFilters);
+    // Filters (FIX: Debounced so typing in Search never drops keystrokes or freezes UI)
+    searchCompany.addEventListener('input', debouncedApplyFilters);
+    priceMin.addEventListener('input', debouncedApplyFilters);
+    priceMax.addEventListener('input', debouncedApplyFilters);
+    diffMin.addEventListener('input', debouncedApplyFilters);
+    diffMax.addEventListener('input', debouncedApplyFilters);
     resetFiltersBtn.addEventListener('click', resetFilters);
 
-    // Load Master File from Local Storage instantly, then refresh from Cloud in background
-    loadMasterOnStartup();
-
-    // Fetch live market indices (Sensex & Nifty) immediately and keep updated
-    fetchMarketIndices();
-    setInterval(fetchMarketIndices, 30000);
-
-    // Central periodic updater for active views (every 10 seconds, guarded by in-flight flag)
-    // FIX: Added in-flight guard and removed background sudden price-drop alert polling/popups
-    setInterval(async () => {
-        if (isAutoRefreshInFlight) return;
-        isAutoRefreshInFlight = true;
-        try {
-            const activeTab = document.querySelector('.nav-btn.active');
-            if (!activeTab) return;
-            
-            const tabId = activeTab.id;
-            
-            if (tabId === 'tab-portfolio') {
-                if (typeof fetchPortfolioLivePrices === 'function') {
-                    await fetchPortfolioLivePrices();
-                }
-            } else if (tabId === 'tab-watchlist') {
-                if (typeof fetchWatchlistLivePrices === 'function' && watchlistItems.length > 0) {
-                    const symbolsToUpdate = watchlistItems
-                        .map(w => w.symbol)
-                        .filter(s => !isPriceFresh(s) && !isFailedSymbolRecent(s));
-                    if (symbolsToUpdate.length > 0) {
-                        await fetchWatchlistLivePrices(symbolsToUpdate);
-                    }
-                }
-            } else if (tabId === 'tab-research') {
-                const visibleSymbols = Array.from(document.querySelectorAll('#movement-table tbody tr')).map(tr => {
-                    const symCell = tr.cells[0];
-                    return symCell ? symCell.textContent.trim().toUpperCase() : null;
-                }).filter(s => s);
-                if (visibleSymbols.length > 0) {
-                    await fetchGainersLivePrices(visibleSymbols);
-                }
-            } else if (tabId === 'tab-circuits') {
-                const visibleSymbols = Array.from(document.querySelectorAll('#circuits-table tbody tr')).map(tr => {
-                    const symCell = tr.cells[1];
-                    return symCell ? symCell.textContent.trim().toUpperCase() : null;
-                }).filter(s => s);
-                if (visibleSymbols.length > 0 && typeof fetchCircuitsLivePrices === 'function') {
-                    await fetchCircuitsLivePrices(visibleSymbols);
-                }
-            } else if (tabId === 'tab-global-indices') {
-                if (typeof fetchGlobalIndices === 'function') {
-                    await fetchGlobalIndices(false);
-                }
-            } else if (tabId === 'tab-intraday') {
-                const visibleSymbols = Array.from(document.querySelectorAll('#intraday-table tbody tr')).map(tr => {
-                    const symCell = tr.cells[1];
-                    return symCell ? symCell.textContent.trim().toUpperCase() : null;
-                }).filter(s => s);
-                if (visibleSymbols.length > 0 && typeof fetchIntradayLivePrices === 'function') {
-                    await fetchIntradayLivePrices(visibleSymbols);
-                }
-            } else if (tabId === 'tab-master-piece') {
-                if (typeof fetchMasterPieceLivePrices === 'function') {
-                    await fetchMasterPieceLivePrices();
-                }
-            }
-        } finally {
-            isAutoRefreshInFlight = false;
-        }
-    }, 10000);
+    const loadMoreBtn = document.getElementById('results-load-more-btn');
+    const showAllBtn = document.getElementById('results-show-all-btn');
+    if (loadMoreBtn) {
+        loadMoreBtn.addEventListener('click', () => {
+            resultsVisibleLimit += RESULTS_PAGE_SIZE;
+            renderFilteredResults(false);
+        });
+    }
+    if (showAllBtn) {
+        showAllBtn.addEventListener('click', () => {
+            resultsVisibleLimit = Infinity;
+            renderFilteredResults(false);
+        });
+    }
 
     // Check if XLSX library loaded
     if (typeof XLSX === 'undefined') {
@@ -918,14 +963,7 @@ function initEvents() {
     // ----------------------------------------------------
     // PWA Service Worker & Install Logic
     // ----------------------------------------------------
-    // Register Service Worker
-    if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-            navigator.serviceWorker.register('./sw.js')
-                .then(reg => console.log('Service Worker Registered Successfully!', reg.scope))
-                .catch(err => console.error('Service Worker Registration Failed:', err));
-        });
-    }
+    // Service Worker is registered inside startDashboardAfterLogin() once authenticated.
 
     // PWA Custom Installation Prompt
     let deferredPrompt;
@@ -1062,70 +1100,7 @@ function initEvents() {
         });
     }
 
-    // --- SCREENSHOT / SCREEN RECORD / COPY PROTECTION LOGIC ---
-    // 1. Prevent clipboard copy events
-    document.addEventListener('copy', (e) => {
-        e.preventDefault();
-        if (e.clipboardData) {
-            e.clipboardData.setData('text/plain', '[Protected Data - Rahul Finance]');
-        }
-        showNotification('Copying dashboard content is disabled for security!', 'error');
-    });
-
-    // 2. Prevent right-click context menus (inspect element / save page)
-    document.addEventListener('contextmenu', (e) => {
-        e.preventDefault();
-        showNotification('Right-click is disabled to protect content!', 'error');
-    });
-
-    // 3. Prevent keyboard screenshot/printing/dev shortcut keys
-    document.addEventListener('keydown', (e) => {
-        // Intercept Print Screen (Keycode 44)
-        if (e.key === 'PrintScreen' || e.keyCode === 44) {
-            e.preventDefault();
-            navigator.clipboard.writeText('[Screen Protections Active]').catch(() => {});
-            showNotification('Screenshots are restricted on this website!', 'error');
-        }
-
-        // Prevent Print shortcut (Ctrl + P)
-        if ((e.ctrlKey || e.metaKey) && (e.key === 'p' || e.key === 'P' || e.keyCode === 80)) {
-            e.preventDefault();
-            showNotification('Printing or PDF export is disabled!', 'error');
-        }
-
-        // Prevent Save page shortcut (Ctrl + S)
-        if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S' || e.keyCode === 83)) {
-            e.preventDefault();
-            showNotification('Saving page source is disabled!', 'error');
-        }
-
-        // Prevent Developer Console shortcuts (F12, Ctrl + Shift + I, Ctrl + Shift + J, Ctrl + Shift + C)
-        if (
-            e.key === 'F12' || e.keyCode === 123 ||
-            ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'I' || e.keyCode === 73 || e.key === 'J' || e.keyCode === 74 || e.key === 'C' || e.keyCode === 67))
-        ) {
-            e.preventDefault();
-            showNotification('Developer Tools access is restricted!', 'error');
-        }
-    });
-
-    // 4. Blur page when window loses focus or document changes visibility
-    const handleProtectionBlur = () => {
-        document.body.classList.add('blurred-screen');
-    };
-    const handleProtectionFocus = () => {
-        document.body.classList.remove('blurred-screen');
-    };
-
-    window.addEventListener('blur', handleProtectionBlur);
-    window.addEventListener('focus', handleProtectionFocus);
-    document.addEventListener('visibilitychange', () => {
-        if (document.hidden) {
-            handleProtectionBlur();
-        } else {
-            handleProtectionFocus();
-        }
-    });
+    // FIX: Removed fake copy/keydown/window.blur screen-blurring locks that interfered with typing and preview focus.
 }
 
 // Drag & Drop Setup
@@ -1436,11 +1411,24 @@ async function loadMasterFromCloud(options = {}) {
         }
 
         // Update application state
-        state.masterData = filterMasterForEQOnly(assembledRows);
+        const filteredCloud = filterMasterForEQOnly(assembledRows);
+        const existingLocalJson = hasLocalCache ? getLocalStorageItem('master_excel_data') : null;
+        const newCloudJson = JSON.stringify(filteredCloud);
+        const isIdenticalToCache = Boolean(existingLocalJson && existingLocalJson === newCloudJson);
+
+        state.masterData = filteredCloud;
         state.masterSheetName = 'Sheet1';
         
-        // Save to local storage as backup/cache
-        saveMasterToLocalStorage();
+        // Save to local storage as backup/cache only if changed
+        if (!isIdenticalToCache) {
+            setLocalStorageItem('master_excel_data', newCloudJson);
+            setLocalStorageItem('master_excel_sheet_name', state.masterSheetName || 'Sheet1');
+            setLocalStorageItem('master_excel_filename', filename);
+            setLocalStorageItem('master_excel_filesize', filesize);
+            if (state.latestVolumes) {
+                setLocalStorageItem('latest_volumes', JSON.stringify(Array.from(state.latestVolumes.entries())));
+            }
+        }
 
         // Detect column indexes and adjust UI
         detectColumnIndexes(state.masterData[0]);
@@ -1458,13 +1446,16 @@ async function loadMasterFromCloud(options = {}) {
         
         log(`Master data loaded successfully from Cloud. (Total EQ companies: ${state.masterData.length - 1})`, 'success');
         
-        renderPreview(state.masterData, masterTable, masterRowCount, masterPreviewContainer);
-        checkReadyState();
-        autoRenderIfProcessed();
-        populateCompanyDatalist();
+        if (!isIdenticalToCache) {
+            renderPreview(state.masterData, masterTable, masterRowCount, masterPreviewContainer);
+            checkReadyState();
+            await yieldToUI();
+            autoRenderIfProcessed();
+            populateCompanyDatalist();
+        }
         
         updateCloudSyncUI('success', 'Cloud Synced');
-        if (isBackgroundRefresh && hasLocalCache) {
+        if (isBackgroundRefresh && hasLocalCache && !isIdenticalToCache) {
             console.log('[Startup] Quietly swapped in latest cloud Master data.');
         }
         return true;
@@ -1481,12 +1472,12 @@ async function loadMasterFromCloud(options = {}) {
     }
 }
 
-// FIX: Show locally cached Master from localStorage INSTANTLY on startup,
-// then refresh from Cloud in the background and quietly swap in newer data.
+// FIX: Yield before reading localStorage so UI paints cleanly, then refresh from Cloud in background.
 async function loadMasterOnStartup() {
-    updateCloudSyncUI('connecting', 'Loading...');
     let hasLocalCache = false;
     if (getLocalStorageItem('master_excel_data')) {
+        updateCloudSyncUI('connecting', 'Loading Cache...');
+        await yieldToUI();
         loadMasterFromLocalStorage();
         hasLocalCache = Boolean(state.masterData && state.masterData.length > 0);
     }
@@ -1527,21 +1518,9 @@ function autoRenderIfProcessed() {
         if (headers.length > metadataEndIndex + 1) {
             log('Detected already processed data. Initializing research dashboard view...', 'info');
             state.processedMasterData = state.masterData;
-            
-            // Build processed workbook for download
-            const wb = state.masterWorkbook || XLSX.utils.book_new();
-            const wsName = state.masterSheetName || 'Sheet1';
-            const newSheet = XLSX.utils.aoa_to_sheet(state.masterData);
-            if (!state.masterWorkbook) {
-                XLSX.utils.book_append_sheet(wb, newSheet, wsName);
-                state.masterWorkbook = wb;
-            } else {
-                wb.Sheets[wsName] = newSheet;
-            }
-            state.processedWorkbook = wb;
+            // FIX: Defer building SheetJS workbook until downloadUpdatedFile() is clicked
+            state.processedWorkbook = null;
 
-            // FIX: Always render the main research table & active tab immediately;
-            // avoid firing background live Yahoo fetches for inactive tabs at startup
             renderFilteredResults();
             renderGainersAnalysis();
             if (isTabActive('tab-morning-picks')) renderMorningPicks();
@@ -2133,12 +2112,15 @@ function populateCompanyDatalist() {
             if (sym) symbols.add(sym);
         }
         
+        // FIX: Batch DOM insertion using DocumentFragment to avoid 2,000+ reflows
         const sortedSymbols = Array.from(symbols).sort();
+        const frag = document.createDocumentFragment();
         sortedSymbols.forEach(sym => {
             const option = document.createElement('option');
             option.value = sym;
-            datalist.appendChild(option);
+            frag.appendChild(option);
         });
+        datalist.appendChild(frag);
         console.log(`Populated datalist autocomplete with ${sortedSymbols.length} company symbols.`);
     }
 }
@@ -3385,13 +3367,21 @@ function renderGainersAnalysis() {
     }
 }
 
-// Render filtered results on screen (ALL ROWS)
-function renderFilteredResults() {
+// FIX: Paginate Results Table (100 rows initial, Load More / Show All) so Master load & typing never freeze browser
+const RESULTS_PAGE_SIZE = 100;
+let resultsVisibleLimit = RESULTS_PAGE_SIZE;
+let filterDebounceTimer = null;
+
+function renderFilteredResults(resetLimit = true) {
     const data = state.processedMasterData;
     if (!data || data.length === 0) return;
-    
+
+    if (resetLimit) {
+        resultsVisibleLimit = RESULTS_PAGE_SIZE;
+    }
+
     const headers = data[0];
-    
+
     // Render headers
     let headerHtml = '<tr>';
     headers.forEach(h => {
@@ -3399,51 +3389,49 @@ function renderFilteredResults() {
     });
     headerHtml += '</tr>';
     resultsTable.querySelector('thead').innerHTML = headerHtml;
-    
+
     // Get filter inputs
     const searchVal = searchCompany.value.toUpperCase().trim();
     const minP = parseFloat(priceMin.value);
     const maxP = parseFloat(priceMax.value);
     const minD = parseFloat(diffMin.value);
     const maxD = parseFloat(diffMax.value);
-    
+
     const latestIndex = state.latestDateColIndex;
     const diffIndex = state.diffColIndex;
     const symbolIndex = state.symbolColIndex;
-    
-    let filteredCount = 0;
-    let bodyHtml = '';
-    
-    // Render all rows (no limit, so they can scroll all)
+
+    const matchedRows = [];
     for (let i = 1; i < data.length; i++) {
         const row = data[i];
         const symbol = String(row[symbolIndex] || '').trim().toUpperCase();
-        
         if (!symbol) continue;
-        
-        // Search by symbol
-        if (searchVal && !symbol.includes(searchVal)) {
-            continue;
-        }
-        
-        // Latest day price filter
+
+        if (searchVal && !symbol.includes(searchVal)) continue;
+
         const latestPrice = parseFloat(row[latestIndex]);
         if (!isNaN(minP) && (isNaN(latestPrice) || latestPrice < minP)) continue;
         if (!isNaN(maxP) && (isNaN(latestPrice) || latestPrice > maxP)) continue;
-        
-        // Diff filter
+
         if (diffIndex !== -1) {
             const diffVal = parseFloat(row[diffIndex]);
             if (!isNaN(minD) && (isNaN(diffVal) || diffVal < minD)) continue;
             if (!isNaN(maxD) && (isNaN(diffVal) || diffVal > maxD)) continue;
         }
-        
-        filteredCount++;
-        
+
+        matchedRows.push(row);
+    }
+
+    const filteredCount = matchedRows.length;
+    const rowsToRender = matchedRows.slice(0, resultsVisibleLimit);
+    let bodyHtml = '';
+
+    for (let r = 0; r < rowsToRender.length; r++) {
+        const row = rowsToRender[r];
         bodyHtml += '<tr class="clickable-row" title="Click to view price history chart">';
-        headers.forEach((_, colIndex) => {
+        for (let colIndex = 0; colIndex < headers.length; colIndex++) {
             const val = row[colIndex] !== undefined ? row[colIndex] : '';
-            
+
             let style = '';
             if (colIndex === diffIndex) {
                 const dNum = parseFloat(val);
@@ -3453,23 +3441,45 @@ function renderFilteredResults() {
             } else if (colIndex === latestIndex) {
                 style = 'style="color:#06b6d4; font-weight:600;"';
             }
-            
+
             bodyHtml += `<td ${style}>${val}</td>`;
-        });
+        }
         bodyHtml += '</tr>';
     }
-    
+
     if (filteredCount === 0) {
         bodyHtml = `<tr><td colspan="${headers.length}" style="text-align:center; padding: 2rem; color:var(--text-secondary);">No matching stocks found.</td></tr>`;
     }
-    
+
     resultsTable.querySelector('tbody').innerHTML = bodyHtml;
     resultsCount.textContent = `Found Stocks: ${filteredCount} / ${data.length - 1}`;
+
+    const paginationBar = document.getElementById('results-pagination-bar');
+    const showingInfo = document.getElementById('results-showing-info');
+    if (paginationBar) {
+        if (filteredCount > rowsToRender.length) {
+            paginationBar.classList.remove('hidden');
+            paginationBar.style.display = 'flex';
+            if (showingInfo) {
+                showingInfo.textContent = `Showing ${rowsToRender.length} of ${filteredCount} stocks`;
+            }
+        } else {
+            paginationBar.classList.add('hidden');
+            paginationBar.style.display = 'none';
+        }
+    }
 }
 
-// Filter change handler
+// Filter change handler (with debounce for smooth typing)
 function applyFilters() {
-    renderFilteredResults();
+    renderFilteredResults(true);
+}
+
+function debouncedApplyFilters() {
+    if (filterDebounceTimer) clearTimeout(filterDebounceTimer);
+    filterDebounceTimer = setTimeout(() => {
+        renderFilteredResults(true);
+    }, 150);
 }
 
 // Reset filters
@@ -3479,13 +3489,31 @@ function resetFilters() {
     priceMax.value = '';
     diffMin.value = '';
     diffMax.value = '';
-    renderFilteredResults();
+    renderFilteredResults(true);
     showNotification('All filters have been reset.', 'info');
+}
+
+function ensureProcessedWorkbook() {
+    if (state.processedWorkbook) return state.processedWorkbook;
+    if (!state.processedMasterData || state.processedMasterData.length === 0) return null;
+
+    const wb = state.masterWorkbook || XLSX.utils.book_new();
+    const wsName = state.masterSheetName || 'Sheet1';
+    const newSheet = XLSX.utils.aoa_to_sheet(state.processedMasterData);
+    if (!state.masterWorkbook) {
+        XLSX.utils.book_append_sheet(wb, newSheet, wsName);
+        state.masterWorkbook = wb;
+    } else {
+        wb.Sheets[wsName] = newSheet;
+    }
+    state.processedWorkbook = wb;
+    return wb;
 }
 
 // Download updated master file
 function downloadUpdatedFile() {
-    if (!state.processedWorkbook) {
+    const wb = ensureProcessedWorkbook();
+    if (!wb) {
         showNotification('No data available to download.', 'error');
         return;
     }
@@ -3501,7 +3529,7 @@ function downloadUpdatedFile() {
         log(`Downloading file: ${newFilename}`, 'info');
         
         // Write file
-        XLSX.writeFile(state.processedWorkbook, newFilename);
+        XLSX.writeFile(wb, newFilename);
         showNotification('File download started.', 'success');
     } catch (err) {
         console.error(err);
@@ -4822,8 +4850,7 @@ async function fetchWatchlistLivePrices(symbols) {
     }
 }
 
-// Load watchlist on startup
-loadWatchlistFromStorage();
+// Watchlist is loaded inside startDashboardAfterLogin() after authentication.
 
 // =====================================================================
 //  MORNING PICKS — Technical Scoring Algorithm

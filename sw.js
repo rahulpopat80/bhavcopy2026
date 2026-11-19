@@ -1,5 +1,5 @@
 // FIX: Bumped cache version so updated app.js/index.html/style.css are served immediately
-const CACHE_NAME = 'rahul-finance-cache-v2-20261119';
+const CACHE_NAME = 'rahul-finance-cache-v3-20261119';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',

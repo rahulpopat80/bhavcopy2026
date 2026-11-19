@@ -17,12 +17,12 @@
     <!-- CSS stylesheet -->
     <link rel="stylesheet" href="style.css">
     <!-- SheetJS and ChartJS for processing and visualization -->
-    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
     <!-- Firebase SDK (Compat Version) -->
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js" defer></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js" defer></script>
     <script>
         // FIX: Log errors to console and show a non-blocking toast instead of blocking alert()
         window.onerror = function(message, source, lineno, colno, error) {
@@ -61,28 +61,28 @@
                 <div class="header-indices-widget no-print">
                     <div class="index-card">
                         <span class="index-label">NIFTY 50</span>
-                        <span class="index-val" id="nifty-val">Loading...</span>
+                        <span class="index-val" id="nifty-val">—</span>
                         <span class="index-chg" id="nifty-chg">-</span>
                     </div>
                     <div class="index-card">
                         <span class="index-label">SENSEX</span>
-                        <span class="index-val" id="sensex-val">Loading...</span>
+                        <span class="index-val" id="sensex-val">—</span>
                         <span class="index-chg" id="sensex-chg">-</span>
                     </div>
                     <div class="index-card" style="border-color: rgba(255,193,7,0.3);">
                         <span class="index-label" style="color:#f59e0b;"><i class="fa-solid fa-circle" style="font-size:0.55rem;margin-right:3px;"></i> GOLD /10g</span>
-                        <span class="index-val" id="gold-val">Loading...</span>
+                        <span class="index-val" id="gold-val">—</span>
                         <span class="index-chg" id="gold-chg">-</span>
                     </div>
                     <div class="index-card" style="border-color: rgba(148,163,184,0.3);">
                         <span class="index-label" style="color:#94a3b8;"><i class="fa-solid fa-circle" style="font-size:0.55rem;margin-right:3px;"></i> SILVER /kg</span>
-                        <span class="index-val" id="silver-val">Loading...</span>
+                        <span class="index-val" id="silver-val">—</span>
                         <span class="index-chg" id="silver-chg">-</span>
                     </div>
                 </div>
-                <div class="cloud-sync-badge sync-connecting" id="cloud-sync-status">
-                    <i class="fa-solid fa-cloud-arrow-up sync-icon spin"></i>
-                    <span id="cloud-sync-text">Connecting Firebase...</span>
+                <div class="cloud-sync-badge" id="cloud-sync-status">
+                    <i class="fa-solid fa-cloud-arrow-up sync-icon"></i>
+                    <span id="cloud-sync-text">Cloud Ready</span>
                 </div>
                 <button id="pwa-install-btn" class="btn" style="display: none; align-items: center; gap: 0.35rem; font-size: 0.78rem; padding: 0.4rem 0.75rem; background: linear-gradient(135deg, var(--accent-color) 0%, #b89626 100%); border: none; color: #000; font-weight: bold; border-radius: 6px; cursor: pointer; box-shadow: 0 4px 10px rgba(212,175,55,0.25); margin-right: 0.5rem;">
                     <i class="fa-solid fa-download"></i> Install App
@@ -312,6 +312,13 @@
                             </tbody>
                         </table>
                     </div>
+                    <div id="results-pagination-bar" class="hidden" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.5rem; margin-top:0.65rem; padding-top:0.55rem; border-top:1px solid var(--card-border);">
+                        <span id="results-showing-info" style="font-size:0.78rem; color:var(--text-secondary);"></span>
+                        <div style="display:flex; gap:0.5rem;">
+                            <button type="button" class="btn btn-secondary" id="results-load-more-btn" style="font-size:0.78rem; padding:0.35rem 0.75rem;">Show More (+100)</button>
+                            <button type="button" class="btn btn-secondary" id="results-show-all-btn" style="font-size:0.78rem; padding:0.35rem 0.75rem;">Show All</button>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Right Side: Top Performer + Gainers List -->
@@ -332,7 +339,7 @@
                                     <span style="font-weight: 600; font-size: 0.88rem; color: #fff;">NIFTY 100</span>
                                 </div>
                                 <div style="text-align: right;">
-                                    <div id="seg-large-val" style="font-weight: 700; font-size: 0.95rem; color: #fff;">Loading...</div>
+                                    <div id="seg-large-val" style="font-weight: 700; font-size: 0.95rem; color: #fff;">—</div>
                                     <div id="seg-large-chg" style="font-size: 0.78rem; font-weight: 600; color: var(--text-secondary);">-</div>
                                 </div>
                             </div>
@@ -344,7 +351,7 @@
                                     <span style="font-weight: 600; font-size: 0.88rem; color: #fff;">NIFTY MID 100</span>
                                 </div>
                                 <div style="text-align: right;">
-                                    <div id="seg-mid-val" style="font-weight: 700; font-size: 0.95rem; color: #fff;">Loading...</div>
+                                    <div id="seg-mid-val" style="font-weight: 700; font-size: 0.95rem; color: #fff;">—</div>
                                     <div id="seg-mid-chg" style="font-size: 0.78rem; font-weight: 600; color: var(--text-secondary);">-</div>
                                 </div>
                             </div>
@@ -356,7 +363,7 @@
                                     <span style="font-weight: 600; font-size: 0.88rem; color: #fff;">NIFTY SMALL 100</span>
                                 </div>
                                 <div style="text-align: right;">
-                                    <div id="seg-small-val" style="font-weight: 700; font-size: 0.95rem; color: #fff;">Loading...</div>
+                                    <div id="seg-small-val" style="font-weight: 700; font-size: 0.95rem; color: #fff;">—</div>
                                     <div id="seg-small-chg" style="font-size: 0.78rem; font-weight: 600; color: var(--text-secondary);">-</div>
                                 </div>
                             </div>
@@ -365,7 +372,7 @@
                         <!-- Leaderboard Badge -->
                         <div id="segment-leader-container" style="margin-top: 1rem; padding: 0.65rem 0.85rem; background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.25); border-radius: 8px; display: flex; align-items: center; justify-content: space-between; font-size: 0.85rem;">
                             <span style="color: var(--text-secondary); font-weight: 500;">સૌથી મજબૂત સેગમેન્ટ:</span>
-                            <span id="segment-leader-badge" style="font-weight: 700; color: #10b981; text-transform: uppercase;">Determining...</span>
+                            <span id="segment-leader-badge" style="font-weight: 700; color: #10b981; text-transform: uppercase;">—</span>
                         </div>
                     </div>
 
@@ -554,10 +561,10 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                <!-- Loaded dynamically from Firestore -->
+                                <!-- Loaded dynamically from Firestore when portfolio tab opens -->
                                 <tr>
-                                    <td colspan="12" style="text-align:center; padding: 2rem; color: var(--text-secondary);">
-                                        <i class="fa-solid fa-spinner fa-spin"></i> Loading portfolio...
+                                    <td colspan="13" style="text-align:center; padding: 2rem; color: var(--text-secondary);">
+                                        Select My Portfolio to view transactions.
                                     </td>
                                 </tr>
                             </tbody>
@@ -1288,6 +1295,6 @@
         </div>
     </div>
 
-    <script src="app.js"></script>
+    <script src="app.js" defer></script>
 </body>
 </html>
