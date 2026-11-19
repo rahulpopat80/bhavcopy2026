@@ -16,9 +16,20 @@ export default async function handler(req, res) {
         sources: {}
     };
 
+    // FIX: Enforce 6s AbortController timeout on upstream BSE/NSE fetches
+    const fetchWithTimeout = async (url, options = {}, timeoutMs = 6000) => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+            return await fetch(url, { ...options, signal: controller.signal });
+        } finally {
+            clearTimeout(timer);
+        }
+    };
+
     // 1. Fetch BSE SENSEX from official BSE API
     try {
-        const bseRes = await fetch('https://api.bseindia.com/RealTimeBseIndiaAPI/api/GetSensexData/w', {
+        const bseRes = await fetchWithTimeout('https://api.bseindia.com/RealTimeBseIndiaAPI/api/GetSensexData/w', {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
                 'Accept': 'application/json',
@@ -51,7 +62,7 @@ export default async function handler(req, res) {
 
     // 2. Fetch NSE Nifty 50 from official NSE API
     try {
-        const nseRes = await fetch('https://www.nseindia.com/api/allIndices', {
+        const nseRes = await fetchWithTimeout('https://www.nseindia.com/api/allIndices', {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
                 'Accept': 'application/json',

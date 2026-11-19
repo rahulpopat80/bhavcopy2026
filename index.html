@@ -24,9 +24,22 @@
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script>
+        // FIX: Log errors to console and show a non-blocking toast instead of blocking alert()
         window.onerror = function(message, source, lineno, colno, error) {
-            alert("Browser Error:\n" + message + "\nLine: " + lineno + ":" + colno + "\nSource: " + source);
-            console.error(error);
+            console.error('[Browser Error]', message, source, lineno, colno, error);
+            if (typeof window.showNotification === 'function') {
+                window.showNotification('Error: ' + message, 'error');
+            } else {
+                const container = document.getElementById('notification-container');
+                if (container) {
+                    const toast = document.createElement('div');
+                    toast.className = 'notification error';
+                    toast.innerHTML = '<i class="fa-solid fa-exclamation-circle"></i><span></span>';
+                    toast.querySelector('span').textContent = 'Error: ' + message;
+                    container.appendChild(toast);
+                    setTimeout(() => toast.remove(), 4000);
+                }
+            }
             return false;
         };
     </script>
@@ -705,13 +718,16 @@
                         <h2 style="color: var(--accent-color); font-size: 1.35rem; display: flex; align-items: center; gap: 0.5rem;">
                             <i class="fa-solid fa-award"></i> પરિણામો અને ડિવિડન્ડ વિશ્લેષણ (Upcoming Results & Dividend)
                         </h2>
-                        <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.25rem;">છેલ્લા ત્રણ ક્વાર્ટરમાં ઉત્કૃષ્ટ પરિણામો અને સારું ડિવિડન્ડ ચુકવતી ટોપ ૨ો કંપનીઓની વિગતો.</p>
+                        <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.25rem;">આગામી બોર્ડ મીટિંગ્સ, પરિણામો અને ડિવિડન્ડ અંગેની એક્સચેન્જ જાહેરાતોની વિગતો.</p>
                     </div>
-                    <div style="display: flex; align-items: center; gap: 0.5rem; margin-left: auto;">
+                    <div style="display: flex; align-items: center; gap: 0.5rem; margin-left: auto; flex-wrap: wrap;">
                         <input type="text" id="results-search-input" placeholder="Search Symbol..." oninput="renderResultsAndDividendsTable()" style="padding:0.4rem 0.75rem; border:1px solid rgba(255,255,255,0.15); border-radius:6px; background:rgba(0,0,0,0.2); color:#fff; font-size:0.8rem; width:180px;">
-                        <span class="results-badge" style="background: rgba(34,197,94,0.12); border-color: var(--success-color); color: var(--success-color); font-weight: bold; font-size: 0.8rem; padding: 0.25rem 0.6rem; border-radius: 6px; border: 1px solid;">
-                            Top 20 Leaderboard
+                        <span id="results-source-badge" class="results-badge" style="background: rgba(34,197,94,0.12); border-color: var(--success-color); color: var(--success-color); font-weight: bold; font-size: 0.8rem; padding: 0.25rem 0.6rem; border-radius: 6px; border: 1px solid;">
+                            Exchange Live Feed
                         </span>
+                        <button id="results-retry-btn" onclick="fetchCorporateResults(true)" class="btn btn-secondary" style="font-size:0.78rem; padding:0.35rem 0.85rem;">
+                            <i class="fa-solid fa-rotate"></i> Refresh
+                        </button>
                     </div>
                 </div>
                 
@@ -722,18 +738,16 @@
                                 <th>કંપની (Symbol)</th>
                                 <th>હાલનો ભાવ (Bhavcopy Rate)</th>
                                 <th>લાઇવ ભાવ (Live Price)</th>
-                                <th>પરિણામ તારીખ (Result Date)</th>
-                                <th>છેલ્લા ક્વાર્ટરનો નફો (Net Profit)</th>
-                                <th>ક્વાર્ટર ગ્રોથ (Q-o-Q Growth)</th>
+                                <th>તારીખ (Event / Ex-Date)</th>
+                                <th>પ્રકાર (Event Type)</th>
+                                <th>વિગત (Purpose / Details)</th>
                                 <th>સ્થિતિ (Status)</th>
                                 <th>ડિવિડન્ડ આપે છે?</th>
-                                <th>૫ વર્ષમાં ડિવિડન્ડ (5-Yr Count)</th>
-                                <th>ડિવિડન્ડ યીલ્ડ (Yield %)</th>
                                 <th style="text-align: center;">ઍક્શન (Action)</th>
                             </tr>
                         </thead>
                         <tbody>
-                            <!-- Dynamically loaded rows -->
+                            <!-- Dynamically loaded rows from /api/corporate -->
                         </tbody>
                     </table>
                 </div>
@@ -1205,6 +1219,35 @@
                     </div>
                     <button type="submit" class="btn btn-primary login-btn" style="margin-top: 0.5rem; justify-content: center;">Update Password</button>
                 </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- FIX: Bhavcopy Date Confirmation Modal (used when date cannot be auto-detected) -->
+    <div class="modal-overlay hidden" id="date-confirm-modal">
+        <div class="modal-card" style="max-width: 420px;">
+            <div class="modal-header">
+                <div>
+                    <h2 style="color: var(--accent-color);"><i class="fa-regular fa-calendar"></i> Confirm Trading Date</h2>
+                    <span id="date-confirm-filename" style="color: var(--text-secondary); font-size: 0.8rem; word-break: break-all;">filename.csv</span>
+                </div>
+                <button class="modal-close" id="date-confirm-close-btn">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 0.75rem 0; display: flex; flex-direction: column; gap: 0.9rem;">
+                <p style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.4;">
+                    Could not automatically detect a valid trading date (DD-MM-YYYY) from this Bhavcopy CSV. Please confirm or select the trading date before processing:
+                </p>
+                <div class="form-group">
+                    <label for="date-confirm-input">Trading Date (DD-MM-YYYY)</label>
+                    <input type="text" id="date-confirm-input" placeholder="DD-MM-YYYY" style="width: 100%; padding: 0.65rem 0.9rem; background: rgba(3, 7, 18, 0.6); border: 1px solid var(--card-border); border-radius: 8px; color: #ffffff; font-size: 0.95rem;">
+                </div>
+                <div id="date-confirm-error" class="login-error hidden">
+                    <i class="fa-solid fa-triangle-exclamation"></i> <span>Please enter a valid date in DD-MM-YYYY format.</span>
+                </div>
+                <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+                    <button type="button" class="btn btn-secondary" id="date-confirm-cancel-btn">Skip File</button>
+                    <button type="button" class="btn btn-primary" id="date-confirm-ok-btn">Confirm Date</button>
+                </div>
             </div>
         </div>
     </div>

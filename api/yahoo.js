@@ -28,8 +28,19 @@ export default async function handler(req, res) {
     const nsSymbol = needsSuffix ? `${uppercaseSymbol}.NS` : uppercaseSymbol;
     const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(nsSymbol)}?range=1y&interval=1d`;
 
+    // FIX: Enforce 6s AbortController timeout on upstream Yahoo Finance fetches
+    const fetchWithTimeout = async (url, options = {}, timeoutMs = 6000) => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+            return await fetch(url, { ...options, signal: controller.signal });
+        } finally {
+            clearTimeout(timer);
+        }
+    };
+
     try {
-        const response = await fetch(yahooUrl, {
+        const response = await fetchWithTimeout(yahooUrl, {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
                 'Accept': 'application/json',
@@ -42,7 +53,7 @@ export default async function handler(req, res) {
         if (!response.ok) {
             // Try query2 as fallback
             const fallbackUrl = `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(nsSymbol)}?range=1y&interval=1d`;
-            const fallbackRes = await fetch(fallbackUrl, {
+            const fallbackRes = await fetchWithTimeout(fallbackUrl, {
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
                     'Accept': 'application/json',

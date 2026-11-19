@@ -11,8 +11,12 @@ export default async function handler(req, res) {
         return res.status(200).end();
     }
 
+    // FIX: Enforce 6s AbortController timeout on upstream IBJA fetch
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 6000);
     try {
         const response = await fetch('https://ibjarates.com/', {
+            signal: controller.signal,
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
                 'Accept': 'text/html',
@@ -69,5 +73,7 @@ export default async function handler(req, res) {
         });
     } catch (error) {
         return res.status(500).json({ error: 'Failed to fetch from IBJA', details: error.message });
+    } finally {
+        clearTimeout(timer);
     }
 }

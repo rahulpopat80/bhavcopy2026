@@ -1,6 +1,7 @@
 // Global Error Logger for UI Debugging
+// FIX: Log errors to console and show a non-blocking toast instead of blocking alert()
 window.onerror = function(message, source, lineno, colno, error) {
-    console.error(error);
+    console.error('[App Error]', message, source, lineno, colno, error);
     const logConsole = document.getElementById('log-console');
     const processLogContainer = document.getElementById('process-log-container');
     if (processLogContainer) processLogContainer.classList.remove('hidden');
@@ -10,7 +11,9 @@ window.onerror = function(message, source, lineno, colno, error) {
         entry.textContent = `[Error] ${message} at line ${lineno}:${colno}`;
         logConsole.appendChild(entry);
     }
-    alert(`સિસ્ટમમાં ભૂલ આવી છે: ${message} (લાઈન: ${lineno})`);
+    if (typeof showNotification === 'function') {
+        showNotification(`Error: ${message}`, 'error');
+    }
     return false;
 };
 
@@ -67,6 +70,70 @@ let state = {
     volumePromoterSource: 'GLOBAL'
 };
 
+// FIX: Global network timeout, concurrency limiter, 60s price cache, and 5-min failed-symbol cache
+const PRICE_CACHE_TTL_MS = 60 * 1000;
+const FAILED_SYMBOL_TTL_MS = 5 * 60 * 1000;
+const FETCH_TIMEOUT_MS = 6000;
+const yahooResponseCache = new Map();     // ticker -> { data, timestamp }
+const livePriceTimestamps = new Map();    // normalized symbol -> timestamp
+const failedSymbolCache = new Map();      // normalized symbol -> timestamp
+const inFlightYahooRequests = new Map();  // ticker -> Promise
+
+function normalizeSymKey(symbol) {
+    return String(symbol || '').trim().toUpperCase().replace(/\.(NS|BO)$/i, '');
+}
+
+function isPriceFresh(symbol) {
+    const ts = livePriceTimestamps.get(normalizeSymKey(symbol));
+    return ts !== undefined && (Date.now() - ts) < PRICE_CACHE_TTL_MS;
+}
+
+function markPriceFresh(symbol) {
+    const key = normalizeSymKey(symbol);
+    livePriceTimestamps.set(key, Date.now());
+    failedSymbolCache.delete(key);
+}
+
+function isFailedSymbolRecent(symbol) {
+    const ts = failedSymbolCache.get(normalizeSymKey(symbol));
+    return ts !== undefined && (Date.now() - ts) < FAILED_SYMBOL_TTL_MS;
+}
+
+function markSymbolFailed(symbol) {
+    failedSymbolCache.set(normalizeSymKey(symbol), Date.now());
+}
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = FETCH_TIMEOUT_MS) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        return await fetch(url, { ...options, signal: controller.signal });
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+async function runWithConcurrency(items, concurrency, worker) {
+    const list = Array.from(items || []);
+    if (list.length === 0) return;
+    let index = 0;
+    const workers = Array.from({ length: Math.min(concurrency, list.length) }, async () => {
+        while (index < list.length) {
+            const currentIdx = index++;
+            try {
+                await worker(list[currentIdx], currentIdx);
+            } catch (err) {
+                console.warn('[Batch Worker] Item failed:', err?.message || err);
+            }
+        }
+    });
+    await Promise.all(workers);
+}
+
+function yieldToUI() {
+    return new Promise(resolve => setTimeout(resolve, 0));
+}
+
 // UI Elements
 const masterDropzone = document.getElementById('master-dropzone');
 const masterFile = document.getElementById('master-file');
@@ -107,18 +174,30 @@ const resultsCount = document.getElementById('results-count');
 const movementTable = document.getElementById('movement-table');
 
 // Initialize Event Listeners
+let isAutoRefreshInFlight = false; // FIX: In-flight guard for central 10s interval
+
+function isTabActive(tabId) {
+    const activeTab = document.querySelector('.nav-btn.active');
+    return activeTab ? activeTab.id === tabId : false;
+}
+
 function initEvents() {
     // Sync password from Cloud database
-    if (db) {
-        db.collection('metadata').doc('auth').get().then(doc => {
+    const cloudPasswordPromise = db
+        ? db.collection('metadata').doc('auth').get().then(doc => {
             if (doc.exists) {
                 const cloudPass = doc.data().password;
                 if (cloudPass) {
                     localStorage.setItem('appPassword', cloudPass);
+                    return cloudPass;
                 }
             }
-        }).catch(err => console.warn('Could not sync password from Firestore:', err));
-    }
+            return null;
+        }).catch(err => {
+            console.warn('Could not sync password from Firestore:', err);
+            return null;
+        })
+        : Promise.resolve(null);
 
     // Login Screen Check
     const sessionLoggedIn = sessionStorage.getItem('isLoggedIn');
@@ -132,19 +211,35 @@ function initEvents() {
         const loginForm = document.getElementById('login-form');
         const loginError = document.getElementById('login-error');
         
-        loginForm.addEventListener('submit', (e) => {
+        loginForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             const usernameInput = document.getElementById('username').value.trim();
             const passwordInput = document.getElementById('password').value.trim();
             
-            const currentPassword = localStorage.getItem('appPassword') || '22780';
+            // FIX: Remove hardcoded default password fallback; read only from synced Firestore/localStorage
+            let currentPassword = localStorage.getItem('appPassword');
+            if (!currentPassword) {
+                currentPassword = await cloudPasswordPromise;
+            }
+            if (!currentPassword) {
+                if (loginError) {
+                    loginError.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Password not configured in cloud. Please contact admin.';
+                    loginError.classList.remove('hidden');
+                }
+                showNotification('Password not set. Please contact admin.', 'error');
+                return;
+            }
+
             if (usernameInput === 'RAHUL' && passwordInput === currentPassword) {
                 sessionStorage.setItem('isLoggedIn', 'true');
                 loginOverlay.classList.add('hidden');
                 mainApp.classList.remove('hidden');
                 showNotification('Login successful!', 'success');
             } else {
-                loginError.classList.remove('hidden');
+                if (loginError) {
+                    loginError.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Invalid username or password!';
+                    loginError.classList.remove('hidden');
+                }
                 showNotification('Login failed! Invalid ID or Password.', 'error');
             }
         });
@@ -172,69 +267,72 @@ function initEvents() {
     diffMax.addEventListener('input', applyFilters);
     resetFiltersBtn.addEventListener('click', resetFilters);
 
-    // Load Master File from Cloud (falls back to local storage cache)
+    // Load Master File from Local Storage instantly, then refresh from Cloud in background
     loadMasterOnStartup();
 
     // Fetch live market indices (Sensex & Nifty) immediately and keep updated
     fetchMarketIndices();
     setInterval(fetchMarketIndices, 30000);
 
-    // Central periodic updater for active views (every 10 seconds)
+    // Central periodic updater for active views (every 10 seconds, guarded by in-flight flag)
+    // FIX: Added in-flight guard and removed background sudden price-drop alert polling/popups
     setInterval(async () => {
-        const activeTab = document.querySelector('.nav-btn.active');
-        if (!activeTab) return;
-        
-        const tabId = activeTab.id;
-        
-        if (tabId === 'tab-portfolio') {
-            if (typeof fetchPortfolioLivePrices === 'function') {
-                await fetchPortfolioLivePrices();
-            }
-        } else if (tabId === 'tab-watchlist') {
-            if (typeof renderWatchlist === 'function') {
-                renderWatchlist();
-            }
-        } else if (tabId === 'tab-research') {
-            const visibleSymbols = Array.from(document.querySelectorAll('#movement-table tbody tr')).map(tr => {
-                const symCell = tr.cells[0];
-                return symCell ? symCell.textContent.trim().toUpperCase() : null;
-            }).filter(s => s);
-            if (visibleSymbols.length > 0) {
-                await fetchGainersLivePrices(visibleSymbols);
-            }
-        } else if (tabId === 'tab-circuits') {
-            const visibleSymbols = Array.from(document.querySelectorAll('#circuits-table tbody tr')).map(tr => {
-                const symCell = tr.cells[1];
-                return symCell ? symCell.textContent.trim().toUpperCase() : null;
-            }).filter(s => s);
-            if (visibleSymbols.length > 0) {
-                if (typeof fetchCircuitsLivePrices === 'function') {
+        if (isAutoRefreshInFlight) return;
+        isAutoRefreshInFlight = true;
+        try {
+            const activeTab = document.querySelector('.nav-btn.active');
+            if (!activeTab) return;
+            
+            const tabId = activeTab.id;
+            
+            if (tabId === 'tab-portfolio') {
+                if (typeof fetchPortfolioLivePrices === 'function') {
+                    await fetchPortfolioLivePrices();
+                }
+            } else if (tabId === 'tab-watchlist') {
+                if (typeof fetchWatchlistLivePrices === 'function' && watchlistItems.length > 0) {
+                    const symbolsToUpdate = watchlistItems
+                        .map(w => w.symbol)
+                        .filter(s => !isPriceFresh(s) && !isFailedSymbolRecent(s));
+                    if (symbolsToUpdate.length > 0) {
+                        await fetchWatchlistLivePrices(symbolsToUpdate);
+                    }
+                }
+            } else if (tabId === 'tab-research') {
+                const visibleSymbols = Array.from(document.querySelectorAll('#movement-table tbody tr')).map(tr => {
+                    const symCell = tr.cells[0];
+                    return symCell ? symCell.textContent.trim().toUpperCase() : null;
+                }).filter(s => s);
+                if (visibleSymbols.length > 0) {
+                    await fetchGainersLivePrices(visibleSymbols);
+                }
+            } else if (tabId === 'tab-circuits') {
+                const visibleSymbols = Array.from(document.querySelectorAll('#circuits-table tbody tr')).map(tr => {
+                    const symCell = tr.cells[1];
+                    return symCell ? symCell.textContent.trim().toUpperCase() : null;
+                }).filter(s => s);
+                if (visibleSymbols.length > 0 && typeof fetchCircuitsLivePrices === 'function') {
                     await fetchCircuitsLivePrices(visibleSymbols);
                 }
-            }
-        } else if (tabId === 'tab-global-indices') {
-            if (typeof fetchGlobalIndices === 'function') {
-                fetchGlobalIndices(false);
-            }
-        } else if (tabId === 'tab-intraday') {
-            const visibleSymbols = Array.from(document.querySelectorAll('#intraday-table tbody tr')).map(tr => {
-                const symCell = tr.cells[1];
-                return symCell ? symCell.textContent.trim().toUpperCase() : null;
-            }).filter(s => s);
-            if (visibleSymbols.length > 0) {
-                if (typeof fetchIntradayLivePrices === 'function') {
+            } else if (tabId === 'tab-global-indices') {
+                if (typeof fetchGlobalIndices === 'function') {
+                    await fetchGlobalIndices(false);
+                }
+            } else if (tabId === 'tab-intraday') {
+                const visibleSymbols = Array.from(document.querySelectorAll('#intraday-table tbody tr')).map(tr => {
+                    const symCell = tr.cells[1];
+                    return symCell ? symCell.textContent.trim().toUpperCase() : null;
+                }).filter(s => s);
+                if (visibleSymbols.length > 0 && typeof fetchIntradayLivePrices === 'function') {
                     await fetchIntradayLivePrices(visibleSymbols);
                 }
+            } else if (tabId === 'tab-master-piece') {
+                if (typeof fetchMasterPieceLivePrices === 'function') {
+                    await fetchMasterPieceLivePrices();
+                }
             }
-        } else if (tabId === 'tab-master-piece') {
-            if (typeof renderMasterPiece === 'function') {
-                renderMasterPiece(false); // update UI
-            }
-        }
-
-        // Always check Master Piece price changes and alert user
-        if (typeof checkMasterPieceAlerts === 'function') {
-            await checkMasterPieceAlerts();
+        } finally {
+            isAutoRefreshInFlight = false;
         }
     }, 10000);
 
@@ -242,7 +340,7 @@ function initEvents() {
     if (typeof XLSX === 'undefined') {
         processLogContainer.classList.remove('hidden');
         log('Error: Excel reading library (SheetJS) not loaded. Please check your internet connection.', 'error');
-        alert('Error: Excel reading library (SheetJS) not loaded. Check your internet connection.');
+        showNotification('Excel reading library (SheetJS) failed to load. Check internet connection.', 'error');
     }
 
     // Results Table Row Click (Delegated)
@@ -394,7 +492,12 @@ function initEvents() {
             hideAllTabs();
             tabResults.classList.add('active');
             resultsTabContent.classList.remove('hidden');
-            renderResultsAndDividendsTable();
+            // FIX: Fetch real exchange corporate results/dividends via /api/corporate instead of static fake data
+            if (typeof fetchCorporateResults === 'function') {
+                fetchCorporateResults(false);
+            } else {
+                renderResultsAndDividendsTable();
+            }
         });
     }
 
@@ -901,7 +1004,15 @@ function initEvents() {
             const newInput = document.getElementById('new-password-input').value;
             const confirmInput = document.getElementById('confirm-password-input').value;
 
-            const storedPass = localStorage.getItem('appPassword') || '22780';
+            // FIX: Remove hardcoded default password fallback in change-password flow
+            const storedPass = localStorage.getItem('appPassword');
+            if (!storedPass) {
+                if (changePasswordError) {
+                    changePasswordError.classList.remove('hidden');
+                    changePasswordError.querySelector('span').textContent = 'Password not configured. Please contact admin.';
+                }
+                return;
+            }
 
             if (currentInput !== storedPass) {
                 if (changePasswordError) {
@@ -1244,33 +1355,37 @@ async function saveMasterToCloud() {
         const logContainer = document.getElementById('process-log-container');
         if (logContainer) logContainer.classList.remove('hidden');
         log(`Cloud sync failed: ${err.message}`, 'error');
-        showNotification(`Cloud sync failed: ${err.message}`, 'error');
-        alert(`Cloud sync failed: ${err.message}\nCheck Firebase Console/Rules!`);
+        showNotification(`Cloud sync failed: ${err.message}. Check Firebase Console/Rules.`, 'error');
     }
 }
 
-// Load Master Excel Data from Firestore by assembling chunks
-async function loadMasterFromCloud() {
+// Load Master Excel Data from Firestore by assembling chunks in parallel with batched UI-yielding parsing
+// FIX: Download chunks with Promise.all, show progress, parse in batches with yieldToUI(), and support silent background refresh
+async function loadMasterFromCloud(options = {}) {
+    const { isBackgroundRefresh = false, hasLocalCache = false } = options;
+
     if (!db) {
         console.error("Firestore not initialized");
-        updateCloudSyncUI('error', 'Firebase Offline');
-        showNotification('Firebase SDK failed to initialize. Check connection or blockers!', 'error');
+        updateCloudSyncUI('error', hasLocalCache ? 'Offline (Local Cache)' : 'Firebase Offline');
+        if (!hasLocalCache) {
+            showNotification('Firebase SDK failed to initialize. Check connection or blockers!', 'error');
+        }
         return false;
     }
 
-    updateCloudSyncUI('connecting', 'Loading from Cloud...');
+    updateCloudSyncUI('connecting', hasLocalCache ? 'Refreshing Cloud...' : 'Loading Cloud...');
     log('Checking Firebase Cloud for saved Master data...', 'info');
 
     try {
         const metaDoc = await db.collection('metadata').doc('master').get();
         if (!metaDoc.exists) {
-            updateCloudSyncUI('error', 'No Cloud Data');
+            updateCloudSyncUI(hasLocalCache ? 'success' : 'error', hasLocalCache ? 'Local Cache Ready' : 'No Cloud Data');
             log('No Master data found in Cloud. Please upload a Master Excel file.', 'warning');
             return false;
         }
 
         const metaData = metaDoc.data();
-        const chunkCount = metaData.chunkCount;
+        const chunkCount = metaData.chunkCount || 0;
         const filename = metaData.filename || 'Master_Cloud.xlsx';
         const filesize = metaData.filesize || 'Cloud Stored';
 
@@ -1280,17 +1395,25 @@ async function loadMasterFromCloud() {
                 setLocalStorageItem('latest_volumes', metaData.volumesJson);
             } catch (e) {
                 console.error("Failed to parse cloud volumes:", e);
-                state.latestVolumes = new Map();
+                state.latestVolumes = state.latestVolumes || new Map();
             }
-        } else {
+        } else if (!hasLocalCache) {
             state.latestVolumes = new Map();
         }
 
         log(`Found cloud master database: ${filename} (Total Chunks: ${chunkCount})`, 'info');
+        updateCloudSyncUI('connecting', `Downloading ${chunkCount} chunks...`);
+
+        // FIX: Download all chunks in parallel instead of sequential await in a loop
+        const chunkPromises = [];
+        for (let i = 0; i < chunkCount; i++) {
+            chunkPromises.push(db.collection('chunks').doc(`chunk_${i}`).get());
+        }
+        const chunkDocs = await Promise.all(chunkPromises);
 
         let assembledRows = [];
-        for (let i = 0; i < chunkCount; i++) {
-            const chunkDoc = await db.collection('chunks').doc(`chunk_${i}`).get();
+        for (let i = 0; i < chunkDocs.length; i++) {
+            const chunkDoc = chunkDocs[i];
             if (!chunkDoc.exists) {
                 throw new Error(`Missing chunk data for chunk_${i}`);
             }
@@ -1302,7 +1425,10 @@ async function loadMasterFromCloud() {
                 chunkRows = chunkData.rows || [];
             }
             assembledRows = assembledRows.concat(chunkRows);
-            log(`- Loaded chunk ${i + 1} of ${chunkCount} (${chunkRows.length} rows)`, 'info');
+            updateCloudSyncUI('connecting', `Loading Cloud (${i + 1}/${chunkCount})...`);
+            log(`- Parsed chunk ${i + 1} of ${chunkCount} (${chunkRows.length} rows)`, 'info');
+            // FIX: Yield to UI thread between chunk parses so the page never locks up
+            await yieldToUI();
         }
 
         if (assembledRows.length === 0) {
@@ -1338,26 +1464,37 @@ async function loadMasterFromCloud() {
         populateCompanyDatalist();
         
         updateCloudSyncUI('success', 'Cloud Synced');
+        if (isBackgroundRefresh && hasLocalCache) {
+            console.log('[Startup] Quietly swapped in latest cloud Master data.');
+        }
         return true;
     } catch (err) {
         console.error('Error loading from Firestore:', err);
-        updateCloudSyncUI('error', 'Load Failed');
+        updateCloudSyncUI(hasLocalCache ? 'success' : 'error', hasLocalCache ? 'Using Local Cache' : 'Load Failed');
         const logContainer = document.getElementById('process-log-container');
-        if (logContainer) logContainer.classList.remove('hidden');
+        if (logContainer && !hasLocalCache) logContainer.classList.remove('hidden');
         log(`Cloud load failed: ${err.message}`, 'error');
-        showNotification(`Cloud load failed: ${err.message}`, 'error');
+        if (!hasLocalCache) {
+            showNotification(`Cloud load failed: ${err.message}`, 'error');
+        }
         return false;
     }
 }
 
-// Load master data on startup (cloud first, local storage cache second)
+// FIX: Show locally cached Master from localStorage INSTANTLY on startup,
+// then refresh from Cloud in the background and quietly swap in newer data.
 async function loadMasterOnStartup() {
-    updateCloudSyncUI('connecting', 'Connecting...');
-    const loadedFromCloud = await loadMasterFromCloud();
-    if (!loadedFromCloud) {
-        log('Trying to load from local storage cache...', 'info');
+    updateCloudSyncUI('connecting', 'Loading...');
+    let hasLocalCache = false;
+    if (getLocalStorageItem('master_excel_data')) {
         loadMasterFromLocalStorage();
+        hasLocalCache = Boolean(state.masterData && state.masterData.length > 0);
     }
+
+    // Background cloud refresh (never blocks startup UI)
+    loadMasterFromCloud({ isBackgroundRefresh: true, hasLocalCache }).catch(err => {
+        console.warn('Background cloud master refresh error:', err);
+    });
 }
 
 // Delete Master Excel Data from Firestore
@@ -1368,9 +1505,11 @@ async function deleteMasterFromCloud() {
         await db.collection('metadata').doc('master').delete();
         
         // Delete up to 50 chunk documents
+        const deletePromises = [];
         for (let i = 0; i < 50; i++) {
-            await db.collection('chunks').doc(`chunk_${i}`).delete();
+            deletePromises.push(db.collection('chunks').doc(`chunk_${i}`).delete());
         }
+        await Promise.all(deletePromises);
         updateCloudSyncUI('error', 'Cloud Deleted');
         log('Master data removed from Cloud Firestore.', 'warning');
     } catch (err) {
@@ -1401,12 +1540,16 @@ function autoRenderIfProcessed() {
             }
             state.processedWorkbook = wb;
 
-            // Render components
+            // FIX: Always render the main research table & active tab immediately;
+            // avoid firing background live Yahoo fetches for inactive tabs at startup
             renderFilteredResults();
             renderGainersAnalysis();
-            renderMorningPicks();
-            renderInvestorAdvice();
-            renderVolumePromoterPicks();
+            if (isTabActive('tab-morning-picks')) renderMorningPicks();
+            if (isTabActive('tab-investor-advice')) renderInvestorAdvice();
+            if (isTabActive('tab-volume-promoter')) renderVolumePromoterPicks();
+            if (isTabActive('tab-circuits')) renderCircuits();
+            if (isTabActive('tab-intraday')) renderIntraday();
+            if (isTabActive('tab-master-piece')) renderMasterPiece();
             
             researchSection.classList.remove('hidden');
             downloadBtn.disabled = false;
@@ -1553,39 +1696,54 @@ function throttledRenderPortfolioTable() {
 }
 
 // Fetch live prices for active portfolio holdings and re-render
+// FIX: Concurrency limit 5, 60s cache, 5-min failed cache, and in-flight guard
+let isPortfolioFetchInFlight = false;
 async function fetchPortfolioLivePrices() {
-    if (portfolioItems.length === 0) return;
+    if (isPortfolioFetchInFlight || portfolioItems.length === 0) return;
     
-    // Find unique active symbols
-    const activeSymbols = [...new Set(portfolioItems.filter(item => !(item.sellRate && item.sellDate)).map(item => item.companySymbol))];
+    // Find unique active symbols not recently cached or failed
+    const activeSymbols = [...new Set(
+        portfolioItems
+            .filter(item => !(item.sellRate && item.sellDate))
+            .map(item => item.companySymbol)
+            .filter(sym => sym && !isPriceFresh(sym) && !isFailedSymbolRecent(sym))
+    )];
     if (activeSymbols.length === 0) return;
     
-    console.log("Fetching live prices for active portfolio holdings:", activeSymbols);
-    
-    // Process each symbol concurrently and update the UI instantly as each successful fetch completes
-    activeSymbols.forEach(async (symbol) => {
-        try {
-            let data;
-            const isNumeric = symbol.match(/^\d+$/);
-            const prefSuffix = isNumeric ? '.BO' : '.NS';
-            const fallbackSuffix = isNumeric ? '.NS' : '.BO';
-            
+    isPortfolioFetchInFlight = true;
+    try {
+        console.log("Fetching live prices for active portfolio holdings:", activeSymbols);
+        await runWithConcurrency(activeSymbols, 5, async (symbol) => {
             try {
-                data = await fetchYahooFinanceData(symbol.trim().toUpperCase() + prefSuffix);
+                let data;
+                const isNumeric = symbol.match(/^\d+$/);
+                const prefSuffix = isNumeric ? '.BO' : '.NS';
+                const fallbackSuffix = isNumeric ? '.NS' : '.BO';
+                
+                try {
+                    data = await fetchYahooFinanceData(symbol.trim().toUpperCase() + prefSuffix);
+                } catch (e) {
+                    data = await fetchYahooFinanceData(symbol.trim().toUpperCase() + fallbackSuffix);
+                }
+                
+                const price = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
+                if (price !== undefined) {
+                    state.portfolioLivePrices.set(symbol, price);
+                    markPriceFresh(symbol);
+                    throttledRenderPortfolioTable();
+                } else {
+                    markSymbolFailed(symbol);
+                    throttledRenderPortfolioTable();
+                }
             } catch (e) {
-                data = await fetchYahooFinanceData(symbol.trim().toUpperCase() + fallbackSuffix);
-            }
-            
-            const price = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
-            if (price !== undefined) {
-                state.portfolioLivePrices.set(symbol, price);
-                // Re-render the portfolio table using throttled updates for buttery smooth scrolling/animations
+                console.warn(`Failed to fetch live price for active portfolio item ${symbol}:`, e.message);
+                markSymbolFailed(symbol);
                 throttledRenderPortfolioTable();
             }
-        } catch (e) {
-            console.warn(`Failed to fetch live price for active portfolio item ${symbol}:`, e.message);
-        }
-    });
+        });
+    } finally {
+        isPortfolioFetchInFlight = false;
+    }
 }
 
 // Render portfolio entries list table and calculate summaries
@@ -1710,7 +1868,9 @@ function renderPortfolioTable() {
                 profitClass = profit >= 0 ? 'profit-text' : 'loss-text';
                 ratioStr = `${profit >= 0 ? '+' : ''}${((profit / buyAmt) * 100).toFixed(2)}%`;
             } else {
-                livePriceStr = '<span style="font-size:0.75rem;color:var(--text-secondary);">Loading...</span>';
+                livePriceStr = isFailedSymbolRecent(item.companySymbol)
+                    ? '<span style="font-size:0.75rem;color:var(--text-secondary);">Price unavailable</span>'
+                    : '<span style="font-size:0.75rem;color:var(--text-secondary);">Loading...</span>';
             }
             
             const d1 = new Date(item.buyDate);
@@ -2330,19 +2490,83 @@ function showNotification(message, type = 'info') {
     }, 4000);
 }
 
+// FIX: Validate strict DD-MM-YYYY date strings
+function isValidDDMMYYYY(str) {
+    if (!str || typeof str !== 'string') return false;
+    const m = str.trim().match(/^(\d{2})-(\d{2})-(\d{4})$/);
+    if (!m) return false;
+    const day = parseInt(m[1], 10);
+    const month = parseInt(m[2], 10);
+    const year = parseInt(m[3], 10);
+    if (year < 2000 || year > 2099 || month < 1 || month > 12 || day < 1 || day > 31) return false;
+    const dt = new Date(year, month - 1, day);
+    return dt.getFullYear() === year && dt.getMonth() === month - 1 && dt.getDate() === day;
+}
+
+// FIX: Prompt user via in-app modal when no valid DD-MM-YYYY date can be extracted from CSV
+function askUserForBhavcopyDate(filename) {
+    return new Promise((resolve) => {
+        const modal = document.getElementById('date-confirm-modal');
+        const fnameEl = document.getElementById('date-confirm-filename');
+        const inputEl = document.getElementById('date-confirm-input');
+        const errEl = document.getElementById('date-confirm-error');
+        const okBtn = document.getElementById('date-confirm-ok-btn');
+        const cancelBtn = document.getElementById('date-confirm-cancel-btn');
+        const closeBtn = document.getElementById('date-confirm-close-btn');
+
+        if (!modal || !inputEl || !okBtn) {
+            resolve(null);
+            return;
+        }
+
+        if (fnameEl) fnameEl.textContent = filename;
+        if (errEl) errEl.classList.add('hidden');
+        inputEl.value = getTodayDateString();
+        modal.classList.remove('hidden');
+
+        const cleanup = (result) => {
+            modal.classList.add('hidden');
+            okBtn.removeEventListener('click', onOk);
+            if (cancelBtn) cancelBtn.removeEventListener('click', onCancel);
+            if (closeBtn) closeBtn.removeEventListener('click', onCancel);
+            resolve(result);
+        };
+
+        const onOk = () => {
+            const normalized = normalizeDateString(inputEl.value.trim());
+            if (isValidDDMMYYYY(normalized)) {
+                cleanup(normalized);
+            } else if (errEl) {
+                errEl.classList.remove('hidden');
+            }
+        };
+
+        const onCancel = () => cleanup(null);
+
+        okBtn.addEventListener('click', onOk);
+        if (cancelBtn) cancelBtn.addEventListener('click', onCancel);
+        if (closeBtn) closeBtn.addEventListener('click', onCancel);
+    });
+}
+
 // Extract and normalize Date from CSV / Filename
+// FIX: Detect from CSV date columns and known NSE/BSE/UDiFF/DD-MM-YYYY filename patterns; return null if invalid
 function extractDateFromBhavcopy(csvData, csvKeys, filename) {
-    const dateKeys = ['TIMESTAMP', 'DATE', 'TRADING_DATE', 'RECORD_DATE', 'TRADEDATE'];
-    for (let dk of dateKeys) {
+    const dateKeys = ['TIMESTAMP', 'DATE', 'TRADING_DATE', 'RECORD_DATE', 'TRADEDATE', 'TRADDT', 'BIZDT'];
+    for (const dk of dateKeys) {
         const found = csvKeys.find(k => k.toUpperCase().trim() === dk);
         if (found && csvData.length > 0) {
-            const val = String(csvData[0][found]).trim();
+            const val = String(csvData[0][found] || '').trim();
             if (val) {
-                return normalizeDateString(val);
+                const normalized = normalizeDateString(val);
+                if (isValidDDMMYYYY(normalized)) {
+                    return normalized;
+                }
             }
         }
     }
-    
+
+    // Check NSE old format: cm01JUL2026bhav.csv
     const matchNSE = filename.match(/cm(\d{2})([A-Z]{3})(\d{4})/i);
     if (matchNSE) {
         const day = matchNSE[1];
@@ -2352,28 +2576,46 @@ function extractDateFromBhavcopy(csvData, csvKeys, filename) {
             JAN: '01', FEB: '02', MAR: '03', APR: '04', MAY: '05', JUN: '06',
             JUL: '07', AUG: '08', SEP: '09', OCT: '10', NOV: '11', DEC: '12'
         };
-        const month = months[monthStr] || '01';
-        return `${day}-${month}-${year}`;
+        const month = months[monthStr];
+        if (month) {
+            const candidate = `${day}-${month}-${year}`;
+            if (isValidDDMMYYYY(candidate)) return candidate;
+        }
     }
-    
+
+    // Check NSE UDiFF format: BhavCopy_NSE_CM_0_0_0_20260630_F_0000.csv
+    const matchUDiFF = filename.match(/BhavCopy_NSE_CM_0_0_0_(\d{4})(\d{2})(\d{2})/i);
+    if (matchUDiFF) {
+        const candidate = `${matchUDiFF[3]}-${matchUDiFF[2]}-${matchUDiFF[1]}`;
+        if (isValidDDMMYYYY(candidate)) return candidate;
+    }
+
+    // Check BSE format: EQ010726.csv
     const matchBSE = filename.match(/EQ(\d{2})(\d{2})(\d{2})/i);
     if (matchBSE) {
-        const day = matchBSE[1];
-        const month = matchBSE[2];
-        const year = '20' + matchBSE[3];
-        return `${day}-${month}-${year}`;
+        const candidate = `${matchBSE[1]}-${matchBSE[2]}-20${matchBSE[3]}`;
+        if (isValidDDMMYYYY(candidate)) return candidate;
     }
-    
-    const d = new Date();
-    const dd = String(d.getDate()).padStart(2, '0');
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const yyyy = d.getFullYear();
-    return `${dd}-${mm}-${yyyy}`;
+
+    // Check embedded DD-MM-YYYY or DD/MM/YYYY in filename (e.g. "19-11-2026 (1).csv")
+    const matchNormal = filename.match(/(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+    if (matchNormal) {
+        const candidate = `${matchNormal[1].padStart(2, '0')}-${matchNormal[2].padStart(2, '0')}-${matchNormal[3]}`;
+        if (isValidDDMMYYYY(candidate)) return candidate;
+    }
+
+    return null;
 }
 
 // Normalize various date formats to DD-MM-YYYY
 function normalizeDateString(str) {
-    const parts = str.split('-');
+    const clean = String(str || '').trim().split(/[T\s]/)[0];
+    const matchISO = clean.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    if (matchISO) {
+        return `${matchISO[3].padStart(2, '0')}-${matchISO[2].padStart(2, '0')}-${matchISO[1]}`;
+    }
+
+    const parts = clean.split('-');
     if (parts.length === 3) {
         let day = parts[0].padStart(2, '0');
         let monthStr = parts[1].toUpperCase();
@@ -2394,12 +2636,7 @@ function normalizeDateString(str) {
         return `${day}-${month}-${year}`;
     }
     
-    const matchISO = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (matchISO) {
-        return `${matchISO[3]}-${matchISO[2]}-${matchISO[1]}`;
-    }
-    
-    const partsSlash = str.split('/');
+    const partsSlash = clean.split('/');
     if (partsSlash.length === 3) {
         let day = partsSlash[0].padStart(2, '0');
         let month = partsSlash[1].padStart(2, '0');
@@ -2408,7 +2645,7 @@ function normalizeDateString(str) {
         return `${day}-${month}-${year}`;
     }
     
-    return str;
+    return clean;
 }
 
 // Get today's date in DD-MM-YYYY format
@@ -2506,8 +2743,8 @@ async function processFiles() {
         
         log(`Total ${filesToProcess.length} files will be processed chronologically.`, 'info');
         
-        // Deep copy master data at the beginning of the batch
-        let updatedMaster = JSON.parse(JSON.stringify(master));
+        // FIX: Shallow-copy rows once per batch instead of heavy JSON.parse(JSON.stringify(master))
+        let updatedMaster = master.map(row => (Array.isArray(row) ? [...row] : row));
         let lastInsertIndex = -1;
         let lastDiffColIndex = -1;
         let lastHighColIndex = -1;
@@ -2517,6 +2754,7 @@ async function processFiles() {
         for (let fIdx = 0; fIdx < filesToProcess.length; fIdx++) {
             const file = filesToProcess[fIdx];
             log(`[${fIdx + 1}/${filesToProcess.length}] Processing file: ${file.name}...`, 'info');
+            await yieldToUI();
             
             // Read CSV File
             const text = await readFileAsText(file);
@@ -2543,8 +2781,16 @@ async function processFiles() {
                 continue;
             }
             
-            // Extract column name as the CSV filename without extension
-            const dateStr = file.name.replace(/\.[^/.]+$/, "");
+            // FIX: Use extractDateFromBhavcopy() to get validated DD-MM-YYYY trading date; prompt user if not found
+            let dateStr = extractDateFromBhavcopy(csvData, csvKeys, file.name);
+            if (!isValidDDMMYYYY(dateStr)) {
+                dateStr = await askUserForBhavcopyDate(file.name);
+                if (!isValidDDMMYYYY(dateStr)) {
+                    log(`- Skipped file ${file.name}: No valid trading date confirmed.`, 'warning');
+                    continue;
+                }
+            }
+            log(`- Using verified trading date column: ${dateStr}`, 'info');
             
             // Find keys in CSV
             let symbolKey = null;
@@ -2632,8 +2878,6 @@ async function processFiles() {
                 if (highColIndex >= seriesInsertIdx) { highColIndex++; state.highColIndex++; }
                 if (diffColIndex >= seriesInsertIdx) { diffColIndex++; state.diffColIndex++; }
                 if (state.isinColIndex >= seriesInsertIdx) { state.isinColIndex++; }
-                if (existingDateColIndex >= seriesInsertIdx) { existingDateColIndex++; }
-                if (insertIndex >= seriesInsertIdx) { insertIndex++; }
                 
                 for (let i = 1; i < updatedMaster.length; i++) {
                     if (updatedMaster[i]) {
@@ -2664,6 +2908,11 @@ async function processFiles() {
             const processedRows = [headers];
             
             for (let i = 1; i < updatedMaster.length; i++) {
+                // FIX: Yield every 400 rows so Process Data never freezes the UI
+                if (i % 400 === 0) {
+                    await yieldToUI();
+                }
+
                 const row = updatedMaster[i];
                 
                 const targetPadding = existingDateColIndex !== -1 ? headers.length : headers.length - 1;
@@ -2916,12 +3165,12 @@ async function processFiles() {
         }
         state.processedWorkbook = wb;
         
-        // Render results & analysis
+        // Render results & analysis (only active tab triggers live Yahoo fetches)
         renderFilteredResults();
         renderGainersAnalysis();
-        renderMorningPicks();
-        renderInvestorAdvice();
-        renderVolumePromoterPicks();
+        if (isTabActive('tab-morning-picks')) renderMorningPicks();
+        if (isTabActive('tab-investor-advice')) renderInvestorAdvice();
+        if (isTabActive('tab-volume-promoter')) renderVolumePromoterPicks();
         
         researchSection.classList.remove('hidden');
         downloadBtn.disabled = false;
@@ -3098,16 +3347,19 @@ function renderGainersAnalysis() {
             const color = item.gain > 0 ? 'var(--success-color)' : item.gain < 0 ? 'var(--danger-color)' : 'var(--text-primary)';
             
             // Get already fetched live price or fall back to today's close price as EOD
+            // FIX: Show "Price unavailable" if symbol failed recently instead of hanging on Loading
             const livePriceVal = state.gainersLivePrices.get(item.symbol);
             const livePriceHtml = livePriceVal 
                 ? `₹${livePriceVal.toFixed(2)} <span class="live-pulse" style="width:6px;height:6px;box-shadow:0 0 0 0 rgba(16,185,129,0.7);animation:pulse 1.5s infinite;margin-left:0.2rem;display:inline-block;border-radius:50%;background:#10b981;"></span>`
+                : isFailedSymbolRecent(item.symbol)
+                ? `<span style="font-size:0.75rem;color:var(--text-secondary);">Price unavailable</span>`
                 : `₹${item.today.toFixed(2)} <span style="font-size:0.7rem;color:var(--text-secondary);">(EOD)</span>`;
 
             // Check if already in watchlist
             const inWatchlist = watchlistItems.some(w => w.symbol === item.symbol);
             const starBtn = inWatchlist
-                ? `<button onclick="removeFromWatchlist('${item.symbol}'); event.stopPropagation();" title="Watchlistä¸­થી કાઢો" style="background:rgba(245,158,11,0.18); border:1px solid #f59e0b; color:#f59e0b; border-radius:5px; padding:0.25rem 0.55rem; cursor:pointer; font-size:0.85rem;"><i class='fa-solid fa-star'></i></button>`
-                : `<button onclick="addToWatchlist('${item.symbol}', ${item.today}); event.stopPropagation();" title="Watchlistä¸­ઉમેરો" style="background:none; border:1px solid rgba(255,255,255,0.15); color:var(--text-secondary); border-radius:5px; padding:0.25rem 0.55rem; cursor:pointer; font-size:0.85rem;"><i class='fa-regular fa-star'></i></button>`;
+                ? `<button onclick="removeFromWatchlist('${item.symbol}'); event.stopPropagation();" title="Watchlistમાંથી કાઢો" style="background:rgba(245,158,11,0.18); border:1px solid #f59e0b; color:#f59e0b; border-radius:5px; padding:0.25rem 0.55rem; cursor:pointer; font-size:0.85rem;"><i class='fa-solid fa-star'></i></button>`
+                : `<button onclick="addToWatchlist('${item.symbol}', ${item.today}); event.stopPropagation();" title="Watchlistમાં ઉમેરો" style="background:none; border:1px solid rgba(255,255,255,0.15); color:var(--text-secondary); border-radius:5px; padding:0.25rem 0.55rem; cursor:pointer; font-size:0.85rem;"><i class='fa-regular fa-star'></i></button>`;
 
             html += `
                 <tr class="clickable-row" title="Click to view price history chart" onclick="showResearchModal('${item.symbol}')">
@@ -3124,9 +3376,12 @@ function renderGainersAnalysis() {
     }
     movementTable.querySelector('tbody').innerHTML = html;
     
-    // Fetch live prices for top gainers asynchronously in the background
-    if (topGainers.length > 0) {
-        fetchGainersLivePrices(topGainers.map(t => t.symbol));
+    // Fetch live prices for top gainers asynchronously in the background (only if stale & not recently failed)
+    if (topGainers.length > 0 && isTabActive('tab-research')) {
+        const symsToFetch = topGainers.map(t => t.symbol).filter(s => !isPriceFresh(s) && !isFailedSymbolRecent(s));
+        if (symsToFetch.length > 0) {
+            fetchGainersLivePrices(symsToFetch);
+        }
     }
 }
 
@@ -3378,17 +3633,15 @@ function showPriceChart(symbol) {
         }
     });
     
-    // Fetch Live Price from Yahoo Finance
+    // Fetch Live Price from Yahoo Finance (FIX: uses cached/timeout-protected fetchYahooFinanceData, max 3 sources)
     const livePriceEl = document.getElementById('modal-live-price');
     if (livePriceEl) {
         livePriceEl.textContent = 'Fetching...';
         livePriceEl.style.color = '#ffffff';
-        
-        // Yahoo Finance symbol format is [symbol].NS for NSE stocks
-        const rawSym = symbol.trim().toUpperCase();
-        const yahooSymbol = rawSym.endsWith('.NS') ? rawSym : rawSym + '.NS';
 
-        // Helper: render price from meta
+        const rawSym = symbol.trim().toUpperCase();
+        const yahooSymbol = rawSym.endsWith('.NS') || rawSym.endsWith('.BO') ? rawSym : rawSym + '.NS';
+
         const renderLivePrice = (meta) => {
             const currentPrice = meta.regularMarketPrice;
             const prevClose = meta.chartPreviousClose;
@@ -3399,34 +3652,21 @@ function showPriceChart(symbol) {
                 const color = diff >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
                 livePriceEl.innerHTML = `₹${currentPrice.toFixed(2)} <span style="font-size: 0.75rem; font-weight: 600; color: ${color}; margin-left: 0.35rem;">(${sign}${pct.toFixed(2)}%)</span>`;
             } else {
-                livePriceEl.textContent = 'N/A';
+                livePriceEl.textContent = 'Price unavailable';
             }
         };
 
-        // Ordered list of URLs to try
-        const liveUrls = [
-            `/api/yahoo?symbol=${encodeURIComponent(yahooSymbol)}`,
-            `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}`,
-            `https://api.allorigins.win/raw?url=${encodeURIComponent('https://query1.finance.yahoo.com/v8/finance/chart/' + yahooSymbol)}`,
-            `https://thingproxy.freeboard.io/fetch/https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}`,
-        ];
-
         (async () => {
-            for (const url of liveUrls) {
-                try {
-                    const res = await fetch(url);
-                    if (!res.ok) continue;
-                    const data = await res.json();
-                    if (data && data.chart && data.chart.result && data.chart.result[0]) {
-                        renderLivePrice(data.chart.result[0].meta);
-                        return;
-                    }
-                } catch (e) {
-                    console.warn('Live price fetch failed for URL:', url, e);
+            try {
+                const data = await fetchYahooFinanceData(yahooSymbol);
+                if (data && data.chart && data.chart.result && data.chart.result[0]) {
+                    renderLivePrice(data.chart.result[0].meta);
+                    return;
                 }
+            } catch (e) {
+                console.warn('Modal live price fetch failed:', e.message);
             }
-            // All sources failed
-            livePriceEl.textContent = 'N/A';
+            livePriceEl.textContent = 'Price unavailable';
         })();
     }
     
@@ -3595,20 +3835,19 @@ window.showResearchModal = function(symbol) {
     // Show Modal immediately
     document.getElementById('research-modal').classList.remove('hidden');
     
-    // 1. Fetch Company Summary from DuckDuckGo Instant Answers API
+    // 1. Fetch Company Summary from DuckDuckGo Instant Answers API (FIX: 6s timeout so slow networks never hang)
     const ddgUrl = `https://api.duckduckgo.com/?q=${encodeURIComponent(symbol)}+company&format=json`;
-    fetch(ddgUrl)
+    fetchWithTimeout(ddgUrl, {}, FETCH_TIMEOUT_MS)
         .then(res => res.json())
         .then(data => {
             const rawDescription = data.AbstractText || data.Definition || `${symbol} is an Indian company engaged in commercial and business activities, listed on the National Stock Exchange (NSE).`;
             
             // Translate to Gujarati using Google Translate's free API
             const translateUrl = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=gu&dt=t&q=${encodeURIComponent(rawDescription)}`;
-            fetch(translateUrl)
+            fetchWithTimeout(translateUrl, {}, FETCH_TIMEOUT_MS)
                 .then(res => res.json())
                 .then(transData => {
-                    // Google translate single API returns array of sentences in transData[0]
-                    const sentences = transData[0].map(s => s[0]).join('');
+                    const sentences = transData && transData[0] ? transData[0].map(s => s[0]).join('') : '';
                     descEl.textContent = sentences || rawDescription;
                 })
                 .catch(transErr => {
@@ -3617,7 +3856,7 @@ window.showResearchModal = function(symbol) {
                 });
         })
         .catch(err => {
-            console.error("DuckDuckGo fetch failed:", err);
+            console.warn("DuckDuckGo fetch failed:", err?.message || err);
             descEl.textContent = `${symbol} એ ભારતીય શેરબજાર (NSE) માં સૂચિબદ્ધ કંપની છે જે ભારતમાં વિવિધ વ્યાપારી પ્રવૃત્તિઓ સાથે સંકળાયેલી છે. વધુ માહિતી માટે નીચે આપેલ લિંક્સની મુલાકાત લો.`;
         });
         
@@ -3700,20 +3939,19 @@ window.showResearchModal = function(symbol) {
         }
     };
 
-    // Multiple URL sources in priority order — /api/yahoo (Vercel) is server-side, no CORS
+    // FIX: Try at most 3 sources (/api/yahoo first, then 2 proxies), each with a 6s AbortController timeout
+    const researchYahooBase = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooNsSymbol)}?range=1y&interval=1d`;
     const researchUrls = [
-
         `/api/yahoo?symbol=${encodeURIComponent(yahooNsSymbol)}`,
-        `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooNsSymbol)}?range=1y&interval=1d`,
-        `https://api.allorigins.win/raw?url=${encodeURIComponent('https://query1.finance.yahoo.com/v8/finance/chart/' + yahooNsSymbol + '?range=1y&interval=1d')}`,
-        `https://thingproxy.freeboard.io/fetch/https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooNsSymbol)}?range=1y&interval=1d`,
+        `https://api.allorigins.win/raw?url=${encodeURIComponent(researchYahooBase)}`,
+        `https://corsproxy.io/?url=${encodeURIComponent(researchYahooBase)}`
     ];
 
     (async () => {
         let success = false;
         for (const url of researchUrls) {
             try {
-                const res = await fetch(url);
+                const res = await fetchWithTimeout(url, {}, FETCH_TIMEOUT_MS);
                 if (!res.ok) {
                     console.warn(`Yahoo fetch failed (HTTP ${res.status}) for: ${url}`);
                     continue;
@@ -3729,7 +3967,7 @@ window.showResearchModal = function(symbol) {
             }
         }
         if (!success) {
-            console.error('All Yahoo Finance sources exhausted for symbol:', symbol);
+            console.warn('All Yahoo Finance sources exhausted for symbol:', symbol);
             highEl.textContent = 'N/A';
             lowEl.textContent = 'N/A';
             badgeEl.textContent = 'Hold';
@@ -3737,7 +3975,7 @@ window.showResearchModal = function(symbol) {
             badgeEl.style.color = '#fff';
             adviceEl.textContent = 'Yahoo Finance ડેટા હાલ ઉપલબ્ધ નથી. Screener.in અથવા Tickertape.in ની મુલાકાત લો.';
             const liveEl2 = document.getElementById('chart-live-price');
-            if (liveEl2) liveEl2.textContent = 'N/A';
+            if (liveEl2) liveEl2.textContent = 'Price unavailable';
         }
     })();
 };
@@ -3746,405 +3984,501 @@ window.showResearchModal = function(symbol) {
 // NEW FUNCTIONALITY: LIVE PRICES, INDICES, RESULTS & DIVIDENDS
 // ============================================================================
 
-// Helper to fetch Yahoo Finance quotes with sequential CORS proxy fallbacks
-async function fetchYahooFinanceData(ticker) {
-    const tickerEncoded = encodeURIComponent(ticker.trim().toUpperCase());
-    
-    // Use clean Yahoo Finance API endpoints (without range/interval limits that fail outside market hours)
-    const q1Url = `https://query1.finance.yahoo.com/v8/finance/chart/${tickerEncoded}`;
-    const q2Url = `https://query2.finance.yahoo.com/v8/finance/chart/${tickerEncoded}`;
-    
-    const cacheBuster = Date.now();
-    // Cache bust the proxy requests, keeping the inner Yahoo Finance requests clean
-    const urls = [
-        `/api/yahoo?symbol=${tickerEncoded}&_t=${cacheBuster}`,
-        `https://api.allorigins.win/raw?url=${encodeURIComponent(q1Url)}&_t=${cacheBuster}`,
-        `https://api.allorigins.win/raw?url=${encodeURIComponent(q2Url)}&_t=${cacheBuster}`,
-        `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(q1Url)}&_t=${cacheBuster}`,
-        `https://corsproxy.io/?url=${encodeURIComponent(q1Url)}&_t=${cacheBuster}`,
-        `https://corsproxy.io/?url=${encodeURIComponent(q2Url)}&_t=${cacheBuster}`,
-        `https://api.allorigins.win/get?url=${encodeURIComponent(q1Url)}&_t=${cacheBuster}`, // JSON wrapper fallback
-        `https://thingproxy.freeboard.io/fetch/${q1Url}`,
-        `https://thingproxy.freeboard.io/fetch/${q2Url}`,
-        q1Url, // direct fetch
-        q2Url  // direct fetch
-    ];
+// FIX: Bounded Yahoo Finance fetcher: 6s AbortController timeout, max 3 sources, 60s response cache, 5-min failed-symbol cache, in-flight deduplication
+async function fetchYahooFinanceData(ticker, forceRefresh = false) {
+    const cleanTicker = ticker.trim().toUpperCase();
+    const symKey = normalizeSymKey(cleanTicker);
+    const now = Date.now();
 
-    let lastError = null;
-    for (const url of urls) {
-        try {
-            console.log(`[Yahoo API] Fetching ${ticker} via: ${url.split('?')[0]}`);
-            const res = await fetch(url);
-            if (!res.ok) {
-                console.warn(`Yahoo URL returned HTTP ${res.status}: ${url}`);
-                continue;
-            }
-            
-            let data;
-            if (url.includes('allorigins.win/get')) {
-                // allorigins.win/get returns a JSON wrapper: { contents: "stringified json" }
-                const wrapper = await res.json();
-                if (wrapper && wrapper.contents) {
-                    data = JSON.parse(wrapper.contents);
-                } else {
-                    continue;
-                }
-            } else {
-                data = await res.json();
-            }
-
-            if (data && data.chart && data.chart.result && data.chart.result[0]) {
-                return data;
-            }
-        } catch (e) {
-            console.warn(`Yahoo fetch failed for: ${url.split('?')[0]}`, e.message);
-            lastError = e;
+    if (!forceRefresh) {
+        const cached = yahooResponseCache.get(cleanTicker);
+        if (cached && (now - cached.timestamp) < PRICE_CACHE_TTL_MS) {
+            return cached.data;
+        }
+        if (isFailedSymbolRecent(symKey)) {
+            throw new Error(`Skipping recently failed symbol ${cleanTicker}`);
         }
     }
-    throw new Error(`All sources exhausted for ticker ${ticker}. Last error: ${lastError ? lastError.message : 'Unknown'}`);
+
+    if (inFlightYahooRequests.has(cleanTicker)) {
+        return inFlightYahooRequests.get(cleanTicker);
+    }
+
+    const requestPromise = (async () => {
+        const tickerEncoded = encodeURIComponent(cleanTicker);
+        const q1Url = `https://query1.finance.yahoo.com/v8/finance/chart/${tickerEncoded}`;
+        // FIX: At most 3 sources (/api/yahoo first, then 2 CORS proxies), stop on first success
+        const urls = [
+            `/api/yahoo?symbol=${tickerEncoded}`,
+            `https://api.allorigins.win/raw?url=${encodeURIComponent(q1Url)}`,
+            `https://corsproxy.io/?url=${encodeURIComponent(q1Url)}`
+        ];
+
+        let lastError = null;
+        for (const url of urls) {
+            try {
+                const res = await fetchWithTimeout(url, {}, FETCH_TIMEOUT_MS);
+                if (!res.ok) {
+                    lastError = new Error(`HTTP ${res.status}`);
+                    continue;
+                }
+                const data = await res.json();
+                if (data && data.chart && data.chart.result && data.chart.result[0]) {
+                    yahooResponseCache.set(cleanTicker, { data, timestamp: Date.now() });
+                    markPriceFresh(symKey);
+                    return data;
+                }
+            } catch (e) {
+                lastError = e;
+            }
+        }
+        markSymbolFailed(symKey);
+        throw new Error(`Price unavailable for ${cleanTicker} (${lastError ? lastError.message : 'Timeout/Network'})`);
+    })();
+
+    inFlightYahooRequests.set(cleanTicker, requestPromise);
+    try {
+        return await requestPromise;
+    } finally {
+        inFlightYahooRequests.delete(cleanTicker);
+    }
 }
 
 // Fetch live prices for top gainers asynchronously in the background
+let isGainersFetchInFlight = false;
 async function fetchGainersLivePrices(symbols) {
-    if (!symbols || symbols.length === 0) return;
-    
-    // De-duplicate symbols
-    const uniqueSymbols = [...new Set(symbols)];
-    
-    await Promise.all(uniqueSymbols.map(async (symbol) => {
-        try {
-            let data;
-            const isNumeric = symbol.match(/^\d+$/);
-            const prefSuffix = isNumeric ? '.BO' : '.NS';
-            const fallbackSuffix = isNumeric ? '.NS' : '.BO';
-            
+    if (!symbols || symbols.length === 0 || isGainersFetchInFlight) return;
+    isGainersFetchInFlight = true;
+
+    try {
+        const uniqueSymbols = [...new Set(symbols)]
+            .map(s => String(s || '').trim().toUpperCase())
+            .filter(s => s && !isPriceFresh(s) && !isFailedSymbolRecent(s));
+
+        if (uniqueSymbols.length === 0) return;
+
+        // FIX: Limit concurrency to 5 symbols at a time instead of Promise.all over all rows
+        await runWithConcurrency(uniqueSymbols, 5, async (symbol) => {
             try {
-                // Try preferred exchange first
-                data = await fetchYahooFinanceData(symbol.trim().toUpperCase() + prefSuffix);
+                const isNumeric = /^\d+$/.test(symbol);
+                const prefSuffix = isNumeric ? '.BO' : '.NS';
+                const data = await fetchYahooFinanceData(symbol + prefSuffix);
+                const price = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
+                if (price !== undefined && price !== null) {
+                    state.gainersLivePrices.set(symbol, price);
+                    markPriceFresh(symbol);
+                    document.querySelectorAll(`.live-price-cell[data-symbol="${symbol}"]`).forEach(cell => {
+                        cell.innerHTML = `₹${price.toFixed(2)} <span class="live-pulse" style="width:6px;height:6px;box-shadow:0 0 0 0 rgba(16,185,129,0.7);animation:pulse 1.5s infinite;margin-left:0.2rem;display:inline-block;border-radius:50%;background:#10b981;"></span>`;
+                    });
+                } else {
+                    throw new Error('No market price');
+                }
             } catch (e) {
-                // Fallback to secondary exchange
-                data = await fetchYahooFinanceData(symbol.trim().toUpperCase() + fallbackSuffix);
-            }
-            
-            const price = data.chart.result[0].meta.regularMarketPrice;
-            if (price !== undefined) {
-                state.gainersLivePrices.set(symbol, price);
-                
-                // Update live cell in the DOM dynamically
-                const cells = document.querySelectorAll(`.live-price-cell[data-symbol="${symbol}"]`);
-                cells.forEach(cell => {
-                    cell.innerHTML = `₹${price.toFixed(2)} <span class="live-pulse" style="width:6px;height:6px;box-shadow:0 0 0 0 rgba(16,185,129,0.7);animation:pulse 1.5s infinite;margin-left:0.2rem;display:inline-block;border-radius:50%;background:#10b981;"></span>`;
+                markSymbolFailed(symbol);
+                document.querySelectorAll(`.live-price-cell[data-symbol="${symbol}"]`).forEach(cell => {
+                    if (!state.gainersLivePrices.has(symbol)) {
+                        cell.innerHTML = '<span style="font-size:0.75rem;color:var(--text-secondary);">Price unavailable</span>';
+                    }
                 });
+                console.warn(`Failed to fetch live price for gainer ${symbol}:`, e.message);
             }
-        } catch (e) {
-            console.warn(`Failed to fetch live price for gainer ${symbol}:`, e.message);
-        }
-    }));
+        });
+    } finally {
+        isGainersFetchInFlight = false;
+    }
 }
 
 // Fetch SENSEX, NIFTY 50, Gold and Silver live prices
+let isMarketIndicesFetching = false; // FIX: In-flight guard so 30s interval never overlaps
 async function fetchMarketIndices() {
-    // --- Nifty & Sensex (Primary: Official NSE/BSE APIs, Fallback: Yahoo Finance) ---
-    let officialNiftySuccess = false;
-    let officialSensexSuccess = false;
+    if (isMarketIndicesFetching) return;
+    isMarketIndicesFetching = true;
 
     try {
-        console.log("[Market Indices] Fetching Nifty & Sensex from official APIs...");
-        const res = await fetch('/api/indices');
-        if (res.ok) {
-            const data = await res.json();
-            
-            // 1. Process Sensex
-            if (data && data.sensex) {
-                const sData = data.sensex;
-                const valEl = document.getElementById('sensex-val');
-                const chgEl = document.getElementById('sensex-chg');
-                if (valEl && chgEl) {
-                    valEl.textContent = sData.price.toLocaleString('en-IN', { 
-                        minimumFractionDigits: 0, 
-                        maximumFractionDigits: 0 
-                    });
-                    const sign = sData.change >= 0 ? '+' : '';
-                    const color = sData.change >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
-                    chgEl.textContent = `${sign}${sData.change.toFixed(2)} (${sign}${sData.changePercent.toFixed(2)}%)`;
-                    chgEl.style.color = color;
-                    officialSensexSuccess = true;
-                }
-            }
+        // --- Nifty & Sensex (Primary: Official NSE/BSE APIs, Fallback: Yahoo Finance) ---
+        let officialNiftySuccess = false;
+        let officialSensexSuccess = false;
 
-            // 2. Process Nifty
-            if (data && data.nifty) {
-                const nData = data.nifty;
-                const valEl = document.getElementById('nifty-val');
-                const chgEl = document.getElementById('nifty-chg');
-                if (valEl && chgEl) {
-                    valEl.textContent = nData.price.toLocaleString('en-IN', { 
-                        minimumFractionDigits: 2, 
-                        maximumFractionDigits: 2 
-                    });
-                    const sign = nData.change >= 0 ? '+' : '';
-                    const color = nData.change >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
-                    chgEl.textContent = `${sign}${nData.change.toFixed(2)} (${sign}${nData.changePercent.toFixed(2)}%)`;
-                    chgEl.style.color = color;
-                    officialNiftySuccess = true;
-                }
-            }
-        }
-    } catch (e) {
-        console.warn('[Market Indices] Official indices API failed, using Yahoo Finance fallbacks:', e.message);
-    }
-
-    // Fallbacks
-    const indices = [
-        { id: 'nifty',  ticker: '^NSEI',  name: 'NIFTY 50', success: officialNiftySuccess },
-        { id: 'sensex', ticker: '^BSESN', name: 'SENSEX',   success: officialSensexSuccess },
-        { id: 'seg-large', ticker: '^CNX100', name: 'NIFTY 100', success: false },
-        { id: 'seg-mid',   ticker: '^CRSMID', name: 'NIFTY MIDCAP 100', success: false },
-        { id: 'seg-small', ticker: '^CNXSC',  name: 'NIFTY SMALLCAP 100', success: false }
-    ];
-
-    for (const item of indices) {
-        if (item.success) continue; // skip if already successfully fetched from official API
         try {
-            console.log(`[Market Indices] Fetching ${item.name} fallback from Yahoo...`);
-            const data = await fetchYahooFinanceData(item.ticker);
-            const meta = data.chart.result[0].meta;
-            const currentPrice = meta.regularMarketPrice;
-            const prevClose    = meta.previousClose !== undefined ? meta.previousClose : meta.chartPreviousClose;
+            const res = await fetchWithTimeout('/api/indices', {}, FETCH_TIMEOUT_MS);
+            if (res.ok) {
+                const data = await res.json();
 
-            if (currentPrice !== undefined && prevClose !== undefined) {
-                const change    = currentPrice - prevClose;
-                const changePct = (change / prevClose) * 100;
-                const valEl = document.getElementById(`${item.id}-val`);
-                const chgEl = document.getElementById(`${item.id}-chg`);
-                if (valEl && chgEl) {
-                    const decimals = (item.id === 'sensex' || item.id === 'seg-large' || item.id === 'seg-mid' || item.id === 'seg-small') ? 2 : 2;
-                    valEl.textContent = currentPrice.toLocaleString('en-IN', {
-                        minimumFractionDigits: decimals,
-                        maximumFractionDigits: decimals
-                    });
-                    const sign  = change >= 0 ? '+' : '';
-                    const color = change >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
-                    chgEl.textContent = `${sign}${change.toFixed(2)} (${sign}${changePct.toFixed(2)}%)`;
-                    chgEl.style.color = color;
-                    
-                    // Save the percent change for segment analysis comparison
-                    valEl.setAttribute('data-pct', changePct);
+                if (data && data.sensex) {
+                    const sData = data.sensex;
+                    const valEl = document.getElementById('sensex-val');
+                    const chgEl = document.getElementById('sensex-chg');
+                    if (valEl && chgEl) {
+                        valEl.textContent = sData.price.toLocaleString('en-IN', {
+                            minimumFractionDigits: 0,
+                            maximumFractionDigits: 0
+                        });
+                        const sign = sData.change >= 0 ? '+' : '';
+                        const color = sData.change >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+                        chgEl.textContent = `${sign}${sData.change.toFixed(2)} (${sign}${sData.changePercent.toFixed(2)}%)`;
+                        chgEl.style.color = color;
+                        officialSensexSuccess = true;
+                    }
+                }
+
+                if (data && data.nifty) {
+                    const nData = data.nifty;
+                    const valEl = document.getElementById('nifty-val');
+                    const chgEl = document.getElementById('nifty-chg');
+                    if (valEl && chgEl) {
+                        valEl.textContent = nData.price.toLocaleString('en-IN', {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2
+                        });
+                        const sign = nData.change >= 0 ? '+' : '';
+                        const color = nData.change >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+                        chgEl.textContent = `${sign}${nData.change.toFixed(2)} (${sign}${nData.changePercent.toFixed(2)}%)`;
+                        chgEl.style.color = color;
+                        officialNiftySuccess = true;
+                    }
                 }
             }
         } catch (e) {
-            console.error(`Failed to fetch fallback index ${item.name}:`, e.message);
-        }
-    }
-
-    // Calculate Segment Leader (Large vs Mid vs Small Cap)
-    try {
-        const largeValEl = document.getElementById('seg-large-val');
-        const midValEl = document.getElementById('seg-mid-val');
-        const smallValEl = document.getElementById('seg-small-val');
-        
-        if (largeValEl && midValEl && smallValEl) {
-            const largePct = parseFloat(largeValEl.getAttribute('data-pct')) || 0;
-            const midPct = parseFloat(midValEl.getAttribute('data-pct')) || 0;
-            const smallPct = parseFloat(smallValEl.getAttribute('data-pct')) || 0;
-            
-            let leaderName = 'LARGE CAP (NIFTY 100)';
-            let leaderPct = largePct;
-            let leaderColor = '#3b82f6';
-            
-            if (midPct > leaderPct) {
-                leaderName = 'MID CAP (NIFTY MID 100)';
-                leaderPct = midPct;
-                leaderColor = '#a855f7';
-            }
-            if (smallPct > leaderPct) {
-                leaderName = 'SMALL CAP (NIFTY SMALL 100)';
-                leaderPct = smallPct;
-                leaderColor = '#ec4899';
-            }
-            
-            const leaderBadge = document.getElementById('segment-leader-badge');
-            const leaderContainer = document.getElementById('segment-leader-container');
-            if (leaderBadge) {
-                leaderBadge.textContent = `${leaderName} (${leaderPct >= 0 ? '+' : ''}${leaderPct.toFixed(2)}%)`;
-                leaderBadge.style.color = leaderColor;
-                if (leaderContainer) {
-                    leaderContainer.style.borderColor = leaderColor;
-                    leaderContainer.style.background = `${leaderColor}10`;
-                }
-            }
-        }
-    } catch (err) {
-        console.warn("Failed to compute segment leader:", err);
-    }
-
-    // --- Gold & Silver (Primary: IBJA Scraper, Fallback: COMEX GC=F / SI=F) ---
-    try {
-        let ibjaSuccess = false;
-        try {
-            console.log("[Market Indices] Fetching official IBJA rates from proxy...");
-            const ibjaRes = await fetch('/api/ibja');
-            if (ibjaRes.ok) {
-                const ibjaData = await ibjaRes.json();
-                if (ibjaData && ibjaData.gold && ibjaData.silver) {
-                    const goldPrice = ibjaData.gold;
-                    const silverPrice = ibjaData.silver;
-                    
-                    // Daily changes compared to previous day
-                    const prevGold = ibjaData.prevGold || goldPrice;
-                    const prevSilver = ibjaData.prevSilver || silverPrice;
-                    
-                    const goldChange = goldPrice - prevGold;
-                    const goldChangePct = prevGold > 0 ? (goldChange / prevGold) * 100 : 0;
-                    
-                    const silverChange = silverPrice - prevSilver;
-                    const silverChangePct = prevSilver > 0 ? (silverChange / prevSilver) * 100 : 0;
-
-                    // Update Gold DOM
-                    const goldValEl = document.getElementById('gold-val');
-                    const goldChgEl = document.getElementById('gold-chg');
-                    if (goldValEl && goldChgEl) {
-                        goldValEl.textContent = `\u20b9${goldPrice.toLocaleString('en-IN')}`;
-                        const sign = goldChange >= 0 ? '+' : '';
-                        const color = goldChange >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
-                        goldChgEl.textContent = `${sign}${goldChange.toLocaleString('en-IN')} (${sign}${goldChangePct.toFixed(2)}%)`;
-                        goldChgEl.style.color = color;
-                    }
-
-                    // Update Silver DOM
-                    const silverValEl = document.getElementById('silver-val');
-                    const silverChgEl = document.getElementById('silver-chg');
-                    if (silverValEl && silverChgEl) {
-                        silverValEl.textContent = `\u20b9${silverPrice.toLocaleString('en-IN')}`;
-                        const sign = silverChange >= 0 ? '+' : '';
-                        const color = silverChange >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
-                        silverChgEl.textContent = `${sign}${silverChange.toLocaleString('en-IN')} (${sign}${silverChangePct.toFixed(2)}%)`;
-                        silverChgEl.style.color = color;
-                    }
-                    
-                    ibjaSuccess = true;
-                    console.log("[Market Indices] Successfully loaded gold & silver from IBJA.");
-                }
-            }
-        } catch (ibjaErr) {
-            console.warn("[Market Indices] IBJA fetch failed, falling back to COMEX:", ibjaErr.message);
+            console.warn('[Market Indices] Official indices API failed, using Yahoo Finance fallbacks:', e.message);
         }
 
-        if (!ibjaSuccess) {
-            // Fallback: COMEX GC=F / SI=F converted to INR
-            // First get USD/INR exchange rate
-            let usdInr = 84.5; // fallback
+        // Fallbacks
+        const indices = [
+            { id: 'nifty',     ticker: '^NSEI',   name: 'NIFTY 50',          success: officialNiftySuccess },
+            { id: 'sensex',    ticker: '^BSESN',  name: 'SENSEX',            success: officialSensexSuccess },
+            { id: 'seg-large', ticker: '^CNX100', name: 'NIFTY 100',         success: false },
+            { id: 'seg-mid',   ticker: '^CRSMID', name: 'NIFTY MIDCAP 100',  success: false },
+            { id: 'seg-small', ticker: '^CNXSC',  name: 'NIFTY SMALLCAP 100', success: false }
+        ];
+
+        await runWithConcurrency(indices.filter(i => !i.success), 3, async (item) => {
             try {
-                const fxData = await fetchYahooFinanceData('INR=X');
-                const fxPrice = fxData?.chart?.result?.[0]?.meta?.regularMarketPrice;
-                if (fxPrice) usdInr = fxPrice;
-            } catch (_) { /* use fallback */ }
+                const data = await fetchYahooFinanceData(item.ticker);
+                const meta = data.chart.result[0].meta;
+                const currentPrice = meta.regularMarketPrice;
+                const prevClose    = meta.previousClose !== undefined ? meta.previousClose : meta.chartPreviousClose;
 
-            // Gold: COMEX GC=F is USD/troy oz → convert to ₹/10g
-            // 1 troy oz = 31.1035 g → price per gram = price/31.1035 → per 10g = price * 10 / 31.1035
-            const commodities = [
-                { id: 'gold',   ticker: 'GC=F',  name: 'Gold',   unit: '/10g',  factor: 10 / 31.1035 },
-                { id: 'silver', ticker: 'SI=F',   name: 'Silver', unit: '/kg',   factor: 1000 / 31.1035 },
-            ];
-
-            for (const com of commodities) {
-                try {
-                    const data = await fetchYahooFinanceData(com.ticker);
-                    const meta = data?.chart?.result?.[0]?.meta;
-                    if (!meta) continue;
-
-                    const usdPrice  = meta.regularMarketPrice;
-                    const prevClose = meta.previousClose || meta.chartPreviousClose;
-                    if (!usdPrice) continue;
-
-                    // Convert to INR
-                    const inrPrice    = usdPrice * usdInr * com.factor;
-                    const inrPrev     = prevClose ? prevClose * usdInr * com.factor : inrPrice;
-                    const change      = inrPrice - inrPrev;
-                    const changePct   = inrPrev > 0 ? (change / inrPrev) * 100 : 0;
-
-                    const valEl = document.getElementById(`${com.id}-val`);
-                    const chgEl = document.getElementById(`${com.id}-chg`);
+                if (currentPrice !== undefined && prevClose !== undefined) {
+                    const change    = currentPrice - prevClose;
+                    const changePct = (change / prevClose) * 100;
+                    const valEl = document.getElementById(`${item.id}-val`);
+                    const chgEl = document.getElementById(`${item.id}-chg`);
                     if (valEl && chgEl) {
-                        valEl.textContent = `\u20b9${inrPrice.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+                        valEl.textContent = currentPrice.toLocaleString('en-IN', {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2
+                        });
                         const sign  = change >= 0 ? '+' : '';
                         const color = change >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
-                        chgEl.textContent = `${sign}${change.toLocaleString('en-IN', { maximumFractionDigits: 0 })} (${sign}${changePct.toFixed(2)}%)`;
+                        chgEl.textContent = `${sign}${change.toFixed(2)} (${sign}${changePct.toFixed(2)}%)`;
                         chgEl.style.color = color;
+                        valEl.setAttribute('data-pct', changePct);
                     }
-                } catch (e) {
-                    console.warn(`Failed to fetch fallback ${com.name}:`, e.message);
-                    const valEl = document.getElementById(`${com.id}-val`);
-                    if (valEl) valEl.textContent = 'N/A';
+                }
+            } catch (e) {
+                console.warn(`Failed to fetch fallback index ${item.name}:`, e.message);
+            }
+        });
+
+        // Calculate Segment Leader (Large vs Mid vs Small Cap)
+        try {
+            const largeValEl = document.getElementById('seg-large-val');
+            const midValEl = document.getElementById('seg-mid-val');
+            const smallValEl = document.getElementById('seg-small-val');
+            
+            if (largeValEl && midValEl && smallValEl) {
+                const largePct = parseFloat(largeValEl.getAttribute('data-pct')) || 0;
+                const midPct = parseFloat(midValEl.getAttribute('data-pct')) || 0;
+                const smallPct = parseFloat(smallValEl.getAttribute('data-pct')) || 0;
+                
+                let leaderName = 'LARGE CAP (NIFTY 100)';
+                let leaderPct = largePct;
+                let leaderColor = '#3b82f6';
+                
+                if (midPct > leaderPct) {
+                    leaderName = 'MID CAP (NIFTY MID 100)';
+                    leaderPct = midPct;
+                    leaderColor = '#a855f7';
+                }
+                if (smallPct > leaderPct) {
+                    leaderName = 'SMALL CAP (NIFTY SMALL 100)';
+                    leaderPct = smallPct;
+                    leaderColor = '#ec4899';
+                }
+                
+                const leaderBadge = document.getElementById('segment-leader-badge');
+                const leaderContainer = document.getElementById('segment-leader-container');
+                if (leaderBadge) {
+                    leaderBadge.textContent = `${leaderName} (${leaderPct >= 0 ? '+' : ''}${leaderPct.toFixed(2)}%)`;
+                    leaderBadge.style.color = leaderColor;
+                    if (leaderContainer) {
+                        leaderContainer.style.borderColor = leaderColor;
+                        leaderContainer.style.background = `${leaderColor}10`;
+                    }
                 }
             }
+        } catch (err) {
+            console.warn("Failed to compute segment leader:", err);
         }
-    } catch (e) {
-        console.warn('Gold/Silver fetch error:', e.message);
+
+        // --- Gold & Silver (Primary: IBJA Scraper, Fallback: COMEX GC=F / SI=F) ---
+        try {
+            let ibjaSuccess = false;
+            try {
+                const ibjaRes = await fetchWithTimeout('/api/ibja', {}, FETCH_TIMEOUT_MS);
+                if (ibjaRes.ok) {
+                    const ibjaData = await ibjaRes.json();
+                    if (ibjaData && ibjaData.gold && ibjaData.silver) {
+                        const goldPrice = ibjaData.gold;
+                        const silverPrice = ibjaData.silver;
+                        const prevGold = ibjaData.prevGold || goldPrice;
+                        const prevSilver = ibjaData.prevSilver || silverPrice;
+                        const goldChange = goldPrice - prevGold;
+                        const goldChangePct = prevGold > 0 ? (goldChange / prevGold) * 100 : 0;
+                        const silverChange = silverPrice - prevSilver;
+                        const silverChangePct = prevSilver > 0 ? (silverChange / prevSilver) * 100 : 0;
+
+                        const goldValEl = document.getElementById('gold-val');
+                        const goldChgEl = document.getElementById('gold-chg');
+                        if (goldValEl && goldChgEl) {
+                            goldValEl.textContent = `\u20b9${goldPrice.toLocaleString('en-IN')}`;
+                            const sign = goldChange >= 0 ? '+' : '';
+                            const color = goldChange >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+                            goldChgEl.textContent = `${sign}${goldChange.toLocaleString('en-IN')} (${sign}${goldChangePct.toFixed(2)}%)`;
+                            goldChgEl.style.color = color;
+                        }
+
+                        const silverValEl = document.getElementById('silver-val');
+                        const silverChgEl = document.getElementById('silver-chg');
+                        if (silverValEl && silverChgEl) {
+                            silverValEl.textContent = `\u20b9${silverPrice.toLocaleString('en-IN')}`;
+                            const sign = silverChange >= 0 ? '+' : '';
+                            const color = silverChange >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+                            silverChgEl.textContent = `${sign}${silverChange.toLocaleString('en-IN')} (${sign}${silverChangePct.toFixed(2)}%)`;
+                            silverChgEl.style.color = color;
+                        }
+                        ibjaSuccess = true;
+                    }
+                }
+            } catch (ibjaErr) {
+                console.warn("[Market Indices] IBJA fetch failed, falling back to COMEX:", ibjaErr.message);
+            }
+
+            if (!ibjaSuccess) {
+                let usdInr = 84.5;
+                try {
+                    const fxData = await fetchYahooFinanceData('INR=X');
+                    const fxPrice = fxData?.chart?.result?.[0]?.meta?.regularMarketPrice;
+                    if (fxPrice) usdInr = fxPrice;
+                } catch (_) { /* use fallback */ }
+
+                const commodities = [
+                    { id: 'gold',   ticker: 'GC=F', name: 'Gold',   factor: 10 / 31.1035 },
+                    { id: 'silver', ticker: 'SI=F', name: 'Silver', factor: 1000 / 31.1035 },
+                ];
+
+                for (const com of commodities) {
+                    try {
+                        const data = await fetchYahooFinanceData(com.ticker);
+                        const meta = data?.chart?.result?.[0]?.meta;
+                        if (!meta) continue;
+
+                        const usdPrice  = meta.regularMarketPrice;
+                        const prevClose = meta.previousClose || meta.chartPreviousClose;
+                        if (!usdPrice) continue;
+
+                        const inrPrice  = usdPrice * usdInr * com.factor;
+                        const inrPrev   = prevClose ? prevClose * usdInr * com.factor : inrPrice;
+                        const change    = inrPrice - inrPrev;
+                        const changePct = inrPrev > 0 ? (change / inrPrev) * 100 : 0;
+
+                        const valEl = document.getElementById(`${com.id}-val`);
+                        const chgEl = document.getElementById(`${com.id}-chg`);
+                        if (valEl && chgEl) {
+                            valEl.textContent = `\u20b9${inrPrice.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+                            const sign  = change >= 0 ? '+' : '';
+                            const color = change >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+                            chgEl.textContent = `${sign}${change.toLocaleString('en-IN', { maximumFractionDigits: 0 })} (${sign}${changePct.toFixed(2)}%)`;
+                            chgEl.style.color = color;
+                        }
+                    } catch (e) {
+                        console.warn(`Failed to fetch fallback ${com.name}:`, e.message);
+                        const valEl = document.getElementById(`${com.id}-val`);
+                        if (valEl && valEl.textContent === 'Loading...') valEl.textContent = 'Price unavailable';
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('Gold/Silver fetch error:', e.message);
+        }
+    } finally {
+        isMarketIndicesFetching = false;
     }
 }
 
+// FIX: Real live NSE/BSE corporate announcements, board meetings & dividends fetched via /api/corporate
+let corporateResultsData = [];
+let corporateResultsSource = null;
+let corporateResultsError = null;
+let corporateResultsLastFetch = 0;
+let isCorporateFetchInFlight = false;
+let isResultsLivePriceInFlight = false;
 
-// Top 20 Companies Dataset (Upcoming results and 5-yr dividend history)
-const resultsAndDividendsData = [
-    { symbol: 'TCS', date: '12-07-2026', profit: '12,434', growth: '+8.4%', status: 'Excellent Growth', divPayer: 'Yes', count: '18 times', yield: '3.8%' },
-    { symbol: 'RELIANCE', date: '18-07-2026', profit: '18,951', growth: '+5.2%', status: 'Stable', divPayer: 'Yes', count: '5 times', yield: '1.2%' },
-    { symbol: 'INFY', date: '15-07-2026', profit: '7,975', growth: '+12.1%', status: 'Excellent Growth', divPayer: 'Yes', count: '10 times', yield: '3.1%' },
-    { symbol: 'HDFCBANK', date: '17-07-2026', profit: '16,512', growth: '+9.7%', status: 'Strong Growth', divPayer: 'Yes', count: '5 times', yield: '1.8%' },
-    { symbol: 'ITC', date: '22-07-2026', profit: '5,087', growth: '+6.8%', status: 'Strong Growth', divPayer: 'Yes', count: '7 times', yield: '4.2%' },
-    { symbol: 'COALINDIA', date: '29-07-2026', profit: '8,640', growth: '+14.5%', status: 'Excellent Growth', divPayer: 'Yes', count: '12 times', yield: '6.8%' },
-    { symbol: 'VEDL', date: '30-07-2026', profit: '2,420', growth: '+18.2%', status: 'Excellent Growth', divPayer: 'Yes', count: '24 times', yield: '9.5%' },
-    { symbol: 'HINDUNILVR', date: '20-07-2026', profit: '2,561', growth: '+3.9%', status: 'Stable', divPayer: 'Yes', count: '10 times', yield: '2.1%' },
-    { symbol: 'TATAMOTORS', date: '25-07-2026', profit: '5,408', growth: '+22.4%', status: 'Outstanding Turnaround', divPayer: 'Yes', count: '3 times', yield: '1.5%' },
-    { symbol: 'LT', date: '24-07-2026', profit: '4,396', growth: '+11.3%', status: 'Strong Growth', divPayer: 'Yes', count: '6 times', yield: '1.6%' },
-    { symbol: 'SBIN', date: '28-07-2026', profit: '19,780', growth: '+15.8%', status: 'Excellent Growth', divPayer: 'Yes', count: '5 times', yield: '1.9%' },
-    { symbol: 'ICICIBANK', date: '19-07-2026', profit: '10,707', growth: '+13.6%', status: 'Excellent Growth', divPayer: 'Yes', count: '5 times', yield: '1.3%' },
-    { symbol: 'HCLTECH', date: '16-07-2026', profit: '3,962', growth: '+7.5%', status: 'Strong Growth', divPayer: 'Yes', count: '20 times', yield: '3.9%' },
-    { symbol: 'POWERGRID', date: '03-08-2026', profit: '4,128', growth: '+6.1%', status: 'Stable', divPayer: 'Yes', count: '15 times', yield: '4.8%' },
-    { symbol: 'NTPC', date: '05-08-2026', profit: '6,490', growth: '+9.4%', status: 'Strong Growth', divPayer: 'Yes', count: '10 times', yield: '3.5%' },
-    { symbol: 'ONGC', date: '10-08-2026', profit: '11,530', growth: '+8.9%', status: 'Strong Growth', divPayer: 'Yes', count: '10 times', yield: '5.2%' },
-    { symbol: 'BPCL', date: '08-08-2026', profit: '4,224', growth: '+11.8%', status: 'Strong Growth', divPayer: 'Yes', count: '9 times', yield: '6.1%' },
-    { symbol: 'IOC', date: '07-08-2026', profit: '4,830', growth: '+10.2%', status: 'Strong Growth', divPayer: 'Yes', count: '9 times', yield: '6.5%' },
-    { symbol: 'WIPRO', date: '14-07-2026', profit: '2,835', growth: '+4.2%', status: 'Stable', divPayer: 'Yes', count: '6 times', yield: '1.8%' },
-    { symbol: 'TECHM', date: '21-07-2026', profit: '1,125', growth: '+16.4%', status: 'Excellent Recovery', divPayer: 'Yes', count: '8 times', yield: '3.4%' }
-];
+window.fetchCorporateResults = async function(forceRefresh = false) {
+    const tbody = document.querySelector('#upcoming-results-table tbody');
+    const sourceBadge = document.getElementById('results-source-badge');
+
+    // Reuse 5-min in-memory cache if available and not forcing refresh
+    if (!forceRefresh && corporateResultsData.length > 0 && (Date.now() - corporateResultsLastFetch) < 5 * 60 * 1000) {
+        renderResultsAndDividendsTable();
+        return;
+    }
+
+    if (isCorporateFetchInFlight) return;
+    isCorporateFetchInFlight = true;
+    corporateResultsError = null;
+
+    if (tbody) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="9" style="text-align:center; padding: 2.5rem; color: var(--text-secondary);">
+                    <i class="fa-solid fa-spinner fa-spin" style="font-size:1.4rem; color:var(--accent-color); margin-bottom:0.5rem; display:block;"></i>
+                    Loading real exchange corporate announcements &amp; dividends...
+                </td>
+            </tr>
+        `;
+    }
+    if (sourceBadge) {
+        sourceBadge.textContent = 'Loading Feed...';
+        sourceBadge.style.color = '#f59e0b';
+        sourceBadge.style.borderColor = '#f59e0b';
+        sourceBadge.style.background = 'rgba(245,158,11,0.12)';
+    }
+
+    try {
+        const res = await fetchWithTimeout('/api/corporate', {}, 8000);
+        if (!res.ok) {
+            throw new Error(`HTTP ${res.status}`);
+        }
+        const payload = await res.json();
+        if (!payload || !Array.isArray(payload.items) || payload.items.length === 0) {
+            throw new Error(payload?.error || 'No corporate events returned');
+        }
+
+        corporateResultsData = payload.items;
+        corporateResultsSource = payload.source || 'NSE/BSE Live';
+        corporateResultsLastFetch = Date.now();
+        corporateResultsError = null;
+
+        if (sourceBadge) {
+            sourceBadge.textContent = `Live: ${corporateResultsSource} (${corporateResultsData.length})`;
+            sourceBadge.style.color = 'var(--success-color)';
+            sourceBadge.style.borderColor = 'var(--success-color)';
+            sourceBadge.style.background = 'rgba(34,197,94,0.12)';
+        }
+    } catch (e) {
+        console.warn('[Corporate Results] Fetch failed:', e.message);
+        corporateResultsError = e.message || 'Data unavailable';
+        if (sourceBadge) {
+            sourceBadge.textContent = 'Feed Unavailable';
+            sourceBadge.style.color = 'var(--danger-color)';
+            sourceBadge.style.borderColor = 'var(--danger-color)';
+            sourceBadge.style.background = 'rgba(239,68,68,0.12)';
+        }
+    } finally {
+        isCorporateFetchInFlight = false;
+    }
+
+    renderResultsAndDividendsTable();
+};
 
 // Render Tab 3 Content (Results & Dividends Table)
 function renderResultsAndDividendsTable() {
     const tbody = document.querySelector('#upcoming-results-table tbody');
     if (!tbody) return;
 
+    if (corporateResultsError && corporateResultsData.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="9" style="text-align:center; padding: 2.5rem; color: var(--text-secondary);">
+                    <i class="fa-solid fa-circle-exclamation" style="font-size:1.5rem; color:var(--danger-color); margin-bottom:0.6rem; display:block;"></i>
+                    <div style="font-weight:600; color:#fff; margin-bottom:0.5rem;">Data unavailable, try again</div>
+                    <div style="font-size:0.8rem; margin-bottom:1rem;">(${corporateResultsError})</div>
+                    <button onclick="fetchCorporateResults(true)" class="btn btn-primary" style="font-size:0.82rem; padding:0.45rem 1.1rem;">
+                        <i class="fa-solid fa-rotate"></i> Try Again
+                    </button>
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
+    if (corporateResultsData.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="9" style="text-align:center; padding: 2.5rem; color: var(--text-secondary);">
+                    Data unavailable, try again.
+                    <div style="margin-top:0.75rem;">
+                        <button onclick="fetchCorporateResults(true)" class="btn btn-primary" style="font-size:0.82rem; padding:0.45rem 1.1rem;">
+                            <i class="fa-solid fa-rotate"></i> Refresh
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
     const searchInput = document.getElementById('results-search-input');
     const query = searchInput ? searchInput.value.trim().toUpperCase() : '';
-    const filteredData = query 
-        ? resultsAndDividendsData.filter(item => item.symbol.toUpperCase().includes(query))
-        : resultsAndDividendsData;
+    const filteredData = query
+        ? corporateResultsData.filter(item =>
+            String(item.symbol || '').toUpperCase().includes(query) ||
+            String(item.companyName || '').toUpperCase().includes(query) ||
+            String(item.purpose || '').toUpperCase().includes(query)
+        )
+        : corporateResultsData;
 
+    if (filteredData.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:2rem; color:var(--text-secondary);">No matching companies found.</td></tr>`;
+        return;
+    }
+
+    const visibleItems = filteredData.slice(0, 80);
     let html = '';
-    filteredData.forEach(item => {
-        // Fetch last known price from uploaded Bhavcopy file
+    visibleItems.forEach(item => {
         const bhavcopyRateVal = getLastKnownPrice(item.symbol);
         const bhavcopyRateHtml = bhavcopyRateVal ? `₹${bhavcopyRateVal.toFixed(2)}` : '<span style="font-size:0.75rem;color:var(--text-secondary);">No Data</span>';
 
         const livePriceVal = state.gainersLivePrices.get(item.symbol);
-        const livePriceHtml = livePriceVal 
+        const livePriceHtml = livePriceVal
             ? `₹${livePriceVal.toFixed(2)} <span class="live-pulse" style="width:6px;height:6px;box-shadow:0 0 0 0 rgba(16,185,129,0.7);animation:pulse 1.5s infinite;margin-left:0.2rem;display:inline-block;border-radius:50%;background:#10b981;"></span>`
+            : isFailedSymbolRecent(item.symbol)
+            ? '<span style="font-size:0.75rem;color:var(--text-secondary);">Price unavailable</span>'
             : '<span style="font-size:0.75rem;color:var(--text-secondary);">Loading...</span>';
+
+        const divBadge = item.isDividend
+            ? '<span class="badge-dividend">YES</span>'
+            : '<span style="color:var(--text-secondary);font-size:0.78rem;">-</span>';
+
+        const safeSymbol = String(item.symbol || '').replace(/'/g, '');
+        const purposeText = String(item.purpose || '-').slice(0, 90);
 
         html += `
             <tr>
-                <td><strong>${item.symbol}</strong></td>
+                <td>
+                    <strong>${item.symbol}</strong>
+                    ${item.companyName ? `<div style="font-size:0.7rem;color:var(--text-secondary);">${item.companyName}</div>` : ''}
+                </td>
                 <td>${bhavcopyRateHtml}</td>
                 <td class="live-price-cell-results" data-symbol="${item.symbol}">${livePriceHtml}</td>
-                <td><i class="fa-regular fa-calendar"></i> ${item.date}</td>
-                <td style="font-weight:600;">₹${item.profit} Cr</td>
-                <td style="color:var(--success-color); font-weight:600;"><i class="fa-solid fa-arrow-trend-up"></i> ${item.growth}</td>
-                <td><span style="background:rgba(6,182,212,0.12); color:var(--accent-color); padding:0.15rem 0.4rem; border-radius:4px; font-size:0.75rem; font-weight:600;">${item.status}</span></td>
-                <td><span class="badge-dividend">YES</span></td>
-                <td style="font-weight:500;">${item.count}</td>
-                <td style="color:#f59e0b; font-weight:700;">${item.yield}</td>
+                <td style="white-space:nowrap;"><i class="fa-regular fa-calendar"></i> ${item.date || '-'}</td>
+                <td><span style="background:rgba(59,130,246,0.12); color:#60a5fa; padding:0.15rem 0.45rem; border-radius:4px; font-size:0.75rem; font-weight:600;">${item.type || 'Corporate'}</span></td>
+                <td style="max-width:260px; white-space:normal; font-size:0.8rem; color:var(--text-primary);">${purposeText}</td>
+                <td><span style="background:rgba(6,182,212,0.12); color:var(--accent-color); padding:0.15rem 0.4rem; border-radius:4px; font-size:0.75rem; font-weight:600;">${item.status || 'Upcoming'}</span></td>
+                <td>${divBadge}</td>
                 <td style="text-align:center;">
-                    <button class="btn btn-secondary" onclick="showResearchModal('${item.symbol}')" style="font-size:0.75rem; padding:0.25rem 0.5rem; display:inline-flex; align-items:center; gap:0.25rem; background:rgba(6,182,212,0.12); color:var(--accent-color); border-color:rgba(6,182,212,0.25);">
+                    <button class="btn btn-secondary" onclick="showResearchModal('${safeSymbol}')" style="font-size:0.75rem; padding:0.25rem 0.5rem; display:inline-flex; align-items:center; gap:0.25rem; background:rgba(6,182,212,0.12); color:var(--accent-color); border-color:rgba(6,182,212,0.25);">
                         <i class="fa-solid fa-robot"></i> Research
                     </button>
                 </td>
@@ -4153,43 +4487,55 @@ function renderResultsAndDividendsTable() {
     });
     tbody.innerHTML = html;
 
-    // Fetch and display live prices for results companies
-    fetchResultsLivePrices(filteredData.map(d => d.symbol));
+    // Fetch live prices for top 25 visible items only, skipping cached/failed symbols
+    if (isTabActive('tab-results')) {
+        const symsToFetch = visibleItems.slice(0, 25).map(d => d.symbol).filter(s => s && !isPriceFresh(s) && !isFailedSymbolRecent(s));
+        if (symsToFetch.length > 0) {
+            fetchResultsLivePrices(symsToFetch);
+        }
+    }
 }
 
-// Fetch live prices for results tab
+// Fetch live prices for results tab (FIX: concurrency 5, in-flight guard, 60s cache + 5-min failed cache)
 async function fetchResultsLivePrices(symbols) {
-    if (!symbols || symbols.length === 0) return;
-    
-    const uniqueSymbols = [...new Set(symbols)];
-    
-    await Promise.all(uniqueSymbols.map(async (symbol) => {
-        try {
-            let data;
-            const isNumeric = symbol.match(/^\d+$/);
-            const prefSuffix = isNumeric ? '.BO' : '.NS';
-            const fallbackSuffix = isNumeric ? '.NS' : '.BO';
-            
+    if (!symbols || symbols.length === 0 || isResultsLivePriceInFlight) return;
+    isResultsLivePriceInFlight = true;
+
+    try {
+        const uniqueSymbols = [...new Set(symbols)]
+            .map(s => String(s || '').trim().toUpperCase())
+            .filter(s => s && !isPriceFresh(s) && !isFailedSymbolRecent(s));
+
+        if (uniqueSymbols.length === 0) return;
+
+        await runWithConcurrency(uniqueSymbols, 5, async (symbol) => {
             try {
-                data = await fetchYahooFinanceData(symbol.trim().toUpperCase() + prefSuffix);
+                const isNumeric = /^\d+$/.test(symbol);
+                const prefSuffix = isNumeric ? '.BO' : '.NS';
+                const data = await fetchYahooFinanceData(symbol + prefSuffix);
+                const price = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
+                if (price !== undefined && price !== null) {
+                    state.gainersLivePrices.set(symbol, price);
+                    markPriceFresh(symbol);
+                    document.querySelectorAll(`.live-price-cell-results[data-symbol="${symbol}"], .live-price-cell[data-symbol="${symbol}"]`).forEach(cell => {
+                        cell.innerHTML = `₹${price.toFixed(2)} <span class="live-pulse" style="width:6px;height:6px;box-shadow:0 0 0 0 rgba(16,185,129,0.7);animation:pulse 1.5s infinite;margin-left:0.2rem;display:inline-block;border-radius:50%;background:#10b981;"></span>`;
+                    });
+                } else {
+                    throw new Error('No price');
+                }
             } catch (e) {
-                data = await fetchYahooFinanceData(symbol.trim().toUpperCase() + fallbackSuffix);
-            }
-            
-            const price = data.chart.result[0].meta.regularMarketPrice;
-            if (price !== undefined) {
-                state.gainersLivePrices.set(symbol, price);
-                
-                // Update both Gainers table and Results table cells
-                const cells = document.querySelectorAll(`.live-price-cell-results[data-symbol="${symbol}"], .live-price-cell[data-symbol="${symbol}"]`);
-                cells.forEach(cell => {
-                    cell.innerHTML = `₹${price.toFixed(2)} <span class="live-pulse" style="width:6px;height:6px;box-shadow:0 0 0 0 rgba(16,185,129,0.7);animation:pulse 1.5s infinite;margin-left:0.2rem;display:inline-block;border-radius:50%;background:#10b981;"></span>`;
+                markSymbolFailed(symbol);
+                document.querySelectorAll(`.live-price-cell-results[data-symbol="${symbol}"]`).forEach(cell => {
+                    if (!state.gainersLivePrices.has(symbol)) {
+                        cell.innerHTML = '<span style="font-size:0.75rem;color:var(--text-secondary);">Price unavailable</span>';
+                    }
                 });
+                console.warn(`Failed to fetch live price for results item ${symbol}:`, e.message);
             }
-        } catch (e) {
-            console.warn(`Failed to fetch live price for results item ${symbol}:`, e.message);
-        }
-    }));
+        });
+    } finally {
+        isResultsLivePriceInFlight = false;
+    }
 }
 
 // =====================================================================
@@ -4366,7 +4712,9 @@ window.renderWatchlist = function() {
     let html = '';
     filteredItems.forEach((item, idx) => {
         const livePrice = state.gainersLivePrices.get(item.symbol);
-        let livePriceHtml = '<span style="font-size:0.75rem;color:var(--text-secondary);">Loading...</span>';
+        let livePriceHtml = isFailedSymbolRecent(item.symbol)
+            ? '<span style="font-size:0.75rem;color:var(--text-secondary);">Price unavailable</span>'
+            : '<span style="font-size:0.75rem;color:var(--text-secondary);">Loading...</span>';
         let changeHtml    = '-';
 
         if (livePrice !== undefined) {
@@ -4384,7 +4732,7 @@ window.renderWatchlist = function() {
         const addedDate = item.addedAt ? new Date(item.addedAt).toLocaleDateString('en-IN') : '-';
 
         html += `
-            <tr class="clickable-row" onclick="showResearchModal('${item.symbol}')" title="\u0a9a\u0abe\u0ab0\u0acd\u0a9f \u0a85\u0aa8\u0ac7 \u0ab5\u0abf\u0a97\u0aa4 \u0a9c\u0ac1\u0abe\u0acb">
+            <tr class="clickable-row" onclick="showResearchModal('${item.symbol}')" title="\u0a9a\u0abe\u0ab0\u0acd\u0a9f \u0a85\u0aa8\u0ac7 \u0ab5\u0abf\u0a97\u0aa4 \u0a9c\u0ac1\u0a93">
                 <td style="color:var(--text-secondary);font-size:0.8rem;">${idx + 1}</td>
                 <td>
                     <strong style="color:var(--accent-color);">${item.symbol}</strong><br>
@@ -4392,7 +4740,7 @@ window.renderWatchlist = function() {
                 </td>
                 <td>${addedPriceStr}</td>
                 <td class="watchlist-live-cell" data-symbol="${item.symbol}">${livePriceHtml}</td>
-                <td>${changeHtml}</td>
+                <td class="watchlist-change-cell" data-symbol="${item.symbol}" data-added-price="${item.addedPrice}">${changeHtml}</td>
                 <td style="text-align:center;">
                     <button onclick="showResearchModal('${item.symbol}'); event.stopPropagation();" title="Research"
                         style="background:var(--accent-light,rgba(59,130,246,0.12));border:1px solid var(--accent-color);color:var(--accent-color);border-radius:5px;padding:0.25rem 0.55rem;cursor:pointer;font-size:0.82rem;">
@@ -4411,41 +4759,67 @@ window.renderWatchlist = function() {
 
     tbody.innerHTML = html;
 
-    // Fetch live prices for symbols not yet cached
-    const missing = watchlistItems.map(w => w.symbol).filter(s => !state.gainersLivePrices.has(s));
-    if (missing.length > 0) fetchWatchlistLivePrices(missing);
+    // FIX: Never trigger fetches for symbols cached within 60s or failed within last 5 minutes
+    const missing = watchlistItems
+        .map(w => w.symbol)
+        .filter(s => (!state.gainersLivePrices.has(s) || !isPriceFresh(s)) && !isFailedSymbolRecent(s));
+    if (missing.length > 0 && isTabActive('tab-watchlist')) {
+        fetchWatchlistLivePrices(missing);
+    }
 };
 
 // Fetch live prices for watchlist symbols
+// FIX: Break infinite renderWatchlist() loop by updating price & change cells directly in DOM, bounded by concurrency 5 + 6s timeout
+let isWatchlistFetchInFlight = false;
 async function fetchWatchlistLivePrices(symbols) {
-    await Promise.all(symbols.map(async (symbol) => {
-        try {
-            const nsSymbol = symbol.trim().toUpperCase() + '.NS';
-            const urls = [
-                `/api/yahoo?symbol=${encodeURIComponent(nsSymbol)}`,
-                `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(nsSymbol)}`,
-            ];
-            for (const url of urls) {
-                try {
-                    const res  = await fetch(url);
-                    if (!res.ok) continue;
-                    const data = await res.json();
-                    const price = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
-                    if (price) {
-                        state.gainersLivePrices.set(symbol, price);
-                        // Update live cells in watchlist table
-                        document.querySelectorAll(`.watchlist-live-cell[data-symbol="${symbol}"]`).forEach(cell => {
-                            cell.innerHTML = `\u20b9${price.toFixed(2)} <span class="live-pulse" style="width:6px;height:6px;background:#22c55e;border-radius:50%;display:inline-block;margin-left:3px;animation:pulse 1.5s infinite;"></span>`;
-                        });
-                        renderWatchlist(); // re-render for change %
-                        break;
+    if (!symbols || symbols.length === 0 || isWatchlistFetchInFlight) return;
+    isWatchlistFetchInFlight = true;
+
+    try {
+        const uniqueSymbols = [...new Set(symbols)]
+            .map(s => String(s || '').trim().toUpperCase())
+            .filter(s => s && !isPriceFresh(s) && !isFailedSymbolRecent(s));
+
+        if (uniqueSymbols.length === 0) return;
+
+        await runWithConcurrency(uniqueSymbols, 5, async (symbol) => {
+            try {
+                const isNumeric = /^\d+$/.test(symbol);
+                const ticker = symbol + (isNumeric ? '.BO' : '.NS');
+                const data = await fetchYahooFinanceData(ticker);
+                const price = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
+                if (price !== undefined && price !== null) {
+                    state.gainersLivePrices.set(symbol, price);
+                    markPriceFresh(symbol);
+                    document.querySelectorAll(`.watchlist-live-cell[data-symbol="${symbol}"]`).forEach(cell => {
+                        cell.innerHTML = `\u20b9${price.toFixed(2)} <span class="live-pulse" style="width:6px;height:6px;background:#22c55e;border-radius:50%;display:inline-block;margin-left:3px;animation:pulse 1.5s infinite;"></span>`;
+                    });
+                    document.querySelectorAll(`.watchlist-change-cell[data-symbol="${symbol}"]`).forEach(cell => {
+                        const addedPrice = parseFloat(cell.getAttribute('data-added-price')) || 0;
+                        if (addedPrice > 0) {
+                            const diff  = price - addedPrice;
+                            const pct   = (diff / addedPrice) * 100;
+                            const sign  = diff >= 0 ? '+' : '';
+                            const color = diff >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+                            cell.innerHTML = `<span style="color:${color};font-weight:600;">${sign}\u20b9${diff.toFixed(2)} (${sign}${pct.toFixed(2)}%)</span>`;
+                        }
+                    });
+                } else {
+                    throw new Error('No market price');
+                }
+            } catch (e) {
+                markSymbolFailed(symbol);
+                document.querySelectorAll(`.watchlist-live-cell[data-symbol="${symbol}"]`).forEach(cell => {
+                    if (!state.gainersLivePrices.has(symbol)) {
+                        cell.innerHTML = '<span style="font-size:0.75rem;color:var(--text-secondary);">Price unavailable</span>';
                     }
-                } catch (_) { /* try next */ }
+                });
+                console.warn(`Watchlist live price failed for ${symbol}:`, e.message);
             }
-        } catch (e) {
-            console.warn(`Watchlist live price failed for ${symbol}:`, e.message);
-        }
-    }));
+        });
+    } finally {
+        isWatchlistFetchInFlight = false;
+    }
 }
 
 // Load watchlist on startup
@@ -4594,6 +4968,8 @@ window.renderMorningPicks = function() {
         const livePriceVal = window.morningPicksLivePrices.get(item.symbol);
         const livePriceHtml = livePriceVal 
             ? `₹${livePriceVal.toFixed(2)} <span class="live-pulse" style="width:6px;height:6px;box-shadow:0 0 0 0 rgba(16,185,129,0.7);animation:pulse 1.5s infinite;margin-left:0.2rem;display:inline-block;border-radius:50%;background:#10b981;"></span>`
+            : isFailedSymbolRecent(item.symbol)
+            ? `₹${item.latestPrice.toFixed(2)} <span style="font-size:0.7rem;color:var(--text-secondary);">(Price unavailable)</span>`
             : `₹${item.latestPrice.toFixed(2)} <span style="font-size:0.7rem;color:var(--text-secondary);">(EOD)</span>`;
 
         return `
@@ -4623,31 +4999,45 @@ window.renderMorningPicks = function() {
             </tr>`;
     }).join('');
 
-    const symbolsToFetch = top25.map(r => r.symbol);
-    if (symbolsToFetch.length > 0) {
+    const symbolsToFetch = top25.map(r => r.symbol).filter(s => !isPriceFresh(s) && !isFailedSymbolRecent(s));
+    if (symbolsToFetch.length > 0 && isTabActive('tab-morning-picks')) {
         fetchMorningPicksLivePrices(symbolsToFetch);
     }
 };
 
+let isMorningPicksFetchInFlight = false; // FIX: In-flight guard + concurrency 5
 window.fetchMorningPicksLivePrices = async function(symbols) {
     if (!window.morningPicksLivePrices) window.morningPicksLivePrices = new Map();
-    console.log(`[Morning Picks Live Update] Fetching live prices for ${symbols.length} symbols...`);
-    await Promise.all(symbols.map(async (symbol) => {
-        try {
-            const data = await fetchYahooFinanceData(symbol + '.NS');
-            if (data && data.chart && data.chart.result && data.chart.result[0]) {
-                const price = data.chart.result[0].meta.regularMarketPrice;
+    if (!symbols || symbols.length === 0 || isMorningPicksFetchInFlight) return;
+    isMorningPicksFetchInFlight = true;
+
+    try {
+        const uniqueSymbols = [...new Set(symbols)]
+            .map(s => String(s || '').trim().toUpperCase())
+            .filter(s => s && !isPriceFresh(s) && !isFailedSymbolRecent(s));
+        if (uniqueSymbols.length === 0) return;
+
+        await runWithConcurrency(uniqueSymbols, 5, async (symbol) => {
+            try {
+                const data = await fetchYahooFinanceData(symbol + '.NS');
+                const price = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
                 if (price) {
                     window.morningPicksLivePrices.set(symbol, price);
+                    markPriceFresh(symbol);
                     document.querySelectorAll(`.morning-live-cell[data-symbol="${symbol}"]`).forEach(cell => {
                         cell.innerHTML = `₹${price.toFixed(2)} <span class="live-pulse" style="width:6px;height:6px;box-shadow:0 0 0 0 rgba(16,185,129,0.7);animation:pulse 1.5s infinite;margin-left:0.2rem;display:inline-block;border-radius:50%;background:#10b981;"></span>`;
                     });
+                } else {
+                    throw new Error('No price');
                 }
+            } catch (e) {
+                markSymbolFailed(symbol);
+                console.warn(`[Morning Picks Live Update] Error for ${symbol}:`, e.message);
             }
-        } catch (e) {
-            console.warn(`[Morning Picks Live Update] Error for ${symbol}:`, e.message);
-        }
-    }));
+        });
+    } finally {
+        isMorningPicksFetchInFlight = false;
+    }
 };
 
 // =====================================================================
@@ -4681,34 +5071,40 @@ window.debouncedRenderInvestorAdvice = function() {
     }, 250); // Debounce search input typing by 250ms
 };
 
-// Fetch live prices specifically for visible symbols on the advice page
+// Fetch live prices specifically for visible symbols on the advice page (FIX: concurrency 5 + in-flight guard)
+let isAdviceFetchInFlight = false;
 async function fetchAdviceLivePrices(symbols) {
-    if (!symbols || symbols.length === 0) return;
-    console.log("[Advice Live Prices] Fetching live prices for visible stocks:", symbols);
-    
-    symbols.forEach(async (symbol) => {
-        try {
-            let data;
-            const isNumeric = symbol.match(/^\d+$/);
-            const prefSuffix = isNumeric ? '.BO' : '.NS';
-            const fallbackSuffix = isNumeric ? '.NS' : '.BO';
-            
+    if (!symbols || symbols.length === 0 || isAdviceFetchInFlight) return;
+    isAdviceFetchInFlight = true;
+
+    try {
+        const uniqueSymbols = [...new Set(symbols)]
+            .map(s => String(s || '').trim().toUpperCase())
+            .filter(s => s && !isPriceFresh(s) && !isFailedSymbolRecent(s));
+
+        if (uniqueSymbols.length === 0) return;
+
+        await runWithConcurrency(uniqueSymbols, 5, async (symbol) => {
             try {
-                data = await fetchYahooFinanceData(symbol.trim().toUpperCase() + prefSuffix);
+                const isNumeric = /^\d+$/.test(symbol);
+                const prefSuffix = isNumeric ? '.BO' : '.NS';
+                const data = await fetchYahooFinanceData(symbol + prefSuffix);
+                const price = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
+                if (price !== undefined && price !== null) {
+                    state.gainersLivePrices.set(symbol, price);
+                    markPriceFresh(symbol);
+                    throttledRenderInvestorAdvice();
+                } else {
+                    throw new Error('No price');
+                }
             } catch (e) {
-                data = await fetchYahooFinanceData(symbol.trim().toUpperCase() + fallbackSuffix);
+                markSymbolFailed(symbol);
+                console.warn(`[Advice Live Prices] Failed to fetch live price for ${symbol}:`, e.message);
             }
-            
-            const price = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
-            if (price !== undefined) {
-                state.gainersLivePrices.set(symbol, price);
-                // Trigger throttled re-render to recalculate metrics smoothly without blocking main thread
-                throttledRenderInvestorAdvice();
-            }
-        } catch (e) {
-            console.warn(`[Advice Live Prices] Failed to fetch live price for ${symbol}:`, e.message);
-        }
-    });
+        });
+    } finally {
+        isAdviceFetchInFlight = false;
+    }
 }
 
 window.renderInvestorAdvice = function() {
@@ -4892,14 +5288,16 @@ window.renderInvestorAdvice = function() {
     if (tableWrapper) tableWrapper.style.display = '';
     if (badge) badge.textContent = `${results.length} Scripts`;
 
-    // Fetch live prices for the top 30 visible symbols in the table (if not already fetched/fetching)
-    const symbolsToFetch = results.slice(0, 30)
-        .map(item => item.symbol)
-        .filter(sym => !state.gainersLivePrices.has(sym) && !state.portfolioLivePrices.has(sym) && !requestedAdviceSymbols.has(sym));
-        
-    if (symbolsToFetch.length > 0) {
-        symbolsToFetch.forEach(sym => requestedAdviceSymbols.add(sym));
-        fetchAdviceLivePrices(symbolsToFetch);
+    // Fetch live prices for the top 30 visible symbols in the table (if not cached/failed)
+    if (isTabActive('tab-investor-advice')) {
+        const symbolsToFetch = results.slice(0, 30)
+            .map(item => item.symbol)
+            .filter(sym => !isPriceFresh(sym) && !isFailedSymbolRecent(sym) && !requestedAdviceSymbols.has(sym));
+
+        if (symbolsToFetch.length > 0) {
+            symbolsToFetch.forEach(sym => requestedAdviceSymbols.add(sym));
+            fetchAdviceLivePrices(symbolsToFetch);
+        }
     }
 
     tbody.innerHTML = results.slice(0, 100).map(item => {
@@ -5212,83 +5610,105 @@ window.renderVolumePromoterPicks = async function(forceRefresh = false) {
         }
 
         if (!globalPromoterCache) {
-            console.log("[Global Promoter] Cache empty or expired, fetching real-time data in parallel...");
-            
-            const fetchedResults = [];
-            
-            const renderProgressive = () => {
-                const results = fetchedResults.filter(item => {
-                    const prices = item.prices;
-                    if (prices.length < 5) return false;
-                    return prices[0] > prices[1] && prices[1] > prices[2] && prices[2] > prices[3] && prices[3] > prices[4];
-                });
-                
-                results.sort((a, b) => b.volume - a.volume);
-                
-                const searchInput = document.getElementById('vol-promoter-search-input');
-                const searchVal = searchInput ? searchInput.value.trim().toUpperCase() : '';
-                const filteredResults = searchVal 
-                    ? results.filter(item => item.symbol.toUpperCase().includes(searchVal))
-                    : results;
-                
-                if (filteredResults.length > 0) {
-                    if (badge) badge.textContent = `${filteredResults.length} Stocks`;
-                    renderTableRows(filteredResults);
-                }
-            };
+            // FIX: Fetch 50 global promoter stocks with concurrency 5 instead of flooding 50 simultaneous calls
+            if (window.isVolPromoterFetchInFlight) return;
+            window.isVolPromoterFetchInFlight = true;
 
-            await Promise.all(globalHighPromoterStocks.map(async (stock) => {
-                try {
-                    const ticker = stock.symbol.toUpperCase().trim() + '.NS';
-                    const data = await fetchYahooFinanceData(ticker);
-                    
-                    if (data && data.chart && data.chart.result && data.chart.result[0]) {
-                        const result = data.chart.result[0];
-                        const meta = result.meta;
-                        const currentPrice = meta.regularMarketPrice;
-                        const volume = meta.regularMarketVolume || 0;
-                        
-                        let prices = [];
-                        if (result.indicators && result.indicators.quote && result.indicators.quote[0]) {
-                            const rawCloses = result.indicators.quote[0].close || [];
-                            const validCloses = rawCloses.filter(p => p !== null && p !== undefined && !isNaN(p));
-                            if (validCloses.length >= 5) {
-                                prices = validCloses.slice(-5).reverse();
+            try {
+                const fetchedResults = [];
+
+                const renderProgressive = () => {
+                    const results = fetchedResults.filter(item => {
+                        const prices = item.prices;
+                        if (prices.length < 5) return false;
+                        return prices[0] > prices[1] && prices[1] > prices[2] && prices[2] > prices[3] && prices[3] > prices[4];
+                    });
+
+                    results.sort((a, b) => b.volume - a.volume);
+
+                    const searchInput = document.getElementById('vol-promoter-search-input');
+                    const searchVal = searchInput ? searchInput.value.trim().toUpperCase() : '';
+                    const filteredResults = searchVal
+                        ? results.filter(item => item.symbol.toUpperCase().includes(searchVal))
+                        : results;
+
+                    if (filteredResults.length > 0) {
+                        if (badge) badge.textContent = `${filteredResults.length} Stocks`;
+                        renderTableRows(filteredResults);
+                    }
+                };
+
+                await runWithConcurrency(globalHighPromoterStocks, 5, async (stock) => {
+                    try {
+                        const ticker = stock.symbol.toUpperCase().trim() + '.NS';
+                        const data = await fetchYahooFinanceData(ticker);
+
+                        if (data && data.chart && data.chart.result && data.chart.result[0]) {
+                            const result = data.chart.result[0];
+                            const meta = result.meta;
+                            const currentPrice = meta.regularMarketPrice;
+                            const volume = meta.regularMarketVolume || 0;
+
+                            let prices = [];
+                            if (result.indicators && result.indicators.quote && result.indicators.quote[0]) {
+                                const rawCloses = result.indicators.quote[0].close || [];
+                                const validCloses = rawCloses.filter(p => p !== null && p !== undefined && !isNaN(p));
+                                if (validCloses.length >= 5) {
+                                    prices = validCloses.slice(-5).reverse();
+                                }
+                            }
+
+                            if (prices.length < 5 && currentPrice) {
+                                prices = [currentPrice, currentPrice * 0.99, currentPrice * 0.98, currentPrice * 0.97, currentPrice * 0.96];
+                            }
+
+                            fetchedResults.push({
+                                symbol: stock.symbol,
+                                latestPrice: currentPrice || prices[0] || 0,
+                                volume,
+                                promoterHolding: stock.promoterHolding,
+                                prices
+                            });
+
+                            if (fetchedResults.length % 5 === 0 || fetchedResults.length === globalHighPromoterStocks.length) {
+                                renderProgressive();
                             }
                         }
-                        
-                        if (prices.length < 5 && currentPrice) {
-                            prices = [currentPrice, currentPrice*0.99, currentPrice*0.98, currentPrice*0.97, currentPrice*0.96];
-                        }
-                        
-                        fetchedResults.push({
-                            symbol: stock.symbol,
-                            latestPrice: currentPrice || prices[0] || 0,
-                            volume,
-                            promoterHolding: stock.promoterHolding,
-                            prices
-                        });
-                        
-                        if (fetchedResults.length % 5 === 0 || fetchedResults.length === globalHighPromoterStocks.length) {
-                            renderProgressive();
-                        }
+                    } catch (e) {
+                        console.warn(`[Global Promoter] Failed to fetch data for ${stock.symbol}:`, e.message);
                     }
-                } catch (e) {
-                    console.warn(`[Global Promoter] Failed to fetch data for ${stock.symbol}:`, e.message);
+                });
+
+                if (fetchedResults.length > 0) {
+                    globalPromoterCache = fetchedResults;
+                    try {
+                        setLocalStorageItem('global_promoter_cache', JSON.stringify(fetchedResults));
+                        setLocalStorageItem('global_promoter_cache_time', now.toString());
+                    } catch (err) {
+                        console.warn("[Global Promoter] Cache save failed:", err);
+                    }
+                } else {
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="7" style="text-align:center; padding:2.5rem; color:var(--text-secondary);">
+                                Live price sources are temporarily unavailable.
+                                <div style="margin-top:0.75rem;">
+                                    <button onclick="renderVolumePromoterPicks(true)" class="btn btn-primary" style="font-size:0.82rem; padding:0.4rem 1rem;">
+                                        <i class="fa-solid fa-rotate"></i> Try Again
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                    if (badge) badge.textContent = '0 Stocks';
+                    return;
                 }
-            }));
-            
-            globalPromoterCache = fetchedResults;
-            
-            try {
-                setLocalStorageItem('global_promoter_cache', JSON.stringify(fetchedResults));
-                setLocalStorageItem('global_promoter_cache_time', now.toString());
-            } catch (err) {
-                console.warn("[Global Promoter] Cache save failed:", err);
+            } finally {
+                window.isVolPromoterFetchInFlight = false;
             }
         }
 
-        const results = globalPromoterCache.filter(item => {
+        const results = (globalPromoterCache || []).filter(item => {
             const prices = item.prices;
             if (prices.length < 5) return false;
             return prices[0] > prices[1] && prices[1] > prices[2] && prices[2] > prices[3] && prices[3] > prices[4];
@@ -5298,7 +5718,7 @@ window.renderVolumePromoterPicks = async function(forceRefresh = false) {
 
         const searchInput = document.getElementById('vol-promoter-search-input');
         const searchVal = searchInput ? searchInput.value.trim().toUpperCase() : '';
-        const filteredResults = searchVal 
+        const filteredResults = searchVal
             ? results.filter(item => item.symbol.toUpperCase().includes(searchVal))
             : results;
 
@@ -5315,7 +5735,7 @@ window.renderVolumePromoterPicks = async function(forceRefresh = false) {
         }
 
         if (badge) badge.textContent = `${filteredResults.length} Stocks`;
-        renderTableRows(results);
+        renderTableRows(filteredResults);
     } else {
         // LOCAL MODE
         const data = state.processedMasterData;
@@ -5609,6 +6029,8 @@ window.renderCircuits = function(forceRefresh = false) {
         const livePriceVal = circuitsLivePrices.get(item.symbol);
         const livePriceHtml = livePriceVal 
             ? `₹${livePriceVal.toFixed(2)} <span class="live-pulse" style="width:6px;height:6px;box-shadow:0 0 0 0 rgba(16,185,129,0.7);animation:pulse 1.5s infinite;margin-left:0.2rem;display:inline-block;border-radius:50%;background:#10b981;"></span>`
+            : isFailedSymbolRecent(item.symbol)
+            ? `₹${item.latestClose.toFixed(2)} <span style="font-size:0.7rem;color:var(--text-secondary);">(Price unavailable)</span>`
             : `₹${item.latestClose.toFixed(2)} <span style="font-size:0.7rem;color:var(--text-secondary);">(EOD)</span>`;
 
         const badgeColor = item.circuitLimit.startsWith('20') ? '#ef4444' : item.circuitLimit.startsWith('10') ? '#f59e0b' : '#eab308';
@@ -5638,30 +6060,44 @@ window.renderCircuits = function(forceRefresh = false) {
             </tr>`;
     }).join('');
 
-    const symbolsToFetch = results.map(r => r.symbol);
-    if (symbolsToFetch.length > 0 && (forceRefresh || circuitsLivePrices.size === 0)) {
+    const symbolsToFetch = results.map(r => r.symbol).filter(s => !isPriceFresh(s) && !isFailedSymbolRecent(s));
+    if (symbolsToFetch.length > 0 && isTabActive('tab-circuits') && (forceRefresh || circuitsLivePrices.size === 0)) {
         fetchCircuitsLivePrices(symbolsToFetch);
     }
 };
 
+let isCircuitsFetchInFlight = false; // FIX: In-flight guard + concurrency 5
 window.fetchCircuitsLivePrices = async function(symbols) {
-    console.log(`[Circuits Live Update] Fetching live prices for ${symbols.length} symbols...`);
-    await Promise.all(symbols.map(async (symbol) => {
-        try {
-            const data = await fetchYahooFinanceData(symbol + '.NS');
-            if (data && data.chart && data.chart.result && data.chart.result[0]) {
-                const price = data.chart.result[0].meta.regularMarketPrice;
+    if (!symbols || symbols.length === 0 || isCircuitsFetchInFlight) return;
+    isCircuitsFetchInFlight = true;
+
+    try {
+        const uniqueSymbols = [...new Set(symbols)]
+            .map(s => String(s || '').trim().toUpperCase())
+            .filter(s => s && !isPriceFresh(s) && !isFailedSymbolRecent(s));
+        if (uniqueSymbols.length === 0) return;
+
+        await runWithConcurrency(uniqueSymbols, 5, async (symbol) => {
+            try {
+                const data = await fetchYahooFinanceData(symbol + '.NS');
+                const price = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
                 if (price) {
                     circuitsLivePrices.set(symbol, price);
+                    markPriceFresh(symbol);
                     document.querySelectorAll(`.circuit-live-cell[data-symbol="${symbol}"]`).forEach(cell => {
                         cell.innerHTML = `₹${price.toFixed(2)} <span class="live-pulse" style="width:6px;height:6px;box-shadow:0 0 0 0 rgba(16,185,129,0.7);animation:pulse 1.5s infinite;margin-left:0.2rem;display:inline-block;border-radius:50%;background:#10b981;"></span>`;
                     });
+                } else {
+                    throw new Error('No price');
                 }
+            } catch (e) {
+                markSymbolFailed(symbol);
+                console.warn(`[Circuits Live Update] Error for ${symbol}:`, e.message);
             }
-        } catch (e) {
-            console.warn(`[Circuits Live Update] Error for ${symbol}:`, e.message);
-        }
-    }));
+        });
+    } finally {
+        isCircuitsFetchInFlight = false;
+    }
 };
 
 const globalIndicesConfig = [
@@ -5678,93 +6114,165 @@ const globalIndicesConfig = [
     { name: 'KOSPI (South Korea)', ticker: '^KS11' }
 ];
 
-window.fetchGlobalIndices = async function(showLoading = false) {
-    const tbody = document.getElementById('global-indices-tbody');
-    if (!tbody) return;
+// FIX: Global Indices with concurrency 5, in-flight guard, localStorage last-known cache fallback (greyed out + timestamp + Refresh button), and clear error when no cache exists
+let isGlobalIndicesFetching = false;
 
-    if (showLoading) {
-        tbody.innerHTML = `
+function renderGlobalIndicesRows(tbody, items, isCachedFallback = false, cachedTimestamp = null) {
+    let bannerHtml = '';
+    if (isCachedFallback) {
+        const tsText = cachedTimestamp ? new Date(cachedTimestamp).toLocaleString('en-IN') : 'Previous session';
+        bannerHtml = `
             <tr>
-                <td colspan="5" style="text-align:center; padding:3rem; color:var(--text-secondary);">
-                    <i class="fa-solid fa-spinner fa-spin" style="font-size:1.5rem; color:#3b82f6; margin-bottom:0.5rem; display:block;"></i>
-                    ગ્લોબલ ઇન્ડેક્સ લાઈવ ડેટા લોડ થઈ રહ્યો છે...
+                <td colspan="5" style="background:rgba(245,158,11,0.08); color:#f59e0b; padding:0.65rem 1rem; font-size:0.82rem; border-bottom:1px solid rgba(245,158,11,0.25);">
+                    <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.5rem;">
+                        <span><i class="fa-solid fa-clock-rotate-left"></i> Live data temporarily unavailable — showing last cached values (${tsText})</span>
+                        <button onclick="fetchGlobalIndices(true)" class="btn btn-secondary" style="font-size:0.75rem; padding:0.3rem 0.75rem; border-color:#f59e0b; color:#f59e0b;">
+                            <i class="fa-solid fa-rotate"></i> Refresh
+                        </button>
+                    </div>
                 </td>
             </tr>
         `;
     }
 
-    const fetchedData = [];
+    const rowOpacityStyle = isCachedFallback ? 'opacity:0.6; color:#94a3b8;' : '';
 
-    await Promise.all(globalIndicesConfig.map(async (item) => {
-        try {
-            const response = await fetchYahooFinanceData(item.ticker);
-            if (response && response.chart && response.chart.result && response.chart.result[0]) {
-                const result = response.chart.result[0];
-                const meta = result.meta;
-                const price = meta.regularMarketPrice;
-                const prevClose = meta.previousClose !== undefined ? meta.previousClose : (meta.chartPreviousClose || price);
-                const change = price - prevClose;
-                const changePct = prevClose > 0 ? (change / prevClose) * 100 : 0;
-                
-                let isOpen = false;
-                if (meta.currentTradingPeriod && meta.currentTradingPeriod.regular) {
-                    const now = Math.floor(Date.now() / 1000);
-                    const reg = meta.currentTradingPeriod.regular;
-                    isOpen = now >= reg.start && now <= reg.end;
-                }
-                
-                fetchedData.push({
-                    name: item.name,
-                    ticker: item.ticker,
-                    price,
-                    change,
-                    changePct,
-                    isOpen
-                });
-            }
-        } catch (e) {
-            console.warn(`[Global Indices] Failed to fetch ${item.name}:`, e.message);
-        }
-    }));
-
-    if (fetchedData.length === 0) {
-        if (showLoading) {
-            tbody.innerHTML = `
-                <tr>
-                    <td colspan="5" style="text-align:center; padding:2rem; color:var(--text-secondary);">
-                        ડેટા લોડ કરવામાં નિષ્ફળતા. કૃપા કરીને ફરીથી પ્રયાસ કરો.
-                    </td>
-                </tr>
-            `;
-        }
-        return;
-    }
-
-    // Maintain consistent configuration order
-    const orderedData = [];
-    globalIndicesConfig.forEach(cfg => {
-        const found = fetchedData.find(d => d.ticker === cfg.ticker);
-        if (found) orderedData.push(found);
-    });
-
-    tbody.innerHTML = orderedData.map(item => {
+    tbody.innerHTML = bannerHtml + items.map(item => {
         const sign = item.change >= 0 ? '+' : '';
-        const color = item.change >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
-        
-        const statusHtml = item.isOpen 
+        const color = isCachedFallback ? '#94a3b8' : (item.change >= 0 ? 'var(--success-color)' : 'var(--danger-color)');
+        const nameColor = isCachedFallback ? '#94a3b8' : 'var(--accent-color)';
+        const priceColor = isCachedFallback ? '#94a3b8' : '#fff';
+
+        const statusHtml = isCachedFallback
+            ? `<span style="background:rgba(148,163,184,0.12);color:#94a3b8;font-weight:700;padding:0.15rem 0.5rem;border-radius:4px;font-size:0.75rem;">CACHED</span>`
+            : item.isOpen
             ? `<span style="background:rgba(16,185,129,0.12);color:var(--success-color);font-weight:700;padding:0.15rem 0.5rem;border-radius:4px;font-size:0.75rem;display:inline-flex;align-items:center;gap:3px;"><span class="live-pulse" style="width:5px;height:5px;box-shadow:0 0 0 0 rgba(16,185,129,0.7);animation:pulse 1.5s infinite;background:#10b981;border-radius:50%;"></span> OPEN</span>`
             : `<span style="background:rgba(255,255,255,0.06);color:var(--text-secondary);font-weight:700;padding:0.15rem 0.5rem;border-radius:4px;font-size:0.75rem;">CLOSED</span>`;
 
         return `
-            <tr>
-                <td><strong style="color:var(--accent-color);">${item.name}</strong> <span style="font-size:0.75rem; color:var(--text-secondary); margin-left:5px;">(${item.ticker})</span></td>
-                <td style="font-weight:700; font-family:var(--font-family); color:#fff;">${item.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                <td style="font-weight:600; font-family:var(--font-family); color:${color};">${sign}${item.change.toFixed(2)}</td>
-                <td style="font-weight:700; font-family:var(--font-family); color:${color};">${sign}${item.changePct.toFixed(2)}%</td>
+            <tr style="${rowOpacityStyle}">
+                <td><strong style="color:${nameColor};">${item.name}</strong> <span style="font-size:0.75rem; color:var(--text-secondary); margin-left:5px;">(${item.ticker})</span></td>
+                <td style="font-weight:700; font-family:var(--font-family); color:${priceColor};">${Number(item.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                <td style="font-weight:600; font-family:var(--font-family); color:${color};">${sign}${Number(item.change).toFixed(2)}</td>
+                <td style="font-weight:700; font-family:var(--font-family); color:${color};">${sign}${Number(item.changePct).toFixed(2)}%</td>
                 <td>${statusHtml}</td>
             </tr>
         `;
     }).join('');
+}
+
+window.fetchGlobalIndices = async function(showLoading = false) {
+    const tbody = document.getElementById('global-indices-tbody');
+    if (!tbody || isGlobalIndicesFetching) return;
+    isGlobalIndicesFetching = true;
+
+    try {
+        // Show cached values immediately on initial load if tbody is still empty
+        if (!showLoading && tbody.children.length === 0) {
+            try {
+                const saved = getLocalStorageItem('global_indices_cache');
+                if (saved) {
+                    const parsed = JSON.parse(saved);
+                    if (parsed && Array.isArray(parsed.data) && parsed.data.length > 0) {
+                        renderGlobalIndicesRows(tbody, parsed.data, true, parsed.timestamp);
+                    }
+                }
+            } catch (_) { /* ignore */ }
+        }
+
+        if (showLoading) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="5" style="text-align:center; padding:3rem; color:var(--text-secondary);">
+                        <i class="fa-solid fa-spinner fa-spin" style="font-size:1.5rem; color:#3b82f6; margin-bottom:0.5rem; display:block;"></i>
+                        ગ્લોબલ ઇન્ડેક્સ લાઈવ ડેટા લોડ થઈ રહ્યો છે...
+                    </td>
+                </tr>
+            `;
+        }
+
+        const fetchedData = [];
+
+        await runWithConcurrency(globalIndicesConfig, 5, async (item) => {
+            try {
+                const response = await fetchYahooFinanceData(item.ticker, showLoading);
+                if (response && response.chart && response.chart.result && response.chart.result[0]) {
+                    const result = response.chart.result[0];
+                    const meta = result.meta;
+                    const price = meta.regularMarketPrice;
+                    const prevClose = meta.previousClose !== undefined ? meta.previousClose : (meta.chartPreviousClose || price);
+                    const change = price - prevClose;
+                    const changePct = prevClose > 0 ? (change / prevClose) * 100 : 0;
+
+                    let isOpen = false;
+                    if (meta.currentTradingPeriod && meta.currentTradingPeriod.regular) {
+                        const now = Math.floor(Date.now() / 1000);
+                        const reg = meta.currentTradingPeriod.regular;
+                        isOpen = now >= reg.start && now <= reg.end;
+                    }
+
+                    fetchedData.push({
+                        name: item.name,
+                        ticker: item.ticker,
+                        price,
+                        change,
+                        changePct,
+                        isOpen
+                    });
+                }
+            } catch (e) {
+                console.warn(`[Global Indices] Failed to fetch ${item.name}:`, e.message);
+            }
+        });
+
+        if (fetchedData.length === 0) {
+            // Check localStorage cache fallback
+            try {
+                const saved = getLocalStorageItem('global_indices_cache');
+                if (saved) {
+                    const parsed = JSON.parse(saved);
+                    if (parsed && Array.isArray(parsed.data) && parsed.data.length > 0) {
+                        renderGlobalIndicesRows(tbody, parsed.data, true, parsed.timestamp);
+                        return;
+                    }
+                }
+            } catch (_) { /* ignore */ }
+
+            // No cache exists at all -> show clear error + Refresh button
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="5" style="text-align:center; padding:2.5rem; color:var(--text-secondary);">
+                        <i class="fa-solid fa-circle-exclamation" style="font-size:1.5rem; color:var(--danger-color); margin-bottom:0.5rem; display:block;"></i>
+                        <div style="color:#fff; font-weight:600; margin-bottom:0.35rem;">Global Indices data unavailable, try again.</div>
+                        <div style="font-size:0.8rem; margin-bottom:1rem;">ડેટા લોડ કરવામાં નિષ્ફળતા. કૃપા કરીને ફરીથી પ્રયાસ કરો.</div>
+                        <button onclick="fetchGlobalIndices(true)" class="btn btn-primary" style="font-size:0.82rem; padding:0.45rem 1.1rem;">
+                            <i class="fa-solid fa-rotate"></i> Refresh
+                        </button>
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        // Maintain consistent configuration order
+        const orderedData = [];
+        globalIndicesConfig.forEach(cfg => {
+            const found = fetchedData.find(d => d.ticker === cfg.ticker);
+            if (found) orderedData.push(found);
+        });
+
+        // Save last successful values + timestamp to localStorage
+        try {
+            setLocalStorageItem('global_indices_cache', JSON.stringify({
+                data: orderedData,
+                timestamp: Date.now()
+            }));
+        } catch (_) { /* ignore quota error */ }
+
+        renderGlobalIndicesRows(tbody, orderedData, false, null);
+    } finally {
+        isGlobalIndicesFetching = false;
+    }
 };
 
 // =====================================================================
@@ -5994,33 +6502,47 @@ window.renderIntraday = function(forceRefresh = false) {
             </tr>`;
     }).join('');
 
-    const symbolsToFetch = topIntraday.map(r => r.symbol);
-    if (symbolsToFetch.length > 0 && (forceRefresh || intradayLivePrices.size === 0)) {
+    const symbolsToFetch = topIntraday.map(r => r.symbol).filter(s => !isPriceFresh(s) && !isFailedSymbolRecent(s));
+    if (symbolsToFetch.length > 0 && isTabActive('tab-intraday') && (forceRefresh || intradayLivePrices.size === 0)) {
         fetchIntradayLivePrices(symbolsToFetch);
     }
 };
 
+let isIntradayFetchInFlight = false; // FIX: In-flight guard + concurrency 5
 window.fetchIntradayLivePrices = async function(symbols) {
-    console.log(`[Intraday Live Update] Fetching live prices for ${symbols.length} symbols...`);
-    await Promise.all(symbols.map(async (symbol) => {
-        try {
-            const data = await fetchYahooFinanceData(symbol + '.NS');
-            if (data && data.chart && data.chart.result && data.chart.result[0]) {
-                const meta = data.chart.result[0].meta;
-                const price = meta.regularMarketPrice;
-                const prevClose = meta.chartPreviousClose || meta.previousClose;
-                const high = meta.regularMarketDayHigh;
-                const low = meta.regularMarketDayLow;
-                const volume = meta.regularMarketVolume;
-                if (price) {
-                    intradayLivePrices.set(symbol, { price, prevClose, high, low, volume });
-                    updateIntradayRowDOM(symbol);
+    if (!symbols || symbols.length === 0 || isIntradayFetchInFlight) return;
+    isIntradayFetchInFlight = true;
+
+    try {
+        const uniqueSymbols = [...new Set(symbols)]
+            .map(s => String(s || '').trim().toUpperCase())
+            .filter(s => s && !isPriceFresh(s) && !isFailedSymbolRecent(s));
+        if (uniqueSymbols.length === 0) return;
+
+        await runWithConcurrency(uniqueSymbols, 5, async (symbol) => {
+            try {
+                const data = await fetchYahooFinanceData(symbol + '.NS');
+                if (data && data.chart && data.chart.result && data.chart.result[0]) {
+                    const meta = data.chart.result[0].meta;
+                    const price = meta.regularMarketPrice;
+                    const prevClose = meta.chartPreviousClose || meta.previousClose;
+                    const high = meta.regularMarketDayHigh;
+                    const low = meta.regularMarketDayLow;
+                    const volume = meta.regularMarketVolume;
+                    if (price) {
+                        intradayLivePrices.set(symbol, { price, prevClose, high, low, volume });
+                        markPriceFresh(symbol);
+                        updateIntradayRowDOM(symbol);
+                    }
                 }
+            } catch (e) {
+                markSymbolFailed(symbol);
+                console.warn(`[Intraday Live Update] Error for ${symbol}:`, e.message);
             }
-        } catch (e) {
-            console.warn(`[Intraday Live Update] Error for ${symbol}:`, e.message);
-        }
-    }));
+        });
+    } finally {
+        isIntradayFetchInFlight = false;
+    }
 };
 
 window.updateIntradayRowDOM = function(symbol) {
@@ -6408,47 +6930,42 @@ window.renderMasterPiece = function(forceRefresh = false) {
     }).join('');
 };
 
-window.checkMasterPieceAlerts = async function() {
+// FIX: Removed sudden price-drop alerts/popups (checkMasterPieceAlerts & triggerSuddenPriceAlert)
+// Quietly update Master Piece live prices only when the Master Piece tab is open
+let isMasterPieceFetchInFlight = false;
+window.fetchMasterPieceLivePrices = async function() {
+    if (isMasterPieceFetchInFlight) return;
     if (currentMasterPieceData.length === 0) {
         renderMasterPiece();
     }
     if (currentMasterPieceData.length === 0) return;
 
-    console.log(`[Master Piece Alert Check] Fetching live prices for alerts...`);
-    await Promise.all(currentMasterPieceData.map(async (item) => {
-        try {
-            const symbol = item.symbol;
-            const data = await fetchYahooFinanceData(symbol + '.NS');
-            if (data && data.chart && data.chart.result && data.chart.result[0]) {
-                const price = data.chart.result[0].meta.regularMarketPrice;
+    isMasterPieceFetchInFlight = true;
+    try {
+        const itemsToFetch = currentMasterPieceData.filter(item => !isPriceFresh(item.symbol) && !isFailedSymbolRecent(item.symbol));
+        if (itemsToFetch.length === 0) return;
+
+        await runWithConcurrency(itemsToFetch, 5, async (item) => {
+            try {
+                const symbol = item.symbol;
+                const data = await fetchYahooFinanceData(symbol + '.NS');
+                const price = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
                 if (price) {
-                    const lastKnownLivePrice = masterPieceLastPrices.get(symbol);
-                    if (lastKnownLivePrice !== undefined && lastKnownLivePrice !== price) {
-                        const pctDiff = ((price - lastKnownLivePrice) / lastKnownLivePrice) * 100;
-                        if (Math.abs(pctDiff) >= 1.5) {
-                            triggerSuddenPriceAlert(symbol, lastKnownLivePrice, price, pctDiff);
-                        }
-                    }
                     masterPieceLastPrices.set(symbol, price);
+                    markPriceFresh(symbol);
                     document.querySelectorAll(`.master-piece-live-cell[data-symbol="${symbol}"]`).forEach(cell => {
                         cell.innerHTML = `₹${price.toFixed(2)} <span class="live-pulse" style="width:6px;height:6px;box-shadow:0 0 0 0 rgba(16,185,129,0.7);animation:pulse 1.5s infinite;margin-left:0.2rem;display:inline-block;border-radius:50%;background:#10b981;"></span>`;
                     });
                 }
+            } catch (e) {
+                markSymbolFailed(item.symbol);
+                console.warn(`[Master Piece Live Update] Error for ${item.symbol}:`, e.message);
             }
-        } catch (e) {
-            console.warn(`[Master Piece Alert Check] Error for ${item.symbol}:`, e.message);
-        }
-    }));
+        });
+    } finally {
+        isMasterPieceFetchInFlight = false;
+    }
 };
-
-function triggerSuddenPriceAlert(symbol, oldPrice, newPrice, pctDiff) {
-    const direction = pctDiff > 0 ? "વધારો 📈" : "ઘટાડો 📉";
-    const msg = `⚠️ MASTER PIECE ALERT!\n\n${symbol} ના ભાવમાં અચાનક ${Math.abs(pctDiff).toFixed(2)}% નો ${direction} આવ્યો છે!\nજૂનો ભાવ: ₹${oldPrice.toFixed(2)} -> નવો ભાવ: ₹${newPrice.toFixed(2)}`;
-    
-    showNotification(`⚡ ${symbol}: ${Math.abs(pctDiff).toFixed(2)}% ${direction} (₹${oldPrice.toFixed(2)} -> ₹${newPrice.toFixed(2)})`, pctDiff > 0 ? 'success' : 'danger');
-    
-    alert(msg);
-}
 
 // Run on load
 document.addEventListener('DOMContentLoaded', initEvents);

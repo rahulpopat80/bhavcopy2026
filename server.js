@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import ibjaHandler from './api/ibja.js';
 import indicesHandler from './api/indices.js';
 import yahooHandler from './api/yahoo.js';
+import corporateHandler from './api/corporate.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -42,6 +43,18 @@ app.all('/api/yahoo', async (req, res) => {
     await yahooHandler(req, res);
   } catch (err) {
     console.error('Error in /api/yahoo:', err);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+});
+
+// FIX: Mount /api/corporate endpoint for real upcoming results & dividend data
+app.all('/api/corporate', async (req, res) => {
+  try {
+    await corporateHandler(req, res);
+  } catch (err) {
+    console.error('Error in /api/corporate:', err);
     if (!res.headersSent) {
       res.status(500).json({ error: 'Internal server error' });
     }

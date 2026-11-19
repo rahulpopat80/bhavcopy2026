@@ -1,12 +1,12 @@
-const CACHE_NAME = 'rahul-finance-cache-v1';
+// FIX: Bumped cache version so updated app.js/index.html/style.css are served immediately
+const CACHE_NAME = 'rahul-finance-cache-v2-20261119';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
   './app.js',
   './style.css',
   './manifest.json',
-  './icon.png',
-  './run_bhavcopy_no_cors.bat'
+  './icon.png'
 ];
 
 // Install Event - Caching App Shell
@@ -19,7 +19,7 @@ self.addEventListener('install', (e) => {
   );
 });
 
-// Activate Event - Clean up old caches
+// Activate Event - Clean up old caches and take control immediately
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys().then((keys) => {
@@ -35,22 +35,34 @@ self.addEventListener('activate', (e) => {
   );
 });
 
-// Fetch Event - Network First fallback to Cache
+// FIX: Network-First strategy for app.js, index.html, style.css (cache only as offline fallback)
 self.addEventListener('fetch', (e) => {
-  // Exclude Firebase, live quote sources, translations and search APIs from service worker static caching
-  if (e.request.url.includes('firestore.googleapis.com') || 
-      e.request.url.includes('finance.yahoo.com') ||
-      e.request.url.includes('duckduckgo.com') ||
-      e.request.url.includes('translate.googleapis.com') ||
-      e.request.url.includes('google-analytics.com')) {
+  const url = e.request.url;
+
+  // Exclude API routes, Firebase, live quote sources, translations, and search APIs
+  if (
+    e.request.method !== 'GET' ||
+    url.includes('/api/') ||
+    url.includes('firestore.googleapis.com') ||
+    url.includes('finance.yahoo.com') ||
+    url.includes('duckduckgo.com') ||
+    url.includes('translate.googleapis.com') ||
+    url.includes('google-analytics.com')
+  ) {
     return;
   }
 
+  const isCoreAppFile =
+    e.request.mode === 'navigate' ||
+    url.endsWith('/app.js') ||
+    url.endsWith('/index.html') ||
+    url.endsWith('/style.css') ||
+    url.endsWith('/');
+
   e.respondWith(
-    fetch(e.request)
+    fetch(isCoreAppFile ? new Request(e.request, { cache: 'no-cache' }) : e.request)
       .then((response) => {
-        // If request succeeds, clone response and cache it
-        if (response.status === 200 && response.type === 'basic') {
+        if (response && response.status === 200 && response.type === 'basic') {
           const responseToCache = response.clone();
           caches.open(CACHE_NAME).then((cache) => {
             cache.put(e.request, responseToCache);
@@ -59,7 +71,6 @@ self.addEventListener('fetch', (e) => {
         return response;
       })
       .catch(() => {
-        // Fallback to cache if network fails
         return caches.match(e.request);
       })
   );
