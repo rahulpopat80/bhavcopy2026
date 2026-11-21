@@ -494,6 +494,7 @@ function initEvents() {
     const tabIntraday    = document.getElementById('tab-intraday');
     const tabMasterPiece = document.getElementById('tab-master-piece');
     const tabCallPut     = document.getElementById('tab-call-put');
+    const tabCandleChart = document.getElementById('tab-candle-chart');
     
     const researchTabContent      = document.getElementById('research-tab-content');
     const portfolioTabContent     = document.getElementById('portfolio-tab-content');
@@ -507,11 +508,12 @@ function initEvents() {
     const intradayTabContent      = document.getElementById('intraday-tab-content');
     const masterPieceTabContent   = document.getElementById('master-piece-tab-content');
     const callPutTabContent       = document.getElementById('call-put-tab-content');
+    const candleChartTabContent   = document.getElementById('candle-chart-tab-content');
 
     const hideAllTabs = () => {
-        [researchTabContent, portfolioTabContent, resultsTabContent, watchlistTabContent, morningPicksTabContent, adviceTabContent, volPromoterTabContent, circuitsTabContent, globalIndicesTabContent, intradayTabContent, masterPieceTabContent, callPutTabContent]
+        [researchTabContent, portfolioTabContent, resultsTabContent, watchlistTabContent, morningPicksTabContent, adviceTabContent, volPromoterTabContent, circuitsTabContent, globalIndicesTabContent, intradayTabContent, masterPieceTabContent, callPutTabContent, candleChartTabContent]
             .forEach(el => el && el.classList.add('hidden'));
-        [tabResearch, tabPortfolio, tabResults, tabWatchlist, tabMorning, tabAdvice, tabVolPromoter, tabCircuits, tabGlobalIndices, tabIntraday, tabMasterPiece, tabCallPut]
+        [tabResearch, tabPortfolio, tabResults, tabWatchlist, tabMorning, tabAdvice, tabVolPromoter, tabCircuits, tabGlobalIndices, tabIntraday, tabMasterPiece, tabCallPut, tabCandleChart]
             .forEach(el => el && el.classList.remove('active'));
     };
 
@@ -631,6 +633,24 @@ function initEvents() {
 
     if (typeof initCallPutControls === 'function') {
         initCallPutControls();
+    }
+
+    if (tabCandleChart && candleChartTabContent) {
+        tabCandleChart.addEventListener('click', () => {
+            hideAllTabs();
+            tabCandleChart.classList.add('active');
+            candleChartTabContent.classList.remove('hidden');
+            if (typeof initCandleChartTab === 'function') {
+                initCandleChartTab();
+            }
+            if (typeof loadCandleChartTab === 'function') {
+                loadCandleChartTab(false);
+            }
+        });
+    }
+
+    if (typeof initModalChartControls === 'function') {
+        initModalChartControls();
     }
 
 
@@ -3630,78 +3650,28 @@ function showPriceChart(symbol) {
     document.getElementById('modal-latest-price').textContent = `₹${latestPriceVal.toFixed(2)}`; // Newest price (last index after reverse)
     document.getElementById('modal-old-price').textContent = `₹${oldPriceVal.toFixed(2)}`; // 30 days ago (or oldest available)
     
-    // Destroy previous Chart instance
+    // Destroy previous Chart instance if any
     if (state.chartInstance) {
         state.chartInstance.destroy();
+        state.chartInstance = null;
     }
-    
-    // Draw new Chart
-    const ctx = document.getElementById('price-chart').getContext('2d');
-    state.chartInstance = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: dateLabels,
-            datasets: [{
-                label: `${symbol} Close Price (₹)`,
-                data: prices,
-                borderColor: '#06b6d4',
-                backgroundColor: 'rgba(6, 182, 212, 0.1)',
-                borderWidth: 2,
-                tension: 0.3,
-                fill: true,
-                pointBackgroundColor: '#06b6d4',
-                pointRadius: 4,
-                pointHoverRadius: 6
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    display: false
-                },
-                tooltip: {
-                    mode: 'index',
-                    intersect: false,
-                    backgroundColor: 'rgba(17, 24, 39, 0.95)',
-                    titleColor: '#ffffff',
-                    bodyColor: '#e5e7eb',
-                    borderColor: 'rgba(6, 182, 212, 0.3)',
-                    borderWidth: 1
-                }
-            },
-            scales: {
-                x: {
-                    grid: {
-                        color: 'rgba(255, 255, 255, 0.05)'
-                    },
-                    ticks: {
-                        color: '#9ca3af',
-                        font: {
-                            family: 'Outfit',
-                            size: 11
-                        }
-                    }
-                },
-                y: {
-                    grid: {
-                        color: 'rgba(255, 255, 255, 0.05)'
-                    },
-                    ticks: {
-                        color: '#9ca3af',
-                        font: {
-                            family: 'Outfit',
-                            size: 11
-                        },
-                        callback: function(value) {
-                            return '₹' + value;
-                        }
-                    }
-                }
-            }
-        }
+
+    // Build fallback candles from Master close series and render Candlestick + Bollinger Bands + 1m/3m/5m/10m/1D
+    const fallbackCandles = prices.map((p, idx) => {
+        const prev = idx > 0 ? prices[idx - 1] : p;
+        return {
+            time: idx,
+            label: String(dateLabels[idx] || ''),
+            open: prev,
+            high: Math.max(prev, p),
+            low: Math.min(prev, p),
+            close: p,
+            volume: 0
+        };
     });
+    if (typeof renderModalCandleChart === 'function') {
+        renderModalCandleChart('cm', symbol, 'price-chart', fallbackCandles);
+    }
     
     // Fetch Live Price from Yahoo Finance (FIX: uses cached/timeout-protected fetchYahooFinanceData, max 3 sources)
     const livePriceEl = document.getElementById('modal-live-price');
@@ -3827,83 +3797,36 @@ window.showResearchModal = function(symbol) {
         }
     }
     
-    // Destroy previous Chart instance
+    // Destroy previous Chart instance if any
     if (state.researchChartInstance) {
         state.researchChartInstance.destroy();
         state.researchChartInstance = null;
     }
-    
-    if (drawChart) {
-        const ctx = document.getElementById('research-price-chart').getContext('2d');
-        state.researchChartInstance = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: dateLabels,
-                datasets: [{
-                    label: `${symbol} Close Price (₹)`,
-                    data: prices,
-                    borderColor: '#06b6d4',
-                    backgroundColor: 'rgba(6, 182, 212, 0.1)',
-                    borderWidth: 2,
-                    tension: 0.3,
-                    fill: true,
-                    pointBackgroundColor: '#06b6d4',
-                    pointRadius: 4,
-                    pointHoverRadius: 6
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        display: false
-                    },
-                    tooltip: {
-                        mode: 'index',
-                        intersect: false,
-                        backgroundColor: 'rgba(17, 24, 39, 0.95)',
-                        titleColor: '#ffffff',
-                        bodyColor: '#e5e7eb',
-                        borderColor: 'rgba(6, 182, 212, 0.3)',
-                        borderWidth: 1
-                    }
-                },
-                scales: {
-                    x: {
-                        grid: {
-                            color: 'rgba(255, 255, 255, 0.05)'
-                        },
-                        ticks: {
-                            color: '#9ca3af',
-                            font: {
-                                family: 'Outfit',
-                                size: 11
-                            }
-                        }
-                    },
-                    y: {
-                        grid: {
-                            color: 'rgba(255, 255, 255, 0.05)'
-                        },
-                        ticks: {
-                            color: '#9ca3af',
-                            font: {
-                                family: 'Outfit',
-                                size: 11
-                            },
-                            callback: function(value) {
-                                return '₹' + value;
-                            }
-                        }
-                    }
-                }
+
+    const fallbackCandles = drawChart
+        ? prices.reduce((acc, p, idx) => {
+            if (p !== null && !isNaN(p)) {
+                const prev = acc.length > 0 ? acc[acc.length - 1].close : p;
+                acc.push({
+                    time: idx,
+                    label: String(dateLabels[idx] || ''),
+                    open: prev,
+                    high: Math.max(prev, p),
+                    low: Math.min(prev, p),
+                    close: p,
+                    volume: 0
+                });
             }
-        });
-    }
-    
-    // Show Modal immediately
+            return acc;
+        }, [])
+        : [];
+
+    // Show Modal immediately so canvas has measured layout dimensions
     document.getElementById('research-modal').classList.remove('hidden');
+
+    if (typeof renderModalCandleChart === 'function') {
+        renderModalCandleChart('rm', symbol, 'research-price-chart', fallbackCandles);
+    }
     
     // 1. Fetch Company Summary from DuckDuckGo Instant Answers API (FIX: 6s timeout so slow networks never hang)
     const ddgUrl = `https://api.duckduckgo.com/?q=${encodeURIComponent(symbol)}+company&format=json`;
@@ -7261,6 +7184,980 @@ window.fetchCallPutAndMmiData = async function(isManual = false) {
         console.warn('[Call Put 1s Update]', err.message);
     } finally {
         isCallPutFetchInFlight = false;
+    }
+};
+
+// ==========================================
+// CANDLE CHART ENGINE: CANDLESTICK + BOLLINGER BANDS (20,2) + VOLUME + 1m/3m/5m/10m/1D + PATTERN GUIDE
+// ==========================================
+const candleSeriesCache = new Map();
+const modalChartState = {
+    rm: { symbol: '', interval: '5m', showBB: true, fallback: [], candles: [] },
+    cm: { symbol: '', interval: '5m', showBB: true, fallback: [], candles: [] }
+};
+const candleTabState = {
+    symbol: 'RELIANCE',
+    interval: '5m',
+    showBB: true,
+    candles: [],
+    guideFilter: 'all',
+    initialized: false
+};
+
+async function fetchCandleSeries(symbol, interval = '5m') {
+    const cleanSym = String(symbol || 'RELIANCE').trim().toUpperCase();
+    const tf = ['1m', '3m', '5m', '10m', '1d'].includes(interval) ? interval : '5m';
+    const cacheKey = `${cleanSym}:${tf}`;
+    const cached = candleSeriesCache.get(cacheKey);
+    if (cached && (Date.now() - cached.ts) < 5000) {
+        return cached.candles;
+    }
+
+    const url = `/api/yahoo?symbol=${encodeURIComponent(cleanSym)}&interval=${encodeURIComponent(tf)}`;
+    const res = await fetchWithTimeout(url, { cache: 'no-store' }, 6500);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    const rawCandles = Array.isArray(json?.candles) ? json.candles : [];
+    if (rawCandles.length === 0) {
+        throw new Error('No candlestick bars returned');
+    }
+
+    const formatted = rawCandles.map(c => {
+        const dt = new Date(c.time * 1000);
+        const label = tf === '1d'
+            ? dt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })
+            : dt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false });
+        return { ...c, label };
+    });
+
+    candleSeriesCache.set(cacheKey, { candles: formatted, ts: Date.now() });
+    return formatted;
+}
+
+function computeBollingerBands(candles, period = 20, mult = 2) {
+    const upper = new Array(candles.length).fill(null);
+    const middle = new Array(candles.length).fill(null);
+    const lower = new Array(candles.length).fill(null);
+
+    for (let i = period - 1; i < candles.length; i++) {
+        let sum = 0;
+        for (let j = i - period + 1; j <= i; j++) {
+            sum += candles[j].close;
+        }
+        const mean = sum / period;
+        let sq = 0;
+        for (let j = i - period + 1; j <= i; j++) {
+            const diff = candles[j].close - mean;
+            sq += diff * diff;
+        }
+        const std = Math.sqrt(sq / period);
+        middle[i] = mean;
+        upper[i] = mean + mult * std;
+        lower[i] = mean - mult * std;
+    }
+    return { upper, middle, lower };
+}
+
+function computeVolumeSma(candles, period = 20) {
+    const avg = new Array(candles.length).fill(0);
+    for (let i = 0; i < candles.length; i++) {
+        const start = Math.max(0, i - period + 1);
+        let sum = 0;
+        let count = 0;
+        for (let j = start; j <= i; j++) {
+            sum += candles[j].volume || 0;
+            count++;
+        }
+        avg[i] = count > 0 ? sum / count : 0;
+    }
+    return avg;
+}
+
+function detectCandlestickPatterns(candles, bb, volAvg) {
+    const markers = new Array(candles.length).fill(null);
+    const detected = [];
+
+    for (let i = 1; i < candles.length; i++) {
+        const c = candles[i];
+        const p = candles[i - 1];
+        const p2 = i >= 2 ? candles[i - 2] : null;
+
+        const body = Math.abs(c.close - c.open);
+        const range = Math.max(0.0001, c.high - c.low);
+        const upperWick = c.high - Math.max(c.open, c.close);
+        const lowerWick = Math.min(c.open, c.close) - c.low;
+        const isBull = c.close >= c.open;
+        const isBear = c.close < c.open;
+
+        const pBody = Math.abs(p.close - p.open);
+        const pIsBull = p.close >= p.open;
+        const pIsBear = p.close < p.open;
+
+        const avgV = volAvg[i] || 0;
+        const volRatio = avgV > 0 && c.volume > 0 ? c.volume / avgV : 1;
+        const volHigh = volRatio >= 1.25;
+        const volStr = avgV > 0 ? `${volRatio.toFixed(2)}x Avg Vol` : 'Price Action';
+
+        const bbLow = bb.lower[i];
+        const bbUp = bb.upper[i];
+        const bbMid = bb.middle[i];
+
+        let match = null;
+
+        // 1. Bullish Engulfing
+        if (pIsBear && isBull && c.open <= p.close && c.close >= p.open && body > pBody * 1.05) {
+            match = {
+                name: 'Bullish Engulfing (બુલિશ એન્ગલ્ફિંગ)',
+                direction: 'BULLISH',
+                tag: 'BE+',
+                desc: `લાલ કેન્ડલને ગ્રીન કેન્ડલે સંપૂર્ણ ઢાંકી દીધી (${volStr}). આગળ ભાવ વધવાની શક્યતા.`
+            };
+        }
+        // 2. Bearish Engulfing
+        else if (pIsBull && isBear && c.open >= p.close && c.close <= p.open && body > pBody * 1.05) {
+            match = {
+                name: 'Bearish Engulfing (બેરિશ એન્ગલ્ફિંગ)',
+                direction: 'BEARISH',
+                tag: 'BE-',
+                desc: `ગ્રીન કેન્ડલને મોટી લાલ કેન્ડલે ઢાંકી દીધી (${volStr}). આગળ નફા વસૂલી / ઘટાડાની શક્યતા.`
+            };
+        }
+        // 3. Morning Star (3-candle bullish)
+        else if (p2 && p2.close < p2.open && pBody < Math.abs(p2.close - p2.open) * 0.45 && isBull && c.close > (p2.open + p2.close) / 2) {
+            match = {
+                name: 'Morning Star (મોર્નિંગ સ્ટાર)',
+                direction: 'BULLISH',
+                tag: 'MS+',
+                desc: `ઘટાડા પછી નાની ડોજી/સ્ટાર અને ત્યારબાદ મજબૂત ગ્રીન કેન્ડલ (${volStr}). ભાવ વધશે.`
+            };
+        }
+        // 4. Evening Star (3-candle bearish)
+        else if (p2 && p2.close > p2.open && pBody < Math.abs(p2.close - p2.open) * 0.45 && isBear && c.close < (p2.open + p2.close) / 2) {
+            match = {
+                name: 'Evening Star (ઇવનિંગ સ્ટાર)',
+                direction: 'BEARISH',
+                tag: 'ES-',
+                desc: `તેજીની ટોચ પર સ્ટાર અને ત્યારબાદ મજબૂત લાલ કેન્ડલ (${volStr}). ભાવ ઘટશે.`
+            };
+        }
+        // 5. Three White Soldiers
+        else if (p2 && p2.close > p2.open && pIsBull && isBull && c.close > p.close && p.close > p2.close && body > range * 0.5) {
+            match = {
+                name: 'Three White Soldiers (થ્રી વ્હાઇટ સોલ્જર્સ)',
+                direction: 'BULLISH',
+                tag: '3WS',
+                desc: `સતત 3 મજબૂત ગ્રીન કેન્ડલ્સ ઊંચા બંધ સાથે (${volStr}). મજબૂત તેજીનો સંકેત.`
+            };
+        }
+        // 6. Three Black Crows
+        else if (p2 && p2.close < p2.open && pIsBear && isBear && c.close < p.close && p.close < p2.close && body > range * 0.5) {
+            match = {
+                name: 'Three Black Crows (થ્રી બ્લેક ક્રોઝ)',
+                direction: 'BEARISH',
+                tag: '3BC',
+                desc: `સતત 3 મજબૂત લાલ કેન્ડલ્સ નીચા બંધ સાથે (${volStr}). મજબૂત ઘટાડાનો સંકેત.`
+            };
+        }
+        // 7. Hammer / Dragonfly
+        else if (lowerWick >= body * 2 && upperWick <= body * 0.4 && body > 0 && c.close <= (p.close * 1.005)) {
+            match = {
+                name: 'Hammer (હેમર)',
+                direction: 'BULLISH',
+                tag: 'H+',
+                desc: `નીચે લાંબી પૂંછડી (Buying Support) અને ઉપર નાની બોડી (${volStr}). નીચેથી ભાવ વધશે.`
+            };
+        }
+        // 8. Shooting Star
+        else if (upperWick >= body * 2 && lowerWick <= body * 0.4 && body > 0 && c.high >= p.high) {
+            match = {
+                name: 'Shooting Star (શૂટિંગ સ્ટાર)',
+                direction: 'BEARISH',
+                tag: 'SS-',
+                desc: `ઉપર લાંબી પૂંછડી (Selling Pressure) (${volStr}). ટોચ પરથી ભાવ ઘટવાનો સંકેત.`
+            };
+        }
+        // 9. Bollinger Lower Bounce with Volume
+        else if (bbLow && c.low <= bbLow * 1.002 && isBull && volHigh) {
+            match = {
+                name: 'Lower BB Volume Bounce (બોલિંગર સપોર્ટ)',
+                direction: 'BULLISH',
+                tag: 'BB+',
+                desc: `Lower Bollinger Band પર વધારે વોલ્યુમ (${volStr}) સાથે ગ્રીન કેન્ડલ. ઉછાળાની શક્યતા.`
+            };
+        }
+        // 10. Bollinger Upper Breakout / Exhaustion
+        else if (bbUp && isBull && c.close > bbUp && volHigh) {
+            match = {
+                name: 'Upper BB Volume Breakout',
+                direction: 'BULLISH',
+                tag: 'BO+',
+                desc: `Upper Bollinger Band ઉપર ભારે વોલ્યુમ (${volStr}) સાથે બ્રેકઆઉટ. તેજી ચાલુ રહી શકે.`
+            };
+        }
+        // 11. Doji with High Volume
+        else if (body <= range * 0.12 && volHigh) {
+            match = {
+                name: 'High-Volume Doji (ડોજી)',
+                direction: 'NEUTRAL',
+                tag: 'DJ',
+                desc: `ઓપન-ક્લોઝ લગભગ સરખું અને ઊંચું વોલ્યુમ (${volStr}). ટ્રેન્ડ બદલાવાની તૈયારી — આગલી કેન્ડલ જુઓ.`
+            };
+        }
+
+        // Tag Bollinger touch hint if no specific pattern matched on final candle
+        if (!match && i === candles.length - 1 && bbMid) {
+            if (isBull && c.close > bbMid && volHigh) {
+                match = {
+                    name: 'High-Volume Bullish Candle (વધતો વોલ્યુમ)',
+                    direction: 'BULLISH',
+                    tag: 'VOL+',
+                    desc: `20-SMA ઉપર મજબૂત ગ્રીન કેન્ડલ + ${volStr}. ખરીદીનું દબાણ વધારે છે.`
+                };
+            } else if (isBear && c.close < bbMid && volHigh) {
+                match = {
+                    name: 'High-Volume Bearish Candle (વેચવાલી વોલ્યુમ)',
+                    direction: 'BEARISH',
+                    tag: 'VOL-',
+                    desc: `20-SMA નીચે મજબૂત લાલ કેન્ડલ + ${volStr}. વેચવાલીનું દબાણ વધારે છે.`
+                };
+            }
+        }
+
+        if (match) {
+            const entry = {
+                index: i,
+                label: c.label || '',
+                price: c.close,
+                volRatio,
+                volStr,
+                ...match
+            };
+            markers[i] = entry;
+            detected.push(entry);
+        }
+    }
+
+    const lastIdx = candles.length - 1;
+    const last = candles[lastIdx];
+    const lastAvgV = volAvg[lastIdx] || 0;
+    const lastVolRatio = lastAvgV > 0 && last.volume > 0 ? last.volume / lastAvgV : 1;
+    const bbUp = bb.upper[lastIdx];
+    const bbMid = bb.middle[lastIdx];
+    const bbLow = bb.lower[lastIdx];
+
+    // Pick strongest recent pattern (within last 4 candles) or BB + Volume trend
+    const recent = detected.filter(d => d.index >= Math.max(0, lastIdx - 4));
+    const latestPat = recent.length > 0 ? recent[recent.length - 1] : null;
+
+    let direction = 'NEUTRAL';
+    let titleGu = 'મિશ્ર / રાહ જુઓ (SIDEWAYS)';
+    let patternTitle = latestPat ? latestPat.name : 'Bollinger + Volume Trend';
+    let summaryGu = '';
+
+    if (latestPat && latestPat.direction === 'BULLISH') {
+        direction = 'BULLISH';
+        titleGu = 'આગળ ભાવ વધશે (BULLISH / UP)';
+        summaryGu = `${latestPat.desc} ${bbMid ? (last.close >= bbMid ? 'ભાવ 20-SMA ની ઉપર મજબૂત છે.' : 'Lower Band પાસેથી રિવર્સલ સપોર્ટ.') : ''}`;
+    } else if (latestPat && latestPat.direction === 'BEARISH') {
+        direction = 'BEARISH';
+        titleGu = 'આગળ ભાવ ઘટશે (BEARISH / DOWN)';
+        summaryGu = `${latestPat.desc} ${bbMid ? (last.close <= bbMid ? 'ભાવ 20-SMA ની નીચે નબળો છે.' : 'Upper Band પાસેથી નફા વસૂલી.') : ''}`;
+    } else if (bbMid) {
+        if (last.close > bbMid && last.close >= last.open) {
+            direction = 'BULLISH';
+            titleGu = 'તેજી તરફી ઝોક (MILD BULLISH)';
+            summaryGu = `ભાવ Bollinger Middle (20-SMA ₹${bbMid.toFixed(2)}) ની ઉપર ગ્રીન કેન્ડલમાં ટકી રહ્યો છે (Vol: ${lastVolRatio.toFixed(2)}x Avg).`;
+        } else if (last.close < bbMid && last.close < last.open) {
+            direction = 'BEARISH';
+            titleGu = 'મંદી તરફી ઝોક (MILD BEARISH)';
+            summaryGu = `ભાવ Bollinger Middle (20-SMA ₹${bbMid.toFixed(2)}) ની નીચે લાલ કેન્ડલમાં દબાણ હેઠળ છે (Vol: ${lastVolRatio.toFixed(2)}x Avg).`;
+        } else {
+            summaryGu = `બજાર રેન્જમાં છે (20-SMA ₹${bbMid.toFixed(2)}). ઊંચા વોલ્યુમ (>1.5x) સાથે Upper/Lower Band બ્રેકઆઉટની રાહ જુઓ.`;
+        }
+    } else {
+        summaryGu = 'પૂરતી કેન્ડલ્સ ઉપલબ્ધ ન હોવાથી બેઝિક ભાવ વિશ્લેષણ બતાવેલ છે.';
+    }
+
+    return {
+        markers,
+        recentPatterns: detected.slice(-6).reverse(),
+        verdict: {
+            direction,
+            titleGu,
+            patternTitle,
+            summaryGu,
+            close: last.close,
+            volRatio: lastVolRatio,
+            bbUpper: bbUp,
+            bbMid,
+            bbLower: bbLow
+        }
+    };
+}
+
+function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas || !Array.isArray(allCandles) || allCandles.length === 0) return;
+
+    if (typeof canvas.__ccCleanup === 'function') {
+        canvas.__ccCleanup();
+    }
+
+    const maxBars = options.maxBars || 75;
+    const bbFull = computeBollingerBands(allCandles, 20, 2);
+    const volAvgFull = computeVolumeSma(allCandles, 20);
+    const analysis = detectCandlestickPatterns(allCandles, bbFull, volAvgFull);
+
+    const startIdx = Math.max(0, allCandles.length - maxBars);
+    const candles = allCandles.slice(startIdx);
+    const bb = {
+        upper: bbFull.upper.slice(startIdx),
+        middle: bbFull.middle.slice(startIdx),
+        lower: bbFull.lower.slice(startIdx)
+    };
+    const volAvg = volAvgFull.slice(startIdx);
+    const markers = analysis.markers.slice(startIdx);
+    const showBB = options.showBB !== false;
+
+    const readoutEl = options.readoutId ? document.getElementById(options.readoutId) : null;
+    let hoverIdx = -1;
+
+    const draw = () => {
+        const rect = canvas.parentElement.getBoundingClientRect();
+        const width = Math.max(280, Math.floor(rect.width || 600));
+        const height = Math.max(180, Math.floor(rect.height || 320));
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+        canvas.width = width * dpr;
+        canvas.height = height * dpr;
+        const ctx = canvas.getContext('2d');
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        const padLeft = 10;
+        const padRight = 64;
+        const padTop = 14;
+        const padBottom = 24;
+        const plotW = Math.max(80, width - padLeft - padRight);
+        const totalPlotH = Math.max(100, height - padTop - padBottom);
+        const hasVolume = candles.some(c => c.volume > 0);
+        const priceH = hasVolume ? totalPlotH * 0.72 : totalPlotH;
+        const volGap = hasVolume ? 10 : 0;
+        const volTop = padTop + priceH + volGap;
+        const volH = hasVolume ? Math.max(24, totalPlotH - priceH - volGap) : 0;
+
+        // Clear background
+        ctx.fillStyle = '#070c17';
+        ctx.fillRect(0, 0, width, height);
+
+        // Compute Y range across candles & Bollinger bands
+        let minP = Infinity;
+        let maxP = -Infinity;
+        let maxV = 0;
+
+        for (let i = 0; i < candles.length; i++) {
+            const c = candles[i];
+            minP = Math.min(minP, c.low);
+            maxP = Math.max(maxP, c.high);
+            if (showBB) {
+                if (bb.lower[i] !== null) minP = Math.min(minP, bb.lower[i]);
+                if (bb.upper[i] !== null) maxP = Math.max(maxP, bb.upper[i]);
+            }
+            if (c.volume > maxV) maxV = c.volume;
+        }
+
+        if (!Number.isFinite(minP) || !Number.isFinite(maxP)) return;
+        const padPrice = Math.max(0.5, (maxP - minP) * 0.08);
+        minP -= padPrice;
+        maxP += padPrice;
+
+        const priceToY = (p) => padTop + ((maxP - p) / (maxP - minP)) * priceH;
+        const stepX = plotW / candles.length;
+        const candleW = Math.max(2, Math.min(12, stepX * 0.65));
+
+        // Gridlines & Right Y-axis Price Labels
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '11px Outfit, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.lineWidth = 1;
+
+        for (let g = 0; g <= 4; g++) {
+            const y = padTop + (priceH * g) / 4;
+            const val = maxP - ((maxP - minP) * g) / 4;
+            ctx.beginPath();
+            ctx.moveTo(padLeft, y);
+            ctx.lineTo(padLeft + plotW, y);
+            ctx.stroke();
+            ctx.fillText('₹' + val.toFixed(val >= 1000 ? 0 : 2), padLeft + plotW + 6, y + 4);
+        }
+
+        // Bollinger Bands fill + Upper/Mid/Lower lines
+        if (showBB) {
+            // Shaded cloud between upper and lower
+            const validIndices = [];
+            for (let i = 0; i < candles.length; i++) {
+                if (bb.upper[i] !== null && bb.lower[i] !== null) validIndices.push(i);
+            }
+            if (validIndices.length > 1) {
+                ctx.beginPath();
+                validIndices.forEach((idx, pos) => {
+                    const x = padLeft + (idx + 0.5) * stepX;
+                    const y = priceToY(bb.upper[idx]);
+                    if (pos === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                });
+                for (let k = validIndices.length - 1; k >= 0; k--) {
+                    const idx = validIndices[k];
+                    const x = padLeft + (idx + 0.5) * stepX;
+                    const y = priceToY(bb.lower[idx]);
+                    ctx.lineTo(x, y);
+                }
+                ctx.closePath();
+                ctx.fillStyle = 'rgba(56, 189, 248, 0.08)';
+                ctx.fill();
+            }
+
+            const drawLine = (series, color, dashed = false) => {
+                ctx.save();
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 1.4;
+                if (dashed) ctx.setLineDash([4, 4]);
+                ctx.beginPath();
+                let started = false;
+                for (let i = 0; i < candles.length; i++) {
+                    if (series[i] === null) continue;
+                    const x = padLeft + (i + 0.5) * stepX;
+                    const y = priceToY(series[i]);
+                    if (!started) { ctx.moveTo(x, y); started = true; }
+                    else ctx.lineTo(x, y);
+                }
+                ctx.stroke();
+                ctx.restore();
+            };
+
+            drawLine(bb.upper, '#38bdf8', false);
+            drawLine(bb.middle, '#f59e0b', true);
+            drawLine(bb.lower, '#38bdf8', false);
+        }
+
+        // Draw Candlesticks + Volume Bars
+        for (let i = 0; i < candles.length; i++) {
+            const c = candles[i];
+            const cx = padLeft + (i + 0.5) * stepX;
+            const isUp = c.close >= c.open;
+            const col = isUp ? '#22c55e' : '#ef4444';
+
+            // Wick
+            ctx.strokeStyle = col;
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            ctx.moveTo(cx, priceToY(c.high));
+            ctx.lineTo(cx, priceToY(c.low));
+            ctx.stroke();
+
+            // Body
+            const yOpen = priceToY(c.open);
+            const yClose = priceToY(c.close);
+            const bodyTop = Math.min(yOpen, yClose);
+            const bodyH = Math.max(2, Math.abs(yClose - yOpen));
+            ctx.fillStyle = col;
+            ctx.fillRect(cx - candleW / 2, bodyTop, candleW, bodyH);
+
+            // Pattern Marker badge on candle
+            const mk = markers[i];
+            if (mk) {
+                const isBullMk = mk.direction === 'BULLISH';
+                const isBearMk = mk.direction === 'BEARISH';
+                ctx.fillStyle = isBullMk ? '#10b981' : (isBearMk ? '#ef4444' : '#f59e0b');
+                const my = isBullMk ? Math.min(height - 26, priceToY(c.low) + 9) : Math.max(padTop + 9, priceToY(c.high) - 6);
+                ctx.beginPath();
+                ctx.arc(cx, my, 3.2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Volume Bars
+            if (hasVolume && maxV > 0) {
+                const vH = (c.volume / maxV) * volH;
+                ctx.fillStyle = isUp ? 'rgba(34, 197, 94, 0.55)' : 'rgba(239, 68, 68, 0.55)';
+                ctx.fillRect(cx - candleW / 2, volTop + volH - vH, candleW, vH);
+            }
+        }
+
+        // Volume 20-SMA line
+        if (hasVolume && maxV > 0) {
+            ctx.save();
+            ctx.strokeStyle = '#a855f7';
+            ctx.lineWidth = 1.2;
+            ctx.setLineDash([3, 3]);
+            ctx.beginPath();
+            for (let i = 0; i < candles.length; i++) {
+                const x = padLeft + (i + 0.5) * stepX;
+                const y = volTop + volH - ((volAvg[i] || 0) / maxV) * volH;
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+            ctx.restore();
+
+            ctx.fillStyle = '#a855f7';
+            ctx.font = '10px Outfit, sans-serif';
+            ctx.fillText('VOL', padLeft + plotW + 6, volTop + 11);
+        }
+
+        // Bottom X-axis time labels (5 evenly spaced)
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '10px Outfit, sans-serif';
+        ctx.textAlign = 'center';
+        const tickCount = Math.min(5, candles.length);
+        for (let t = 0; t < tickCount; t++) {
+            const idx = tickCount === 1 ? 0 : Math.round((t * (candles.length - 1)) / (tickCount - 1));
+            const x = padLeft + (idx + 0.5) * stepX;
+            const lbl = candles[idx].label || '';
+            ctx.fillText(lbl, Math.max(24, Math.min(padLeft + plotW - 24, x)), height - 6);
+        }
+
+        // Hover crosshair
+        if (hoverIdx >= 0 && hoverIdx < candles.length) {
+            const c = candles[hoverIdx];
+            const hx = padLeft + (hoverIdx + 0.5) * stepX;
+            const hy = priceToY(c.close);
+
+            ctx.save();
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+            ctx.setLineDash([3, 3]);
+            ctx.beginPath();
+            ctx.moveTo(hx, padTop);
+            ctx.lineTo(hx, padTop + totalPlotH);
+            ctx.moveTo(padLeft, hy);
+            ctx.lineTo(padLeft + plotW, hy);
+            ctx.stroke();
+            ctx.restore();
+
+            if (readoutEl) {
+                const mk = markers[hoverIdx];
+                const bbStr = (showBB && bb.upper[hoverIdx] !== null)
+                    ? ` | BB: ${bb.upper[hoverIdx].toFixed(1)}/${bb.middle[hoverIdx].toFixed(1)}/${bb.lower[hoverIdx].toFixed(1)}`
+                    : '';
+                const volText = c.volume > 0 ? ` | Vol: ${Math.round(c.volume).toLocaleString('en-IN')}` : '';
+                const patText = mk ? ` | ${mk.name}` : '';
+                readoutEl.textContent = `${c.label} | O:${c.open.toFixed(2)} H:${c.high.toFixed(2)} L:${c.low.toFixed(2)} C:${c.close.toFixed(2)}${volText}${bbStr}${patText}`;
+            }
+        }
+    };
+
+    const handleMove = (clientX) => {
+        const rect = canvas.getBoundingClientRect();
+        const plotW = Math.max(80, rect.width - 10 - 64);
+        const relX = clientX - rect.left - 10;
+        const idx = Math.floor((relX / plotW) * candles.length);
+        hoverIdx = Math.max(0, Math.min(candles.length - 1, idx));
+        draw();
+    };
+
+    const onMouseMove = (e) => handleMove(e.clientX);
+    const onTouchMove = (e) => {
+        if (e.touches && e.touches[0]) handleMove(e.touches[0].clientX);
+    };
+    const onLeave = () => {
+        hoverIdx = -1;
+        draw();
+    };
+    const onResize = () => draw();
+
+    canvas.addEventListener('mousemove', onMouseMove);
+    canvas.addEventListener('touchmove', onTouchMove, { passive: true });
+    canvas.addEventListener('mouseleave', onLeave);
+    window.addEventListener('resize', onResize);
+
+    canvas.__ccCleanup = () => {
+        canvas.removeEventListener('mousemove', onMouseMove);
+        canvas.removeEventListener('touchmove', onTouchMove);
+        canvas.removeEventListener('mouseleave', onLeave);
+        window.removeEventListener('resize', onResize);
+    };
+
+    draw();
+    return analysis;
+}
+
+window.renderModalCandleChart = async function(modalKey, symbol, canvasId, fallbackCandles = []) {
+    const st = modalChartState[modalKey];
+    if (!st) return;
+    st.symbol = symbol;
+    st.fallback = fallbackCandles;
+
+    const readoutId = modalKey === 'rm' ? 'rm-hover-readout' : 'cm-hover-readout';
+    const readoutEl = document.getElementById(readoutId);
+    if (readoutEl) readoutEl.textContent = `${symbol} (${st.interval}) લોડ થઈ રહ્યું છે...`;
+
+    try {
+        const candles = await fetchCandleSeries(symbol, st.interval);
+        st.candles = candles;
+        renderCandlestickBollingerChart(canvasId, candles, {
+            showBB: st.showBB,
+            readoutId,
+            maxBars: 65
+        });
+        const last = candles[candles.length - 1];
+        if (readoutEl && last) {
+            readoutEl.textContent = `${symbol} (${st.interval}) | O:${last.open.toFixed(2)} H:${last.high.toFixed(2)} L:${last.low.toFixed(2)} C:${last.close.toFixed(2)}`;
+        }
+    } catch (err) {
+        if (Array.isArray(fallbackCandles) && fallbackCandles.length > 0) {
+            st.candles = fallbackCandles;
+            renderCandlestickBollingerChart(canvasId, fallbackCandles, {
+                showBB: st.showBB,
+                readoutId,
+                maxBars: 65
+            });
+            if (readoutEl) readoutEl.textContent = `${symbol} (Master Daily Fallback) | Candlestick + BB (20,2)`;
+        } else if (readoutEl) {
+            readoutEl.textContent = `${symbol} ચાર્ટ ઉપલબ્ધ નથી (${err.message})`;
+        }
+    }
+};
+
+window.initModalChartControls = function() {
+    const setupModal = (modalKey, tfGroupId, bbToggleId, canvasId) => {
+        const tfGroup = document.getElementById(tfGroupId);
+        const bbToggle = document.getElementById(bbToggleId);
+        if (tfGroup && !tfGroup.dataset.wired) {
+            tfGroup.dataset.wired = '1';
+            tfGroup.querySelectorAll('.cc-tf-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    tfGroup.querySelectorAll('.cc-tf-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    modalChartState[modalKey].interval = btn.dataset.tf || '5m';
+                    if (modalChartState[modalKey].symbol) {
+                        window.renderModalCandleChart(
+                            modalKey,
+                            modalChartState[modalKey].symbol,
+                            canvasId,
+                            modalChartState[modalKey].fallback
+                        );
+                    }
+                });
+            });
+        }
+        if (bbToggle && !bbToggle.dataset.wired) {
+            bbToggle.dataset.wired = '1';
+            bbToggle.addEventListener('change', () => {
+                modalChartState[modalKey].showBB = bbToggle.checked;
+                const st = modalChartState[modalKey];
+                const readoutId = modalKey === 'rm' ? 'rm-hover-readout' : 'cm-hover-readout';
+                if (st.candles && st.candles.length > 0) {
+                    renderCandlestickBollingerChart(canvasId, st.candles, {
+                        showBB: st.showBB,
+                        readoutId,
+                        maxBars: 65
+                    });
+                }
+            });
+        }
+    };
+
+    setupModal('rm', 'rm-tf-group', 'rm-bb-toggle', 'research-price-chart');
+    setupModal('cm', 'cm-tf-group', 'cm-bb-toggle', 'price-chart');
+};
+
+const CANDLE_PATTERN_GUIDE = [
+    {
+        category: 'bullish',
+        name: 'Hammer (હેમર / હથોડી)',
+        signal: 'ભાવ વધશે (Bullish Reversal)',
+        desc: 'ઘટાડાના અંતે નીચે લાંબી પૂંછડી (2x+ બોડી) અને ઉપર નાની બોડી બને ત્યારે નીચેથી મજબૂત ખરીદી થઈ હોવાનું દર્શાવે છે.',
+        volRule: 'જો હેમર કેન્ડલ પર વોલ્યુમ 1.5x+ હોય અને આગલી કેન્ડલ હેમર High ની ઉપર બંધ થાય તો તેજી પાકી થાય છે.',
+        source: 'Zerodha Varsity / Investopedia',
+        svg: `<svg viewBox="0 0 60 72" width="54" height="68"><line x1="30" y1="12" x2="30" y2="62" stroke="#22c55e" stroke-width="2.5"/><rect x="21" y="14" width="18" height="14" rx="2" fill="#22c55e"/></svg>`
+    },
+    {
+        category: 'bullish',
+        name: 'Bullish Engulfing (બુલિશ એન્ગલ્ફિંગ)',
+        signal: 'ભાવ વધશે (Bullish Reversal)',
+        desc: 'એક નાની લાલ કેન્ડલ પછી મોટી ગ્રીન કેન્ડલ આવે જે લાલ કેન્ડલની બોડીને સંપૂર્ણ ઢાંકી દે.',
+        volRule: 'ગ્રીન કેન્ડલનું વોલ્યુમ લાલ કેન્ડલ કરતાં વધુ (અને Average Vol થી >1.3x) હોય તો ભાવ ઝડપથી વધે છે.',
+        source: 'Investopedia / Zerodha Varsity',
+        svg: `<svg viewBox="0 0 60 72" width="54" height="68"><line x1="20" y1="22" x2="20" y2="48" stroke="#ef4444" stroke-width="2"/><rect x="14" y="27" width="12" height="15" rx="1.5" fill="#ef4444"/><line x1="40" y1="12" x2="40" y2="58" stroke="#22c55e" stroke-width="2"/><rect x="33" y="18" width="14" height="32" rx="1.5" fill="#22c55e"/></svg>`
+    },
+    {
+        category: 'bullish',
+        name: 'Morning Star (મોર્નિંગ સ્ટાર)',
+        signal: 'ભાવ વધશે (3-Candle Reversal)',
+        desc: 'પ્રથમ મોટી લાલ કેન્ડલ, વચ્ચે નાની ડોજી/સ્ટાર અને ત્રીજી મોટી ગ્રીન કેન્ડલ જે પ્રથમ કેન્ડલના 50%+ ઉપર બંધ થાય.',
+        volRule: 'ત્રીજી ગ્રીન કેન્ડલમાં ભારે વોલ્યુમ હોવું અત્યંત મજબૂત અપટ્રેન્ડનો સંકેત આપે છે.',
+        source: 'Zerodha Varsity',
+        svg: `<svg viewBox="0 0 60 72" width="54" height="68"><rect x="8" y="14" width="11" height="28" rx="1.5" fill="#ef4444"/><rect x="25" y="45" width="9" height="9" rx="1.5" fill="#f59e0b"/><rect x="40" y="18" width="11" height="26" rx="1.5" fill="#22c55e"/></svg>`
+    },
+    {
+        category: 'bullish',
+        name: 'Three White Soldiers (થ્રી વ્હાઇટ સોલ્જર્સ)',
+        signal: 'મજબૂત તેજી (Strong Bullish)',
+        desc: 'સતત ત્રણ મજબૂત ગ્રીન કેન્ડલ્સ જે દરેક પાછલી કેન્ડલની ઉપર ઊંચા ભાવે બંધ થાય અને નાની પૂંછડી હોય.',
+        volRule: 'દરેક ગ્રીન કેન્ડલ સાથે વધતું જતું વોલ્યુમ સંસ્થાકીય ખરીદી (Institutional Buying) દર્શાવે છે.',
+        source: 'Investopedia',
+        svg: `<svg viewBox="0 0 60 72" width="54" height="68"><rect x="8" y="38" width="11" height="22" rx="1.5" fill="#22c55e"/><rect x="24" y="25" width="11" height="23" rx="1.5" fill="#22c55e"/><rect x="40" y="12" width="11" height="23" rx="1.5" fill="#22c55e"/></svg>`
+    },
+    {
+        category: 'bullish',
+        name: 'Piercing Line (પિયર્સિંગ લાઇન)',
+        signal: 'ભાવ વધશે (Support Reversal)',
+        desc: 'મોટી લાલ કેન્ડલ પછી નીચે ગેપ-ડાઉનથી ખુલીને ગ્રીન કેન્ડલ લાલ કેન્ડલના મધ્યબિંદુ (50%) ઉપર બંધ થાય.',
+        volRule: 'વોલ્યુમ વધારે હોય તો બાયર્સ કંટ્રોલ લઈ રહ્યા છે તેવું સ્પષ્ટ દેખાય છે.',
+        source: 'Zerodha Varsity',
+        svg: `<svg viewBox="0 0 60 72" width="54" height="68"><rect x="14" y="14" width="13" height="34" rx="1.5" fill="#ef4444"/><rect x="33" y="26" width="13" height="30" rx="1.5" fill="#22c55e"/></svg>`
+    },
+    {
+        category: 'bearish',
+        name: 'Shooting Star (શૂટિંગ સ્ટાર)',
+        signal: 'ભાવ ઘટશે (Bearish Reversal)',
+        desc: 'તેજીની ટોચ પર ઉપર લાંબી પૂંછડી (2x+ બોડી) અને નીચે નાની બોડી બને એટલે ઉપરના ભાવે ભારે વેચવાલી છે.',
+        volRule: 'ઊંચા વોલ્યુમ સાથે બનેલી શૂટિંગ સ્ટાર અને આગલી લાલ કેન્ડલ તીવ્ર ઘટાડાનો સંકેત આપે છે.',
+        source: 'Investopedia / Zerodha Varsity',
+        svg: `<svg viewBox="0 0 60 72" width="54" height="68"><line x1="30" y1="10" x2="30" y2="60" stroke="#ef4444" stroke-width="2.5"/><rect x="21" y="44" width="18" height="14" rx="2" fill="#ef4444"/></svg>`
+    },
+    {
+        category: 'bearish',
+        name: 'Bearish Engulfing (બેરિશ એન્ગલ્ફિંગ)',
+        signal: 'ભાવ ઘટશે (Bearish Reversal)',
+        desc: 'તેજી દરમિયાન નાની ગ્રીન કેન્ડલ પછી મોટી લાલ કેન્ડલ ગ્રીન કેન્ડલને સંપૂર્ણ ગળી જાય.',
+        volRule: 'લાલ કેન્ડલ પર Avg Vol કરતાં 1.5x+ વોલ્યુમ હોય તો સ્ટોપ-લોસ હિટ થઈ ઝડપી ઘટાડો આવે છે.',
+        source: 'Investopedia / Zerodha Varsity',
+        svg: `<svg viewBox="0 0 60 72" width="54" height="68"><rect x="14" y="25" width="12" height="16" rx="1.5" fill="#22c55e"/><rect x="33" y="14" width="14" height="38" rx="1.5" fill="#ef4444"/></svg>`
+    },
+    {
+        category: 'bearish',
+        name: 'Evening Star (ઇવનિંગ સ્ટાર)',
+        signal: 'ભાવ ઘટશે (Top Reversal)',
+        desc: 'મોટી ગ્રીન કેન્ડલ, ટોચ પર નાની સ્ટાર કેન્ડલ અને ત્રીજી મોટી લાલ કેન્ડલ જે પ્રથમ કેન્ડલની અંદર ઊંડે બંધ થાય.',
+        volRule: 'ત્રીજી લાલ કેન્ડલ સાથે વધતો વોલ્યુમ તેજીનો અંત અને મંદીની શરૂઆત બતાવે છે.',
+        source: 'Zerodha Varsity',
+        svg: `<svg viewBox="0 0 60 72" width="54" height="68"><rect x="8" y="24" width="11" height="28" rx="1.5" fill="#22c55e"/><rect x="25" y="12" width="9" height="9" rx="1.5" fill="#f59e0b"/><rect x="40" y="22" width="11" height="30" rx="1.5" fill="#ef4444"/></svg>`
+    },
+    {
+        category: 'bearish',
+        name: 'Three Black Crows (થ્રી બ્લેક ક્રોઝ)',
+        signal: 'મજબૂત ઘટાડો (Strong Bearish)',
+        desc: 'સતત ત્રણ લાલ કેન્ડલ્સ જે દરેક પાછલી કેન્ડલની નીચે બંધ થાય — સતત વેચવાલી દર્શાવે છે.',
+        volRule: 'વધતા વોલ્યુમ સાથે ત્રણ લાલ કેન્ડલ આવે ત્યારે લોંગ પોઝિશનમાંથી નીકળવાનો સંકેત ગણાય.',
+        source: 'Investopedia',
+        svg: `<svg viewBox="0 0 60 72" width="54" height="68"><rect x="8" y="12" width="11" height="22" rx="1.5" fill="#ef4444"/><rect x="24" y="24" width="11" height="22" rx="1.5" fill="#ef4444"/><rect x="40" y="36" width="11" height="22" rx="1.5" fill="#ef4444"/></svg>`
+    },
+    {
+        category: 'bearish',
+        name: 'Hanging Man (હેંગિંગ મેન)',
+        signal: 'ઘટાડાની ચેતવણી (Bearish Warning)',
+        desc: 'અપટ્રેન્ડની ટોચ પર હેમર જેવી આકૃતિ બને તો ઉપરથી સપ્લાય આવી રહ્યો હોવાની ચેતવણી મળે છે.',
+        volRule: 'આગલી કેન્ડલ હેંગિંગ મેનની નીચે ઊંચા વોલ્યુમથી બંધ થાય ત્યારે ઘટાડો શરૂ થાય છે.',
+        source: 'Investopedia',
+        svg: `<svg viewBox="0 0 60 72" width="54" height="68"><line x1="30" y1="14" x2="30" y2="62" stroke="#ef4444" stroke-width="2.5"/><rect x="21" y="14" width="18" height="14" rx="2" fill="#ef4444"/></svg>`
+    },
+    {
+        category: 'volume',
+        name: 'Volume Breakout vs Fakeout નિયમ',
+        signal: 'Volume Confirmation Rule',
+        desc: 'માત્ર કેન્ડલ જોઈને ટ્રેડ ન લેવો — સાચા બ્રેકઆઉટ માટે કેન્ડલ પર વોલ્યુમ 20-બાર સરેરાશ કરતાં ઓછામાં ઓછું 1.5 ગણું હોવું જરૂરી.',
+        volRule: 'ઓછા વોલ્યુમ પર ભાવ વધે/ઘટે તો તે Fakeout (ટ્રેપ) હોઈ શકે; વધારે વોલ્યુમ સાથે ગ્રીન = વધશે, લાલ = ઘટશે.',
+        source: 'Zerodha Varsity / TradingView',
+        svg: `<svg viewBox="0 0 60 72" width="54" height="68"><rect x="10" y="42" width="8" height="20" fill="#64748b"/><rect x="22" y="38" width="8" height="24" fill="#64748b"/><rect x="34" y="12" width="10" height="50" fill="#22c55e"/><line x1="6" y1="34" x2="54" y2="34" stroke="#a855f7" stroke-dasharray="3 2" stroke-width="1.5"/></svg>`
+    },
+    {
+        category: 'volume',
+        name: 'Bollinger Bands Squeeze & Bounce',
+        signal: 'Bollinger (20, 2) નિયમ',
+        desc: 'જ્યારે Upper અને Lower Band એકદમ નજીક (Squeeze) આવે ત્યારે મોટી મૂવ આવવાની હોય છે; Lower Band પર Hammer = વધશે, Upper Band પર Shooting Star = ઘટશે.',
+        volRule: 'Squeeze પછી જે બાજુ 1.5x+ વોલ્યુમ સાથે કેન્ડલ Band બહાર બંધ થાય તે દિશામાં ઝડપી ટ્રેન્ડ ચાલે છે.',
+        source: 'TradingView / John Bollinger',
+        svg: `<svg viewBox="0 0 60 72" width="54" height="68"><path d="M6 16 Q30 26 54 12" fill="none" stroke="#38bdf8" stroke-width="2"/><path d="M6 36 Q30 36 54 34" fill="none" stroke="#f59e0b" stroke-dasharray="3 2" stroke-width="1.5"/><path d="M6 56 Q30 46 54 58" fill="none" stroke="#38bdf8" stroke-width="2"/><rect x="38" y="14" width="7" height="16" fill="#22c55e"/></svg>`
+    }
+];
+
+function renderCandlePatternGuide(filter = 'all') {
+    const grid = document.getElementById('cc-guide-grid');
+    if (!grid) return;
+
+    const filtered = filter === 'all'
+        ? CANDLE_PATTERN_GUIDE
+        : CANDLE_PATTERN_GUIDE.filter(p => p.category === filter);
+
+    grid.innerHTML = filtered.map(p => {
+        const badgeCls = p.category === 'bullish'
+            ? 'cc-verdict-bullish'
+            : (p.category === 'bearish' ? 'cc-verdict-bearish' : 'cc-verdict-neutral');
+        return `
+            <div class="cc-guide-card">
+                <div class="cc-guide-svg-box">${p.svg}</div>
+                <div class="cc-guide-info">
+                    <h4>${p.name}</h4>
+                    <span class="cc-guide-sig ${badgeCls}">${p.signal}</span>
+                    <p>${p.desc}</p>
+                    <div class="cc-guide-vol-rule"><strong>Volume / BB નિયમ:</strong> ${p.volRule}</div>
+                    <div class="cc-guide-source">સંદર્ભ: ${p.source}</div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function populateCandleSymbolDatalist() {
+    const dl = document.getElementById('cc-symbol-datalist');
+    if (!dl) return;
+    const defaults = ['RELIANCE', 'TCS', 'HDFCBANK', 'ICICIBANK', 'SBIN', 'INFY', 'ITC', 'TATAMOTORS', 'BHARTIARTL', '^NSEI', '^BSESN'];
+    const set = new Set(defaults);
+    if (Array.isArray(state.processedMasterData) && state.symbolColIndex !== -1) {
+        for (let i = 1; i < Math.min(state.processedMasterData.length, 400); i++) {
+            const sym = String(state.processedMasterData[i][state.symbolColIndex] || '').trim().toUpperCase();
+            if (sym) set.add(sym);
+        }
+    }
+    dl.innerHTML = Array.from(set).map(s => `<option value="${s}"></option>`).join('');
+}
+
+window.initCandleChartTab = function() {
+    if (candleTabState.initialized) {
+        populateCandleSymbolDatalist();
+        return;
+    }
+    candleTabState.initialized = true;
+    populateCandleSymbolDatalist();
+    renderCandlePatternGuide(candleTabState.guideFilter);
+
+    const symInput = document.getElementById('cc-symbol-input');
+    const loadBtn = document.getElementById('cc-load-btn');
+    const bbToggle = document.getElementById('cc-bb-toggle');
+    const tfGroup = document.getElementById('cc-timeframe-group');
+
+    const triggerLoad = () => {
+        if (symInput && symInput.value.trim()) {
+            candleTabState.symbol = symInput.value.trim().toUpperCase();
+        }
+        window.loadCandleChartTab(true);
+    };
+
+    if (loadBtn) loadBtn.addEventListener('click', triggerLoad);
+    if (symInput) {
+        symInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                triggerLoad();
+            }
+        });
+    }
+
+    if (tfGroup) {
+        tfGroup.querySelectorAll('.cc-tf-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                tfGroup.querySelectorAll('.cc-tf-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                candleTabState.interval = btn.dataset.tf || '5m';
+                window.loadCandleChartTab(true);
+            });
+        });
+    }
+
+    if (bbToggle) {
+        bbToggle.addEventListener('change', () => {
+            candleTabState.showBB = bbToggle.checked;
+            if (candleTabState.candles.length > 0) {
+                renderCandlestickBollingerChart('candle-main-canvas', candleTabState.candles, {
+                    showBB: candleTabState.showBB,
+                    readoutId: 'cc-hover-readout',
+                    maxBars: 85
+                });
+            }
+        });
+    }
+
+    document.querySelectorAll('#cc-quick-picks .cc-quick-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const sym = btn.dataset.sym;
+            if (symInput) symInput.value = sym;
+            candleTabState.symbol = sym;
+            window.loadCandleChartTab(true);
+        });
+    });
+
+    document.querySelectorAll('#cc-guide-filters .cc-filter-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('#cc-guide-filters .cc-filter-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            candleTabState.guideFilter = btn.dataset.filter || 'all';
+            renderCandlePatternGuide(candleTabState.guideFilter);
+        });
+    });
+};
+
+window.loadCandleChartTab = async function() {
+    const symbol = candleTabState.symbol || 'RELIANCE';
+    const interval = candleTabState.interval || '5m';
+
+    const badgeEl = document.getElementById('cc-verdict-badge');
+    const patEl = document.getElementById('cc-verdict-pattern');
+    const descEl = document.getElementById('cc-verdict-desc');
+    const detSymEl = document.getElementById('cc-detected-symbol');
+    const detListEl = document.getElementById('cc-detected-list');
+    if (detSymEl) detSymEl.textContent = `${symbol} (${interval})`;
+    if (patEl) patEl.textContent = `${symbol} (${interval}) લોડ થઈ રહ્યું છે...`;
+
+    try {
+        const candles = await fetchCandleSeries(symbol, interval);
+        candleTabState.candles = candles;
+
+        const analysis = renderCandlestickBollingerChart('candle-main-canvas', candles, {
+            showBB: candleTabState.showBB,
+            readoutId: 'cc-hover-readout',
+            maxBars: 85
+        });
+
+        if (analysis && analysis.verdict) {
+            const v = analysis.verdict;
+            if (badgeEl) {
+                badgeEl.textContent = v.titleGu;
+                badgeEl.className = 'cc-verdict-badge ' + (
+                    v.direction === 'BULLISH' ? 'cc-verdict-bullish' :
+                    v.direction === 'BEARISH' ? 'cc-verdict-bearish' : 'cc-verdict-neutral'
+                );
+            }
+            if (patEl) patEl.textContent = v.patternTitle;
+            if (descEl) descEl.textContent = v.summaryGu;
+
+            const setText = (id, txt) => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = txt;
+            };
+            setText('cc-stat-close', `₹${v.close.toFixed(2)}`);
+            setText('cc-stat-vol', `${v.volRatio.toFixed(2)}x Avg`);
+            setText('cc-stat-bb', v.bbUpper ? `${v.bbUpper.toFixed(0)} / ${v.bbMid.toFixed(0)} / ${v.bbLower.toFixed(0)}` : '--');
+            setText('cc-stat-meta', `${interval.toUpperCase()} • ${candles.length} Bars`);
+        }
+
+        if (detListEl) {
+            const recent = analysis?.recentPatterns || [];
+            if (recent.length === 0) {
+                detListEl.innerHTML = `<div class="cc-empty-note">તાજેતરની કેન્ડલ્સમાં કોઈ ખાસ રિવર્સલ પેટર્ન નથી — Bollinger Middle (20-SMA) અને Volume પર નજર રાખો.</div>`;
+            } else {
+                detListEl.innerHTML = recent.map(r => {
+                    const bCls = r.direction === 'BULLISH' ? 'cc-verdict-bullish' : (r.direction === 'BEARISH' ? 'cc-verdict-bearish' : 'cc-verdict-neutral');
+                    const dTxt = r.direction === 'BULLISH' ? 'વધશે' : (r.direction === 'BEARISH' ? 'ઘટશે' : 'રાહ જુઓ');
+                    return `
+                        <div class="cc-detected-card">
+                            <div class="cc-detected-top">
+                                <strong style="font-size:0.84rem;color:#f8fafc;">${r.name}</strong>
+                                <span class="cc-guide-sig ${bCls}" style="margin:0;">${dTxt}</span>
+                            </div>
+                            <div style="font-size:0.72rem;color:#38bdf8;">Time: ${r.label} • Price: ₹${r.price.toFixed(2)} • ${r.volStr}</div>
+                            <p>${r.desc}</p>
+                        </div>
+                    `;
+                }).join('');
+            }
+        }
+    } catch (err) {
+        if (badgeEl) {
+            badgeEl.textContent = 'ડેટા ઉપલબ્ધ નથી';
+            badgeEl.className = 'cc-verdict-badge cc-verdict-neutral';
+        }
+        if (patEl) patEl.textContent = `${symbol} (${interval})`;
+        if (descEl) descEl.textContent = `ચાર્ટ લોડ કરવામાં ભૂલ: ${err.message}. કૃપા કરી સાચો NSE Symbol (જેમ કે RELIANCE, TCS, ^NSEI) તપાસો.`;
     }
 };
 

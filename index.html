@@ -131,6 +131,9 @@
             <button class="nav-btn" id="tab-call-put" style="border-color: #06b6d4; color: #22d3ee; font-weight: bold;">
                 <i class="fa-solid fa-layer-group"></i> કોલ પુટ (Call Put)
             </button>
+            <button class="nav-btn" id="tab-candle-chart" style="border-color: #f59e0b; color: #fbbf24; font-weight: bold;">
+                <i class="fa-solid fa-chart-column"></i> Candle Chart
+            </button>
         </nav>
 
         <!-- Tab 1: Stock Research Content -->
@@ -1275,6 +1278,139 @@
                 </div>
             </div>
         </div>
+
+        <!-- Tab 13: Candle Chart (Candlestick + Bollinger Bands + Volume + Trusted Pattern Guidance) -->
+        <div id="candle-chart-tab-content" class="hidden">
+            <div class="card candle-chart-card">
+                <div class="card-header cc-header-row">
+                    <div>
+                        <h2 style="color: #fbbf24;">
+                            <i class="fa-solid fa-chart-column"></i> Candle Chart – કેન્ડલસ્ટિક, બોલિંગર બેન્ડ &amp; વોલ્યુમ પેટર્ન ગાઇડ
+                        </h2>
+                        <p class="card-desc" style="margin-bottom: 0; margin-top: 0.25rem;">
+                            1, 3, 5, 10 મિનિટ કે ડેઇલી કેન્ડલસ્ટિક + Bollinger Bands + Volume પરથી શેરનો ભાવ આગળ વધશે કે ઘટશે તેની ઓળખ અને વિશ્વાસપાત્ર વેબસાઇટ્સ આધારિત પેટર્ન માર્ગદર્શન.
+                        </p>
+                    </div>
+                    <div class="cc-controls">
+                        <div class="cc-search-wrap">
+                            <input type="text" id="cc-symbol-input" list="cc-symbol-datalist" value="RELIANCE" placeholder="Symbol (e.g. RELIANCE, TCS, ^NSEI)" aria-label="Stock Symbol">
+                            <datalist id="cc-symbol-datalist"></datalist>
+                            <button type="button" id="cc-load-btn" class="btn btn-primary cc-load-btn">
+                                <i class="fa-solid fa-magnifying-glass-chart"></i> Chart જુઓ
+                            </button>
+                        </div>
+                        <div class="cc-timeframe-group" id="cc-timeframe-group">
+                            <button type="button" class="cc-tf-btn" data-tf="1m">1 મિનિટ</button>
+                            <button type="button" class="cc-tf-btn" data-tf="3m">3 મિનિટ</button>
+                            <button type="button" class="cc-tf-btn active" data-tf="5m">5 મિનિટ</button>
+                            <button type="button" class="cc-tf-btn" data-tf="10m">10 મિનિટ</button>
+                            <button type="button" class="cc-tf-btn" data-tf="1d">1 દિવસ</button>
+                        </div>
+                        <label class="cc-bb-label">
+                            <input type="checkbox" id="cc-bb-toggle" checked>
+                            <span>Bollinger Bands (20, 2)</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Quick Stock / Index Picks -->
+                <div class="cc-quick-picks" id="cc-quick-picks">
+                    <span class="cc-quick-label">ઝડપી પસંદગી:</span>
+                    <button type="button" class="cc-quick-btn" data-sym="RELIANCE">RELIANCE</button>
+                    <button type="button" class="cc-quick-btn" data-sym="TCS">TCS</button>
+                    <button type="button" class="cc-quick-btn" data-sym="HDFCBANK">HDFCBANK</button>
+                    <button type="button" class="cc-quick-btn" data-sym="SBIN">SBIN</button>
+                    <button type="button" class="cc-quick-btn" data-sym="INFY">INFY</button>
+                    <button type="button" class="cc-quick-btn" data-sym="ICICIBANK">ICICIBANK</button>
+                    <button type="button" class="cc-quick-btn" data-sym="^NSEI">NIFTY 50</button>
+                    <button type="button" class="cc-quick-btn" data-sym="^BSESN">SENSEX</button>
+                </div>
+
+                <!-- Future Price Direction Verdict (Bullish / Bearish + Volume + BB) -->
+                <div class="cc-verdict-card" id="cc-verdict-card">
+                    <div class="cc-verdict-left">
+                        <span class="cp-kicker">VOLUME + CANDLE + BOLLINGER BANDS ભાવ અનુમાન</span>
+                        <div class="cc-verdict-headline">
+                            <span id="cc-verdict-badge" class="cc-verdict-badge">Loading...</span>
+                            <strong id="cc-verdict-pattern" class="cc-verdict-pattern">ડેટા લોડ થઈ રહ્યો છે...</strong>
+                        </div>
+                        <p id="cc-verdict-desc" class="cc-verdict-desc">કેન્ડલસ્ટિક અને વોલ્યુમ પેટર્નનું વિશ્લેષણ ચાલુ છે...</p>
+                    </div>
+                    <div class="cc-verdict-metrics">
+                        <div class="cc-metric-box">
+                            <span>છેલ્લો ભાવ (Close)</span>
+                            <strong id="cc-stat-close">--</strong>
+                        </div>
+                        <div class="cc-metric-box">
+                            <span>વોલ્યુમ vs સરેરાશ</span>
+                            <strong id="cc-stat-vol">--</strong>
+                        </div>
+                        <div class="cc-metric-box">
+                            <span>BB Upper / Mid / Lower</span>
+                            <strong id="cc-stat-bb">--</strong>
+                        </div>
+                        <div class="cc-metric-box">
+                            <span>ટાઇમફ્રેમ / સ્રોત</span>
+                            <strong id="cc-stat-meta">5m</strong>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Main Interactive Candlestick + Bollinger Bands + Volume Canvas -->
+                <div class="cc-chart-shell">
+                    <div class="cc-legend-bar">
+                        <span><i class="fa-solid fa-square" style="color:#22c55e;"></i> Bullish Candle</span>
+                        <span><i class="fa-solid fa-square" style="color:#ef4444;"></i> Bearish Candle</span>
+                        <span><i class="fa-solid fa-minus" style="color:#38bdf8;"></i> BB Upper / Lower (20,2)</span>
+                        <span><i class="fa-solid fa-minus" style="color:#f59e0b;"></i> BB Middle (20 SMA)</span>
+                        <span><i class="fa-solid fa-chart-simple" style="color:#a855f7;"></i> Volume + 20-Avg</span>
+                        <span id="cc-hover-readout" class="cc-hover-readout">માઉસ/ટચ દ્વારા કેન્ડલની વિગત જુઓ</span>
+                    </div>
+                    <div class="cc-canvas-wrap">
+                        <canvas id="candle-main-canvas"></canvas>
+                    </div>
+                </div>
+
+                <!-- Recently Detected Patterns on This Chart -->
+                <div class="cc-detected-section">
+                    <h3 style="color:#38bdf8; margin-bottom:0.65rem; font-size:0.95rem;">
+                        <i class="fa-solid fa-radar"></i> આ ચાર્ટમાં તાજેતરમાં દેખાયેલી કેન્ડલ &amp; વોલ્યુમ પેટર્ન્સ (<span id="cc-detected-symbol">RELIANCE</span>)
+                    </h3>
+                    <div id="cc-detected-list" class="cc-detected-grid">
+                        <div class="cc-empty-note">ચાર્ટ લોડ થયા બાદ અહીં મળેલી પેટર્ન દેખાશે...</div>
+                    </div>
+                </div>
+
+                <!-- Trusted Website Pattern Guidance Library -->
+                <div class="cc-guide-section">
+                    <div class="cc-guide-header">
+                        <div>
+                            <h3 style="color:#fbbf24; margin:0; font-size:1.05rem;">
+                                <i class="fa-solid fa-book-open"></i> વિશ્વાસપાત્ર વેબસાઇટ્સ પરથી કેન્ડલ અને વોલ્યુમ પેટર્ન માર્ગદર્શિકા
+                            </h3>
+                            <p style="font-size:0.8rem; color:var(--text-secondary); margin:0.25rem 0 0;">
+                                સ્રોત: <strong>Zerodha Varsity</strong>, <strong>Investopedia</strong> અને <strong>TradingView Technical Guide</strong> – કઈ કેન્ડલ + વોલ્યુમથી ભાવ વધશે (Bullish) કે ઘટશે (Bearish)?
+                            </p>
+                        </div>
+                        <div class="cc-guide-filters" id="cc-guide-filters">
+                            <button type="button" class="cc-filter-btn active" data-filter="all">બધી પેટર્ન (All)</button>
+                            <button type="button" class="cc-filter-btn" data-filter="bullish">વધશે (Bullish)</button>
+                            <button type="button" class="cc-filter-btn" data-filter="bearish">ઘટશે (Bearish)</button>
+                            <button type="button" class="cc-filter-btn" data-filter="volume">Volume &amp; BB નિયમ</button>
+                        </div>
+                    </div>
+
+                    <div id="cc-guide-grid" class="cc-guide-grid"></div>
+
+                    <div class="cc-trusted-links">
+                        <span>સંદર્ભ વેબસાઇટ્સ:</span>
+                        <a href="https://zerodha.com/varsity/module/technical-analysis/" target="_blank" rel="noopener noreferrer">Zerodha Varsity (Technical Analysis) <i class="fa-solid fa-arrow-up-right-from-square"></i></a>
+                        <a href="https://www.investopedia.com/trading/candlestick-charting-what-is-it/" target="_blank" rel="noopener noreferrer">Investopedia Candlestick Guide <i class="fa-solid fa-arrow-up-right-from-square"></i></a>
+                        <a href="https://www.tradingview.com/support/solutions/43000502253-bollinger-bands-bb/" target="_blank" rel="noopener noreferrer">TradingView Bollinger Bands <i class="fa-solid fa-arrow-up-right-from-square"></i></a>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Auto Fetch Modal -->
@@ -1335,12 +1471,28 @@
             </div>
             <div class="modal-body" style="display: flex; flex-direction: column; gap: 0.8rem; padding: 0.8rem 0; max-height: 80vh; overflow-y: auto; padding-right: 0.3rem;">
                 
-                <!-- Section 0: Price History Chart -->
+                <!-- Section 0: Candlestick + Bollinger Bands Chart -->
                 <div class="card" style="background: rgba(13,21,38,0.6); padding: 1rem; border: 1px solid var(--card-border); margin: 0;">
-                    <h3 style="color: var(--accent-color); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem; font-size: 0.92rem;">
-                        <i class="fa-solid fa-chart-area"></i> ભાવ ઇતિહાસ (Price History Chart)
-                    </h3>
-                    <div class="chart-container" style="height: 150px; position: relative;">
+                    <div style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:0.5rem; margin-bottom: 0.55rem;">
+                        <h3 style="color: var(--accent-color); margin:0; display: flex; align-items: center; gap: 0.5rem; font-size: 0.92rem;">
+                            <i class="fa-solid fa-chart-column"></i> કેન્ડલસ્ટિક + Bollinger Bands ચાર્ટ
+                        </h3>
+                        <div style="display:flex; flex-wrap:wrap; align-items:center; gap:0.35rem;">
+                            <div class="cc-timeframe-group cc-modal-tf-group" id="rm-tf-group">
+                                <button type="button" class="cc-tf-btn" data-tf="1m">1m</button>
+                                <button type="button" class="cc-tf-btn" data-tf="3m">3m</button>
+                                <button type="button" class="cc-tf-btn active" data-tf="5m">5m</button>
+                                <button type="button" class="cc-tf-btn" data-tf="10m">10m</button>
+                                <button type="button" class="cc-tf-btn" data-tf="1d">1D</button>
+                            </div>
+                            <label class="cc-bb-label cc-bb-mini">
+                                <input type="checkbox" id="rm-bb-toggle" checked>
+                                <span>BB</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div id="rm-hover-readout" style="font-size:0.72rem; color:#94a3b8; margin-bottom:0.35rem;">Candlestick + Bollinger Bands (20,2) + Volume</div>
+                    <div class="chart-container" style="height: 220px; position: relative;">
                         <canvas id="research-price-chart"></canvas>
                     </div>
                     <!-- Live Price / Data High / Data Low stats strip -->
@@ -1435,7 +1587,23 @@
                 <button class="modal-close" id="modal-close-btn">&times;</button>
             </div>
             <div class="modal-body">
-                <div class="chart-container">
+                <div style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:0.5rem; margin-bottom:0.5rem;">
+                    <span id="cm-hover-readout" style="font-size:0.74rem; color:#94a3b8;">Candlestick + Bollinger Bands (20,2) + Volume</span>
+                    <div style="display:flex; flex-wrap:wrap; align-items:center; gap:0.35rem;">
+                        <div class="cc-timeframe-group cc-modal-tf-group" id="cm-tf-group">
+                            <button type="button" class="cc-tf-btn" data-tf="1m">1m</button>
+                            <button type="button" class="cc-tf-btn" data-tf="3m">3m</button>
+                            <button type="button" class="cc-tf-btn active" data-tf="5m">5m</button>
+                            <button type="button" class="cc-tf-btn" data-tf="10m">10m</button>
+                            <button type="button" class="cc-tf-btn" data-tf="1d">1D</button>
+                        </div>
+                        <label class="cc-bb-label cc-bb-mini">
+                            <input type="checkbox" id="cm-bb-toggle" checked>
+                            <span>BB</span>
+                        </label>
+                    </div>
+                </div>
+                <div class="chart-container" style="height: 280px; position: relative;">
                     <canvas id="price-chart"></canvas>
                 </div>
                 <div class="modal-stats-grid">
