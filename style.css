@@ -2789,6 +2789,48 @@ html, body {
     width: 100% !important;
     height: 100% !important;
     display: block;
+    cursor: grab;
+    touch-action: pan-y;
+}
+
+.cc-canvas-wrap canvas:active,
+#research-price-chart:active,
+#price-chart:active {
+    cursor: grabbing;
+}
+
+.cc-zoom-controls {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    background: rgba(15, 23, 42, 0.85);
+    border: 1px solid var(--card-border);
+    border-radius: 6px;
+    padding: 0.15rem;
+}
+
+.cc-zoom-btn {
+    background: transparent;
+    color: #cbd5e1;
+    border: none;
+    border-radius: 4px;
+    padding: 0.22rem 0.45rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: var(--font-family);
+    line-height: 1.1;
+    transition: background 0.12s, color 0.12s;
+}
+
+.cc-zoom-btn:hover {
+    background: rgba(56, 189, 248, 0.22);
+    color: #ffffff;
+}
+
+.cc-zoom-mini .cc-zoom-btn {
+    padding: 0.18rem 0.36rem;
+    font-size: 0.68rem;
 }
 
 .cc-detected-section {

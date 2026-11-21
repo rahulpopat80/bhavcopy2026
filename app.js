@@ -7561,40 +7561,86 @@ function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
     let currentOptions = options;
     let hoverIdx = -1;
 
+    // Interactive scroll & zoom viewport state
+    let viewStart = 0;
+    let viewCount = allCandles.length;
+    let userModifiedView = false;
+    let prevTotalLen = allCandles.length;
+
     let candles = [];
     let bb = { upper: [], middle: [], lower: [] };
     let volAvg = [];
     let markers = [];
     let analysis = null;
     let showBB = true;
+    let slotCount = 0;
+
+    const getDefaultBounds = (sourceCandles, opts) => {
+        const N = sourceCandles.length;
+        const maxBars = opts.maxBars || 85;
+        let dStart = Math.max(0, N - maxBars);
+        if (opts.visibleStartTime) {
+            const timeIdx = sourceCandles.findIndex(c => c.time >= opts.visibleStartTime);
+            if (timeIdx !== -1 && (N - timeIdx) >= 3) {
+                dStart = timeIdx;
+            }
+        }
+        return { dStart, dCount: Math.max(1, N - dStart) };
+    };
+
+    const initBounds = getDefaultBounds(currentAllCandles, currentOptions);
+    viewStart = initBounds.dStart;
+    viewCount = initBounds.dCount;
 
     const recomputeView = (sourceCandles, opts) => {
-        const maxBars = opts.maxBars || 85;
+        const N = sourceCandles.length;
         const bbFull = computeBollingerBands(sourceCandles, 20, 2);
         const volAvgFull = computeVolumeSma(sourceCandles, 20);
         analysis = detectCandlestickPatterns(sourceCandles, bbFull, volAvgFull);
 
-        let startIdx = Math.max(0, sourceCandles.length - maxBars);
-        if (opts.visibleStartTime) {
-            const timeIdx = sourceCandles.findIndex(c => c.time >= opts.visibleStartTime);
-            if (timeIdx !== -1 && (sourceCandles.length - timeIdx) >= 5) {
-                startIdx = Math.max(timeIdx, sourceCandles.length - Math.max(maxBars, 260));
+        if (!userModifiedView) {
+            const b = getDefaultBounds(sourceCandles, opts);
+            viewStart = b.dStart;
+            viewCount = b.dCount;
+        } else {
+            const wasAtLiveEdge = (viewStart + viewCount) >= (prevTotalLen - 0.5);
+            const minBars = Math.min(10, N);
+            viewCount = Math.max(minBars, Math.min(N, viewCount));
+            if (wasAtLiveEdge) {
+                viewStart = Math.max(0, N - viewCount);
+            } else {
+                viewStart = Math.max(0, Math.min(N - viewCount, viewStart));
             }
         }
+        prevTotalLen = N;
 
-        candles = sourceCandles.slice(startIdx);
+        const startIdx = Math.max(0, Math.min(N - 1, Math.round(viewStart)));
+        const endIdx = Math.max(startIdx + 1, Math.min(N, startIdx + Math.round(viewCount)));
+
+        candles = sourceCandles.slice(startIdx, endIdx);
         bb = {
-            upper: bbFull.upper.slice(startIdx),
-            middle: bbFull.middle.slice(startIdx),
-            lower: bbFull.lower.slice(startIdx)
+            upper: bbFull.upper.slice(startIdx, endIdx),
+            middle: bbFull.middle.slice(startIdx, endIdx),
+            lower: bbFull.lower.slice(startIdx, endIdx)
         };
-        volAvg = volAvgFull.slice(startIdx);
-        markers = analysis.markers.slice(startIdx);
+        volAvg = volAvgFull.slice(startIdx, endIdx);
+        markers = analysis.markers.slice(startIdx, endIdx);
         showBB = opts.showBB !== false;
+
+        // Reserve full 09:15 -> 15:30 (75 x 5m = 375 mins) slot timeline on 1D default view
+        if (opts.interval === '1d' && !userModifiedView && candles.length > 0 && candles.length < 75) {
+            slotCount = 75;
+        } else {
+            slotCount = candles.length;
+        }
+
         if (hoverIdx >= candles.length) hoverIdx = candles.length - 1;
     };
 
     recomputeView(currentAllCandles, currentOptions);
+
+    let lastPlotW = 600;
+    let lastStepX = 8;
 
     const draw = () => {
         if (!canvas.parentElement) return;
@@ -7613,7 +7659,7 @@ function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
         const padLeft = 10;
         const padRight = 64;
         const padTop = 14;
-        const padBottom = 24;
+        const padBottom = 26;
         const plotW = Math.max(80, width - padLeft - padRight);
         const totalPlotH = Math.max(100, height - padTop - padBottom);
         const hasVolume = candles.some(c => c.volume > 0);
@@ -7626,7 +7672,7 @@ function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
         ctx.fillStyle = '#070c17';
         ctx.fillRect(0, 0, width, height);
 
-        // Compute Y range across candles & Bollinger bands
+        // Compute Y range across visible candles & Bollinger bands
         let minP = Infinity;
         let maxP = -Infinity;
         let maxV = 0;
@@ -7648,8 +7694,11 @@ function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
         maxP += padPrice;
 
         const priceToY = (p) => padTop + ((maxP - p) / (maxP - minP)) * priceH;
-        const stepX = plotW / candles.length;
-        const candleW = Math.max(1.4, Math.min(12, stepX * 0.65));
+        const activeSlots = Math.max(1, slotCount || candles.length);
+        const stepX = plotW / activeSlots;
+        const candleW = Math.max(1.4, Math.min(16, stepX * 0.65));
+        lastPlotW = plotW;
+        lastStepX = stepX;
 
         // Gridlines & Right Y-axis Price Labels
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
@@ -7745,7 +7794,7 @@ function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
                 const isBullMk = mk.direction === 'BULLISH';
                 const isBearMk = mk.direction === 'BEARISH';
                 ctx.fillStyle = isBullMk ? '#10b981' : (isBearMk ? '#ef4444' : '#f59e0b');
-                const my = isBullMk ? Math.min(height - 26, priceToY(c.low) + 9) : Math.max(padTop + 9, priceToY(c.high) - 6);
+                const my = isBullMk ? Math.min(height - 28, priceToY(c.low) + 9) : Math.max(padTop + 9, priceToY(c.high) - 6);
                 ctx.beginPath();
                 ctx.arc(cx, my, 3.0, 0, Math.PI * 2);
                 ctx.fill();
@@ -7804,16 +7853,47 @@ function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
             ctx.fillText('VOL', padLeft + plotW + 6, volTop + 11);
         }
 
-        // Bottom X-axis time labels (5 evenly spaced)
+        // Bottom X-axis time labels:
+        // When viewing 1D session (09:15 -> 15:30 / 3:30), anchor exact session ticks 09:15..15:30!
         ctx.fillStyle = '#94a3b8';
         ctx.font = '10px Outfit, sans-serif';
         ctx.textAlign = 'center';
-        const tickCount = Math.min(5, candles.length);
-        for (let t = 0; t < tickCount; t++) {
-            const idx = tickCount === 1 ? 0 : Math.round((t * (candles.length - 1)) / (tickCount - 1));
-            const x = padLeft + (idx + 0.5) * stepX;
-            const lbl = candles[idx].label || '';
-            ctx.fillText(lbl, Math.max(32, Math.min(padLeft + plotW - 32, x)), height - 6);
+
+        const is1dSession = currentOptions.interval === '1d' && !userModifiedView;
+        if (is1dSession) {
+            const sessionTicks = ['09:15', '10:45', '12:15', '13:45', '15:30'];
+            sessionTicks.forEach((lbl, tIdx) => {
+                const frac = tIdx / (sessionTicks.length - 1);
+                const x = padLeft + frac * plotW;
+                ctx.fillText(lbl, Math.max(padLeft + 18, Math.min(padLeft + plotW - 18, x)), height - 8);
+            });
+        } else {
+            const tickCount = Math.min(5, candles.length);
+            for (let t = 0; t < tickCount; t++) {
+                const idx = tickCount === 1 ? 0 : Math.round((t * (candles.length - 1)) / (tickCount - 1));
+                const x = padLeft + (idx + 0.5) * stepX;
+                let lbl = candles[idx].label || '';
+                // If an intraday chart starts at 09:15 or closes at 15:25/15:27/15:29, show clean 15:30 end label
+                if (t === tickCount - 1 && ['1m', '3m', '5m', '10m'].includes(currentOptions.interval)) {
+                    const istMin = Math.floor(((candles[idx].time + 19800) % 86400) / 60);
+                    if (istMin >= 920 && istMin <= 930) {
+                        lbl = '15:30';
+                    }
+                }
+                ctx.fillText(lbl, Math.max(32, Math.min(padLeft + plotW - 32, x)), height - 8);
+            }
+        }
+
+        // Mini horizontal scrollbar indicator when zoomed or panned inside history
+        if (candles.length < currentAllCandles.length) {
+            const trackY = height - 3;
+            const total = Math.max(1, currentAllCandles.length);
+            const thumbX = padLeft + (viewStart / total) * plotW;
+            const thumbW = Math.max(18, (candles.length / total) * plotW);
+            ctx.fillStyle = 'rgba(148, 163, 184, 0.16)';
+            ctx.fillRect(padLeft, trackY, plotW, 2);
+            ctx.fillStyle = 'rgba(56, 189, 248, 0.7)';
+            ctx.fillRect(thumbX, trackY, Math.min(plotW - (thumbX - padLeft), thumbW), 2);
         }
 
         // Hover crosshair
@@ -7846,29 +7926,169 @@ function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
         }
     };
 
-    const handleMove = (clientX) => {
+    const zoomAt = (factor, anchorFrac = 0.5) => {
+        const N = currentAllCandles.length;
+        const minView = Math.min(10, N);
+        const newCount = Math.round(Math.max(minView, Math.min(N, viewCount * factor)));
+        const anchorIdx = viewStart + anchorFrac * viewCount;
+        viewStart = Math.max(0, Math.min(N - newCount, Math.round(anchorIdx - anchorFrac * newCount)));
+        viewCount = newCount;
+        userModifiedView = true;
+        recomputeView(currentAllCandles, currentOptions);
+        draw();
+    };
+
+    const panBy = (deltaBars) => {
+        const N = currentAllCandles.length;
+        viewStart = Math.max(0, Math.min(N - viewCount, Math.round(viewStart + deltaBars)));
+        userModifiedView = true;
+        recomputeView(currentAllCandles, currentOptions);
+        draw();
+    };
+
+    const resetView = () => {
+        userModifiedView = false;
+        recomputeView(currentAllCandles, currentOptions);
+        draw();
+    };
+
+    const updateHoverFromClientX = (clientX) => {
         const rect = canvas.getBoundingClientRect();
         const plotW = Math.max(80, rect.width - 10 - 64);
         const relX = clientX - rect.left - 10;
-        const idx = Math.floor((relX / plotW) * candles.length);
-        hoverIdx = Math.max(0, Math.min(candles.length - 1, idx));
+        const activeSlots = Math.max(1, slotCount || candles.length);
+        const idx = Math.floor((relX / plotW) * activeSlots);
+        if (idx >= 0 && idx < candles.length) {
+            hoverIdx = idx;
+        } else {
+            hoverIdx = -1;
+        }
         draw();
     };
 
-    const onMouseMove = (e) => handleMove(e.clientX);
-    const onTouchMove = (e) => {
-        if (e.touches && e.touches[0]) handleMove(e.touches[0].clientX);
+    let isDragging = false;
+    let dragStartX = 0;
+    let dragStartViewStart = 0;
+
+    const onMouseDown = (e) => {
+        if (e.button !== 0) return;
+        isDragging = true;
+        dragStartX = e.clientX;
+        dragStartViewStart = viewStart;
     };
+
+    const onMouseMove = (e) => {
+        if (isDragging) {
+            const dx = e.clientX - dragStartX;
+            const barsDelta = Math.round(-dx / Math.max(2, lastStepX));
+            const N = currentAllCandles.length;
+            const nextStart = Math.max(0, Math.min(N - viewCount, dragStartViewStart + barsDelta));
+            if (nextStart !== viewStart || !userModifiedView) {
+                viewStart = nextStart;
+                userModifiedView = true;
+                recomputeView(currentAllCandles, currentOptions);
+                draw();
+            }
+            return;
+        }
+        updateHoverFromClientX(e.clientX);
+    };
+
+    const onMouseUp = () => {
+        isDragging = false;
+    };
+
+    const onWheel = (e) => {
+        e.preventDefault();
+        const rect = canvas.getBoundingClientRect();
+        const anchorFrac = Math.max(0, Math.min(1, (e.clientX - rect.left - 10) / Math.max(80, lastPlotW)));
+        if (Math.abs(e.deltaX) > Math.abs(e.deltaY) || e.shiftKey) {
+            const rawDelta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+            const step = Math.max(2, Math.round(viewCount * 0.1));
+            panBy(rawDelta > 0 ? step : -step);
+        } else {
+            zoomAt(e.deltaY < 0 ? 0.85 : 1.18, anchorFrac);
+        }
+    };
+
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let touchStartViewStart = 0;
+    let pinchStartDist = 0;
+    let pinchStartViewCount = 0;
+
+    const onTouchStart = (e) => {
+        if (e.touches.length === 2) {
+            const dx = e.touches[0].clientX - e.touches[1].clientX;
+            const dy = e.touches[0].clientY - e.touches[1].clientY;
+            pinchStartDist = Math.hypot(dx, dy);
+            pinchStartViewCount = viewCount;
+        } else if (e.touches.length === 1) {
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+            touchStartViewStart = viewStart;
+            pinchStartDist = 0;
+        }
+    };
+
+    const onTouchMove = (e) => {
+        if (e.touches.length === 2 && pinchStartDist > 0) {
+            e.preventDefault();
+            const dx = e.touches[0].clientX - e.touches[1].clientX;
+            const dy = e.touches[0].clientY - e.touches[1].clientY;
+            const curDist = Math.hypot(dx, dy);
+            if (curDist > 10) {
+                const ratio = pinchStartDist / curDist;
+                const N = currentAllCandles.length;
+                const minView = Math.min(10, N);
+                const newCount = Math.round(Math.max(minView, Math.min(N, pinchStartViewCount * ratio)));
+                const midIdx = viewStart + viewCount * 0.5;
+                viewStart = Math.max(0, Math.min(N - newCount, Math.round(midIdx - newCount * 0.5)));
+                viewCount = newCount;
+                userModifiedView = true;
+                recomputeView(currentAllCandles, currentOptions);
+                draw();
+            }
+            return;
+        }
+        if (e.touches.length === 1) {
+            const dx = e.touches[0].clientX - touchStartX;
+            const dy = e.touches[0].clientY - touchStartY;
+            if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 6) {
+                e.preventDefault();
+                const barsDelta = Math.round(-dx / Math.max(2, lastStepX));
+                const N = currentAllCandles.length;
+                viewStart = Math.max(0, Math.min(N - viewCount, touchStartViewStart + barsDelta));
+                userModifiedView = true;
+                recomputeView(currentAllCandles, currentOptions);
+                draw();
+            } else {
+                updateHoverFromClientX(e.touches[0].clientX);
+            }
+        }
+    };
+
     const onLeave = () => {
-        hoverIdx = -1;
-        draw();
+        if (!isDragging) {
+            hoverIdx = -1;
+            draw();
+        }
     };
     const onResize = () => draw();
 
-    canvas.addEventListener('mousemove', onMouseMove);
-    canvas.addEventListener('touchmove', onTouchMove, { passive: true });
+    canvas.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    canvas.addEventListener('wheel', onWheel, { passive: false });
+    canvas.addEventListener('touchstart', onTouchStart, { passive: true });
+    canvas.addEventListener('touchmove', onTouchMove, { passive: false });
     canvas.addEventListener('mouseleave', onLeave);
     window.addEventListener('resize', onResize);
+
+    canvas.__ccZoom = (factor) => zoomAt(factor, 0.5);
+    canvas.__ccPan = (bars) => panBy(bars);
+    canvas.__ccReset = () => resetView();
+    canvas.__ccGetViewCount = () => viewCount;
 
     canvas.__ccUpdateData = (newAllCandles, newOptions = {}) => {
         currentAllCandles = newAllCandles;
@@ -7881,16 +8101,53 @@ function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
     canvas.__ccIsHovering = () => hoverIdx !== -1;
 
     canvas.__ccCleanup = () => {
-        canvas.removeEventListener('mousemove', onMouseMove);
+        canvas.removeEventListener('mousedown', onMouseDown);
+        window.removeEventListener('mousemove', onMouseMove);
+        window.removeEventListener('mouseup', onMouseUp);
+        canvas.removeEventListener('wheel', onWheel);
+        canvas.removeEventListener('touchstart', onTouchStart);
         canvas.removeEventListener('touchmove', onTouchMove);
         canvas.removeEventListener('mouseleave', onLeave);
         window.removeEventListener('resize', onResize);
         delete canvas.__ccUpdateData;
         delete canvas.__ccIsHovering;
+        delete canvas.__ccZoom;
+        delete canvas.__ccPan;
+        delete canvas.__ccReset;
+        delete canvas.__ccGetViewCount;
     };
 
     draw();
     return analysis;
+}
+
+function wireCandleZoomControls() {
+    if (document.body.dataset.ccZoomWired) return;
+    document.body.dataset.ccZoomWired = '1';
+    document.addEventListener('click', (e) => {
+        const btn = e.target.closest('.cc-zoom-btn');
+        if (!btn) return;
+        const wrap = btn.closest('.cc-zoom-controls');
+        const canvasId = wrap?.dataset?.targetCanvas;
+        if (!canvasId) return;
+        const canvas = document.getElementById(canvasId);
+        if (!canvas) return;
+        const action = btn.dataset.action;
+        const curCount = typeof canvas.__ccGetViewCount === 'function' ? canvas.__ccGetViewCount() : 60;
+        const panStep = Math.max(4, Math.round(curCount * 0.25));
+
+        if (action === 'zoom-in' && typeof canvas.__ccZoom === 'function') {
+            canvas.__ccZoom(0.75);
+        } else if (action === 'zoom-out' && typeof canvas.__ccZoom === 'function') {
+            canvas.__ccZoom(1.35);
+        } else if (action === 'pan-left' && typeof canvas.__ccPan === 'function') {
+            canvas.__ccPan(-panStep);
+        } else if (action === 'pan-right' && typeof canvas.__ccPan === 'function') {
+            canvas.__ccPan(panStep);
+        } else if (action === 'reset' && typeof canvas.__ccReset === 'function') {
+            canvas.__ccReset();
+        }
+    });
 }
 
 function applyCandleChartAnalysisUI(symbol, interval, candles, analysis) {
@@ -7961,6 +8218,7 @@ window.renderModalCandleChart = async function(modalKey, symbol, canvasId, fallb
         renderCandlestickBollingerChart(canvasId, series.candles, {
             showBB: st.showBB,
             readoutId,
+            interval: st.interval,
             maxBars: getDefaultMaxBarsForTf(st.interval, true),
             visibleStartTime: series.visibleStartTime
         });
@@ -7976,6 +8234,7 @@ window.renderModalCandleChart = async function(modalKey, symbol, canvasId, fallb
             renderCandlestickBollingerChart(canvasId, fallbackCandles, {
                 showBB: st.showBB,
                 readoutId,
+                interval: st.interval,
                 maxBars: 65
             });
             if (readoutEl) readoutEl.textContent = `${symbol} (Master Daily Fallback) | Candlestick + BB (20,2)`;
@@ -7986,6 +8245,7 @@ window.renderModalCandleChart = async function(modalKey, symbol, canvasId, fallb
 };
 
 window.initModalChartControls = function() {
+    wireCandleZoomControls();
     const setupModal = (modalKey, tfGroupId, bbToggleId, canvasId) => {
         const tfGroup = document.getElementById(tfGroupId);
         const bbToggle = document.getElementById(bbToggleId);
@@ -8018,6 +8278,7 @@ window.initModalChartControls = function() {
                     const opts = {
                         showBB: st.showBB,
                         readoutId,
+                        interval: st.interval,
                         maxBars: getDefaultMaxBarsForTf(st.interval, true),
                         visibleStartTime: st.visibleStartTime
                     };
@@ -8140,6 +8401,7 @@ window.refreshVisibleCandles1s = async function() {
             const opts = {
                 showBB: job.state.showBB,
                 readoutId: job.readoutId,
+                interval: job.state.interval,
                 maxBars: getDefaultMaxBarsForTf(job.state.interval, job.isModal),
                 visibleStartTime: job.state.visibleStartTime
             };
@@ -8393,6 +8655,7 @@ window.initCandleChartTab = function() {
                 const opts = {
                     showBB: candleTabState.showBB,
                     readoutId: 'cc-hover-readout',
+                    interval: candleTabState.interval,
                     maxBars: getDefaultMaxBarsForTf(candleTabState.interval, false),
                     visibleStartTime: candleTabState.visibleStartTime
                 };
@@ -8443,6 +8706,7 @@ window.loadCandleChartTab = async function(forceRefresh = false) {
         const analysis = renderCandlestickBollingerChart('candle-main-canvas', series.candles, {
             showBB: candleTabState.showBB,
             readoutId: 'cc-hover-readout',
+            interval,
             maxBars: getDefaultMaxBarsForTf(interval, false),
             visibleStartTime: series.visibleStartTime
         });

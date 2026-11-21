@@ -1306,7 +1306,7 @@
                             <button type="button" class="cc-tf-btn" data-tf="10m">10 મિનિટ</button>
                             <button type="button" class="cc-tf-btn" data-tf="1d">1 દિવસ</button>
                             <button type="button" class="cc-tf-btn" data-tf="5d">5 દિવસ</button>
-                            <button type="button" class="cc-tf-btn" data-tf="1w">1 Week</button>
+                            <button type="button" class="cc-tf-btn" data-tf="1w">1 અઠવાડિયું</button>
                             <button type="button" class="cc-tf-btn" data-tf="1mo">1 મહિનો</button>
                             <button type="button" class="cc-tf-btn" data-tf="1y">1 વર્ષ</button>
                         </div>
@@ -1369,7 +1369,14 @@
                         <span><i class="fa-solid fa-minus" style="color:#38bdf8;"></i> BB Upper / Lower (20,2)</span>
                         <span><i class="fa-solid fa-minus" style="color:#f59e0b;"></i> BB Middle (20 SMA)</span>
                         <span><i class="fa-solid fa-chart-simple" style="color:#a855f7;"></i> Volume + 20-Avg</span>
-                        <span id="cc-hover-readout" class="cc-hover-readout">માઉસ/ટચ દ્વારા કેન્ડલની વિગત જુઓ</span>
+                        <div class="cc-zoom-controls" data-target-canvas="candle-main-canvas">
+                            <button type="button" class="cc-zoom-btn" data-action="pan-left" title="Scroll Left (પાછળ જુઓ)"><i class="fa-solid fa-chevron-left"></i></button>
+                            <button type="button" class="cc-zoom-btn" data-action="pan-right" title="Scroll Right (આગળ જુઓ)"><i class="fa-solid fa-chevron-right"></i></button>
+                            <button type="button" class="cc-zoom-btn" data-action="zoom-in" title="Zoom In"><i class="fa-solid fa-plus"></i></button>
+                            <button type="button" class="cc-zoom-btn" data-action="zoom-out" title="Zoom Out"><i class="fa-solid fa-minus"></i></button>
+                            <button type="button" class="cc-zoom-btn" data-action="reset" title="Reset Zoom & Scroll">Reset</button>
+                        </div>
+                        <span id="cc-hover-readout" class="cc-hover-readout">માઉસ/ટચ દ્વારા કેન્ડલ જુઓ (Scroll / Drag &amp; Zoom)</span>
                     </div>
                     <div class="cc-canvas-wrap">
                         <canvas id="candle-main-canvas"></canvas>
@@ -1498,6 +1505,13 @@
                                 <input type="checkbox" id="rm-bb-toggle" checked>
                                 <span>BB</span>
                             </label>
+                            <div class="cc-zoom-controls cc-zoom-mini" data-target-canvas="research-price-chart">
+                                <button type="button" class="cc-zoom-btn" data-action="pan-left" title="Scroll Left"><i class="fa-solid fa-chevron-left"></i></button>
+                                <button type="button" class="cc-zoom-btn" data-action="pan-right" title="Scroll Right"><i class="fa-solid fa-chevron-right"></i></button>
+                                <button type="button" class="cc-zoom-btn" data-action="zoom-in" title="Zoom In"><i class="fa-solid fa-plus"></i></button>
+                                <button type="button" class="cc-zoom-btn" data-action="zoom-out" title="Zoom Out"><i class="fa-solid fa-minus"></i></button>
+                                <button type="button" class="cc-zoom-btn" data-action="reset" title="Reset">R</button>
+                            </div>
                         </div>
                     </div>
                     <div id="rm-hover-readout" style="font-size:0.72rem; color:#94a3b8; margin-bottom:0.35rem;">Candlestick + Bollinger Bands (20,2) + Volume</div>
@@ -1614,6 +1628,13 @@
                             <input type="checkbox" id="cm-bb-toggle" checked>
                             <span>BB</span>
                         </label>
+                        <div class="cc-zoom-controls cc-zoom-mini" data-target-canvas="price-chart">
+                            <button type="button" class="cc-zoom-btn" data-action="pan-left" title="Scroll Left"><i class="fa-solid fa-chevron-left"></i></button>
+                            <button type="button" class="cc-zoom-btn" data-action="pan-right" title="Scroll Right"><i class="fa-solid fa-chevron-right"></i></button>
+                            <button type="button" class="cc-zoom-btn" data-action="zoom-in" title="Zoom In"><i class="fa-solid fa-plus"></i></button>
+                            <button type="button" class="cc-zoom-btn" data-action="zoom-out" title="Zoom Out"><i class="fa-solid fa-minus"></i></button>
+                            <button type="button" class="cc-zoom-btn" data-action="reset" title="Reset">R</button>
+                        </div>
                     </div>
                 </div>
                 <div class="chart-container" style="height: 280px; position: relative;">

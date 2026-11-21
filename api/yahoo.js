@@ -5,13 +5,34 @@
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
-function aggregateCandles(rawCandles, intervalMinutes) {
+function getIstDayAndMin(unixSec) {
+    const istSec = unixSec + 19800;
+    const dayStartIst = Math.floor(istSec / 86400) * 86400;
+    const minOfDay = Math.floor((istSec - dayStartIst) / 60);
+    return { dayStartUnix: dayStartIst - 19800, minOfDay };
+}
+
+function isIndianMarketSymbol(sym) {
+    const s = String(sym || '').toUpperCase();
+    return s.endsWith('.NS') || s.endsWith('.BO') || s === '^NSEI' || s === '^BSESN' || s.startsWith('^NSE') || s.startsWith('^CNX');
+}
+
+function aggregateCandles(rawCandles, intervalMinutes, anchorMarketOpen = true) {
     if (!intervalMinutes || intervalMinutes <= 1) return rawCandles;
     const bucketSec = intervalMinutes * 60;
     const buckets = new Map();
 
     for (const c of rawCandles) {
-        const bKey = Math.floor(c.time / bucketSec) * bucketSec;
+        let bKey;
+        if (anchorMarketOpen) {
+            const { dayStartUnix } = getIstDayAndMin(c.time);
+            const openUnix = dayStartUnix + 555 * 60; // 09:15 IST
+            const offset = Math.max(0, c.time - openUnix);
+            bKey = openUnix + Math.floor(offset / bucketSec) * bucketSec;
+        } else {
+            bKey = Math.floor(c.time / bucketSec) * bucketSec;
+        }
+
         const existing = buckets.get(bKey);
         if (!existing) {
             buckets.set(bKey, {
@@ -32,7 +53,7 @@ function aggregateCandles(rawCandles, intervalMinutes) {
     return Array.from(buckets.values()).sort((a, b) => a.time - b.time);
 }
 
-function extractCleanCandles(yahooResult, requestedInterval) {
+function extractCleanCandles(yahooResult, requestedInterval, nsSymbol = '') {
     const ts = yahooResult?.timestamp || [];
     const quote = yahooResult?.indicators?.quote?.[0] || {};
     const opens = quote.open || [];
@@ -40,23 +61,30 @@ function extractCleanCandles(yahooResult, requestedInterval) {
     const lows = quote.low || [];
     const closes = quote.close || [];
     const vols = quote.volume || [];
+    const indianIntraday = isIndianMarketSymbol(nsSymbol) && requestedInterval !== '1y';
 
     const raw = [];
     for (let i = 0; i < ts.length; i++) {
+        const t = ts[i];
         const o = Number(opens[i]);
         const h = Number(highs[i]);
         const l = Number(lows[i]);
         const c = Number(closes[i]);
         const v = Number(vols[i] ?? 0);
         if (
-            Number.isFinite(ts[i]) &&
+            Number.isFinite(t) &&
             Number.isFinite(o) && o > 0 &&
             Number.isFinite(h) && h > 0 &&
             Number.isFinite(l) && l > 0 &&
             Number.isFinite(c) && c > 0
         ) {
+            if (indianIntraday) {
+                const { minOfDay } = getIstDayAndMin(t);
+                // Keep bars strictly inside NSE/BSE session: 09:15 (555) through 15:29/15:30 (930)
+                if (minOfDay < 555 || minOfDay > 930) continue;
+            }
             raw.push({
-                time: ts[i],
+                time: t,
                 open: o,
                 high: Math.max(h, o, c),
                 low: Math.min(l, o, c),
@@ -66,8 +94,8 @@ function extractCleanCandles(yahooResult, requestedInterval) {
         }
     }
 
-    if (requestedInterval === '3m') return aggregateCandles(raw, 3);
-    if (requestedInterval === '10m') return aggregateCandles(raw, 10);
+    if (requestedInterval === '3m') return aggregateCandles(raw, 3, indianIntraday);
+    if (requestedInterval === '10m') return aggregateCandles(raw, 10, indianIntraday);
     return raw;
 }
 
@@ -190,7 +218,7 @@ export default async function handler(req, res) {
             const data = await response.json();
             const firstResult = data?.chart?.result?.[0];
             const meta = firstResult?.meta || {};
-            const cleanBars = firstResult ? extractCleanCandles(firstResult, '1m') : [];
+            const cleanBars = firstResult ? extractCleanCandles(firstResult, '1m', nsSymbol) : [];
             const livePrice = Number(meta.regularMarketPrice);
             const prevClose = Number(meta.previousClose !== undefined ? meta.previousClose : meta.chartPreviousClose);
             const liveTime = Number(meta.regularMarketTime) || (cleanBars.length > 0 ? cleanBars[cleanBars.length - 1].time : Math.floor(Date.now() / 1000));
@@ -268,7 +296,7 @@ export default async function handler(req, res) {
         const data = await response.json();
         const firstResult = data?.chart?.result?.[0];
         if (firstResult) {
-            const candles = extractCleanCandles(firstResult, requestedInterval);
+            const candles = extractCleanCandles(firstResult, requestedInterval, nsSymbol);
             const meta = firstResult.meta || {};
             data.candles = candles;
             data.interval = requestedInterval;
