@@ -8,7 +8,8 @@ const GROWW_SLUGS = {
     NIFTY: 'nifty',
     BANKNIFTY: 'nifty-bank',
     FINNIFTY: 'nifty-financial-services',
-    MIDCPNIFTY: 'nifty-midcap-select'
+    MIDCPNIFTY: 'nifty-midcap-select',
+    SENSEX: 'sp-bse-sensex'
 };
 
 // Short-lived per-symbol/expiry micro-cache (800ms) for 1-second UI polling
@@ -131,7 +132,9 @@ async function fetchGrowwOptionChain(symbol, requestedExpiry) {
     const slug = GROWW_SLUGS[symbol];
     const expiryQuery = requestedExpiry ? `?expiry=${encodeURIComponent(requestedExpiry)}` : '';
     const ocUrl = `https://groww.in/v1/api/option_chain_service/v1/option_chain/${slug}${expiryQuery}`;
-    const spotUrl = `https://groww.in/v1/api/stocks_data/v1/tr_live_indices/exchange/NSE/segment/CASH/${symbol}/latest`;
+    const spotUrl = symbol === 'SENSEX'
+        ? 'https://groww.in/v1/api/stocks_data/v1/tr_live_indices/exchange/BSE/segment/CASH/1/latest'
+        : `https://groww.in/v1/api/stocks_data/v1/tr_live_indices/exchange/NSE/segment/CASH/${symbol}/latest`;
 
     const headers = { 'User-Agent': UA, 'Accept': 'application/json' };
     const [ocRes, spotRes] = await Promise.allSettled([
@@ -187,7 +190,7 @@ async function fetchGrowwOptionChain(symbol, requestedExpiry) {
 
     return {
         symbol,
-        source: 'NSE Option Chain Feed',
+        source: symbol === 'SENSEX' ? 'BSE Option Chain Feed' : 'NSE Option Chain Feed',
         spotPrice: spotPrice || atmStrike,
         spotChange,
         spotChangePct,
@@ -290,9 +293,17 @@ export default async function handler(req, res) {
     }
 
     try {
-        const data = symbol === 'SENSEX'
-            ? await fetchBseSensexOptionChain(expiry)
-            : await fetchGrowwOptionChain(symbol, expiry);
+        let data;
+        if (symbol === 'SENSEX') {
+            try {
+                data = await fetchGrowwOptionChain('SENSEX', expiry);
+            } catch (growwErr) {
+                console.warn('[API /option-chain] Groww SENSEX failed, trying BSE fallback:', growwErr.message);
+                data = await fetchBseSensexOptionChain(expiry);
+            }
+        } else {
+            data = await fetchGrowwOptionChain(symbol, expiry);
+        }
 
         chainCache.set(cacheKey, { data, ts: Date.now() });
         return res.status(200).json(data);

@@ -1024,6 +1024,80 @@
 
                 <div id="cp-status-msg" class="cp-status-banner hidden"></div>
 
+                <!-- 1-Second Live Strip: NIFTY 50, SENSEX, GOLD/10g, SILVER/1kg, NASDAQ, SHANGHAI INDEX -->
+                <div class="cp-live-strip-grid" id="cp-market-ticker-grid">
+                    <div class="cp-live-card">
+                        <span class="cp-live-title">NIFTY 50 <small id="cp-live-nifty-src">LIVE 1s</small></span>
+                        <strong class="cp-live-val" id="cp-live-nifty-val">--</strong>
+                        <span class="cp-live-chg" id="cp-live-nifty-chg">--</span>
+                    </div>
+                    <div class="cp-live-card">
+                        <span class="cp-live-title">SENSEX <small id="cp-live-sensex-src">LIVE 1s</small></span>
+                        <strong class="cp-live-val" id="cp-live-sensex-val">--</strong>
+                        <span class="cp-live-chg" id="cp-live-sensex-chg">--</span>
+                    </div>
+                    <div class="cp-live-card cp-gold-card">
+                        <span class="cp-live-title" style="color:#f59e0b;">GOLD / 10g <small id="cp-live-gold-src">MCX</small></span>
+                        <strong class="cp-live-val" id="cp-live-gold-val">--</strong>
+                        <span class="cp-live-chg" id="cp-live-gold-chg">--</span>
+                    </div>
+                    <div class="cp-live-card cp-silver-card">
+                        <span class="cp-live-title" style="color:#cbd5e1;">SILVER / 1kg <small id="cp-live-silver-src">MCX</small></span>
+                        <strong class="cp-live-val" id="cp-live-silver-val">--</strong>
+                        <span class="cp-live-chg" id="cp-live-silver-chg">--</span>
+                    </div>
+                    <div class="cp-live-card cp-global-card">
+                        <span class="cp-live-title" style="color:#38bdf8;">NASDAQ <small>^IXIC</small></span>
+                        <strong class="cp-live-val" id="cp-live-nasdaq-val">--</strong>
+                        <span class="cp-live-chg" id="cp-live-nasdaq-chg">--</span>
+                    </div>
+                    <div class="cp-live-card cp-global-card">
+                        <span class="cp-live-title" style="color:#f472b6;">SHANGHAI INDEX <small>000001.SS</small></span>
+                        <strong class="cp-live-val" id="cp-live-shanghai-val">--</strong>
+                        <span class="cp-live-chg" id="cp-live-shanghai-chg">--</span>
+                    </div>
+                </div>
+
+                <!-- SENSEX & NSE Advance / Decline (nseindia.com/market-data/decline) - 1s Live -->
+                <div class="cp-breadth-grid">
+                    <div class="cp-panel cp-breadth-card">
+                        <div class="cp-panel-header">
+                            <div>
+                                <span class="cp-kicker">SENSEX 30 ADVANCE &amp; DECLINE</span>
+                                <div class="cp-breadth-nums">
+                                    <span class="cp-adv-pill">Advance: <strong id="cp-sensex-adv">--</strong></span>
+                                    <span class="cp-dec-pill">Decline: <strong id="cp-sensex-dec">--</strong></span>
+                                </div>
+                            </div>
+                            <span class="cp-breadth-ratio" id="cp-sensex-adv-pct">--</span>
+                        </div>
+                        <div class="cp-ad-bar-track">
+                            <div class="cp-ad-bar-adv" id="cp-sensex-ad-bar" style="width: 50%;"></div>
+                        </div>
+                    </div>
+
+                    <div class="cp-panel cp-breadth-card">
+                        <div class="cp-panel-header">
+                            <div>
+                                <span class="cp-kicker">MARKET ADVANCE &amp; DECLINE (NSEINDIA.COM/MARKET-DATA/DECLINE)</span>
+                                <div class="cp-breadth-nums">
+                                    <span class="cp-adv-pill">Advances: <strong id="cp-nse-adv">--</strong></span>
+                                    <span class="cp-dec-pill">Declines: <strong id="cp-nse-dec">--</strong></span>
+                                    <span class="cp-unch-pill">Unch: <strong id="cp-nse-unch">--</strong></span>
+                                    <span class="cp-unch-pill">Total: <strong id="cp-nse-total">--</strong></span>
+                                </div>
+                            </div>
+                            <a href="https://www.nseindia.com/market-data/decline" target="_blank" rel="noopener noreferrer" class="cp-source-link">
+                                nseindia.com <i class="fa-solid fa-arrow-up-right-from-square"></i>
+                            </a>
+                        </div>
+                        <div class="cp-ad-bar-track">
+                            <div class="cp-ad-bar-adv" id="cp-nse-ad-bar" style="width: 50%;"></div>
+                        </div>
+                        <div class="cp-mmi-footer" id="cp-breadth-time">Source: nseindia.com/market-data/decline</div>
+                    </div>
+                </div>
+
                 <!-- Row 1: Market Mood Index & Live Spot / ATM Summary -->
                 <div class="cp-top-grid">
                     <!-- Tickertape Market Mood Index Card -->

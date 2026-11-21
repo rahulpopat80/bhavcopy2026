@@ -47,16 +47,19 @@ export default async function handler(req, res) {
         let gold = goldPM || goldAM;
         let silver = silverPM || silverAM;
 
-        // Extract previous date rates for daily change baseline
-        const prevGoldMatch = html.match(/data-label="Gold 999"\s*>\s*([\d]+)\s*<\/td>/i);
-        const prevSilverMatch = html.match(/data-label="Silver 999"\s*>\s*([\d]+)\s*<\/td>/i);
-        
-        const prevGold = prevGoldMatch ? parseFloat(prevGoldMatch[1].trim()) : null;
-        const prevSilver = prevSilverMatch ? parseFloat(prevSilverMatch[1].trim()) : null;
+        // Extract previous date rates table matches for daily change baseline
+        const prevGoldMatches = [...html.matchAll(/data-label="Gold 999"\s*>\s*([\d]+)\s*<\/td>/gi)].map(m => parseFloat(m[1].trim()));
+        const prevSilverMatches = [...html.matchAll(/data-label="Silver 999"\s*>\s*([\d]+)\s*<\/td>/gi)].map(m => parseFloat(m[1].trim()));
 
-        // If today's rates are not posted yet (e.g. early morning), parse the previous dates table AM/PM
-        if (!gold && prevGold) gold = prevGold;
-        if (!silver && prevSilver) silver = prevSilver;
+        // If today's AM/PM rates are not posted yet, row 0 is latest posted rate and row 1 is previous day's rate
+        const latestTableGold = prevGoldMatches[0] || null;
+        const latestTableSilver = prevSilverMatches[0] || null;
+
+        let prevGold = gold ? latestTableGold : (prevGoldMatches[1] || latestTableGold);
+        let prevSilver = silver ? latestTableSilver : (prevSilverMatches[1] || latestTableSilver);
+
+        if (!gold && latestTableGold) gold = latestTableGold;
+        if (!silver && latestTableSilver) silver = latestTableSilver;
 
         return res.status(200).json({
             gold: gold,

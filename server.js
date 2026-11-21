@@ -8,6 +8,7 @@ import yahooHandler from './api/yahoo.js';
 import corporateHandler from './api/corporate.js';
 import mmiHandler from './api/mmi.js';
 import optionChainHandler from './api/option-chain.js';
+import liveMarketHandler from './api/live-market.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -79,6 +80,17 @@ app.all('/api/option-chain', async (req, res) => {
     await optionChainHandler(req, res);
   } catch (err) {
     console.error('Error in /api/option-chain:', err);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+});
+
+app.all('/api/live-market', async (req, res) => {
+  try {
+    await liveMarketHandler(req, res);
+  } catch (err) {
+    console.error('Error in /api/live-market:', err);
     if (!res.headersSent) {
       res.status(500).json({ error: 'Internal server error' });
     }

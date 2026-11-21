@@ -175,10 +175,12 @@ const movementTable = document.getElementById('movement-table');
 
 // Initialize Event Listeners
 let isAutoRefreshInFlight = false; // FIX: In-flight guard for central 10s interval
+let isLiveMarket1sInFlight = false; // In-flight guard for 1s live market ticker
 let hasStartedDashboard = false;
 let marketIndicesTimer = null;
 let autoRefreshTimer = null;
 let callPutTimer = null;
+let liveMarket1sTimer = null;
 
 function isTabActive(tabId) {
     const activeTab = document.querySelector('.nav-btn.active');
@@ -199,7 +201,19 @@ function startDashboardAfterLogin() {
     // Load Master File from Local Storage after painting UI, then refresh from Cloud in background
     loadMasterOnStartup();
 
-    // Fetch live market indices (Sensex & Nifty) and keep updated while logged in
+    // Live 1-second feed for NIFTY 50, SENSEX, GOLD/10g, SILVER/1kg, NASDAQ, SHANGHAI & Advance/Decline
+    if (typeof fetchLiveMarket1s === 'function') {
+        fetchLiveMarket1s();
+    }
+    if (!liveMarket1sTimer) {
+        liveMarket1sTimer = setInterval(() => {
+            if (typeof fetchLiveMarket1s === 'function') {
+                fetchLiveMarket1s();
+            }
+        }, 1000);
+    }
+
+    // Fetch segment indices (Large/Mid/Small Cap leader) every 30s without overwriting 1s header prices
     fetchMarketIndices();
     if (!marketIndicesTimer) {
         marketIndicesTimer = setInterval(fetchMarketIndices, 30000);
@@ -4144,70 +4158,21 @@ async function fetchGainersLivePrices(symbols) {
     }
 }
 
-// Fetch SENSEX, NIFTY 50, Gold and Silver live prices
-let isMarketIndicesFetching = false; // FIX: In-flight guard so 30s interval never overlaps
+// Fetch Segment Leader indices (Large/Mid/Small Cap) every 30s
+// Note: NIFTY 50, SENSEX, GOLD/10g and SILVER/1kg are updated every 1 second by fetchLiveMarket1s()
+let isMarketIndicesFetching = false;
 async function fetchMarketIndices() {
     if (isMarketIndicesFetching) return;
     isMarketIndicesFetching = true;
 
     try {
-        // --- Nifty & Sensex (Primary: Official NSE/BSE APIs, Fallback: Yahoo Finance) ---
-        let officialNiftySuccess = false;
-        let officialSensexSuccess = false;
-
-        try {
-            const res = await fetchWithTimeout('/api/indices', {}, FETCH_TIMEOUT_MS);
-            if (res.ok) {
-                const data = await res.json();
-
-                if (data && data.sensex) {
-                    const sData = data.sensex;
-                    const valEl = document.getElementById('sensex-val');
-                    const chgEl = document.getElementById('sensex-chg');
-                    if (valEl && chgEl) {
-                        valEl.textContent = sData.price.toLocaleString('en-IN', {
-                            minimumFractionDigits: 0,
-                            maximumFractionDigits: 0
-                        });
-                        const sign = sData.change >= 0 ? '+' : '';
-                        const color = sData.change >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
-                        chgEl.textContent = `${sign}${sData.change.toFixed(2)} (${sign}${sData.changePercent.toFixed(2)}%)`;
-                        chgEl.style.color = color;
-                        officialSensexSuccess = true;
-                    }
-                }
-
-                if (data && data.nifty) {
-                    const nData = data.nifty;
-                    const valEl = document.getElementById('nifty-val');
-                    const chgEl = document.getElementById('nifty-chg');
-                    if (valEl && chgEl) {
-                        valEl.textContent = nData.price.toLocaleString('en-IN', {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2
-                        });
-                        const sign = nData.change >= 0 ? '+' : '';
-                        const color = nData.change >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
-                        chgEl.textContent = `${sign}${nData.change.toFixed(2)} (${sign}${nData.changePercent.toFixed(2)}%)`;
-                        chgEl.style.color = color;
-                        officialNiftySuccess = true;
-                    }
-                }
-            }
-        } catch (e) {
-            console.warn('[Market Indices] Official indices API failed, using Yahoo Finance fallbacks:', e.message);
-        }
-
-        // Fallbacks
         const indices = [
-            { id: 'nifty',     ticker: '^NSEI',   name: 'NIFTY 50',          success: officialNiftySuccess },
-            { id: 'sensex',    ticker: '^BSESN',  name: 'SENSEX',            success: officialSensexSuccess },
-            { id: 'seg-large', ticker: '^CNX100', name: 'NIFTY 100',         success: false },
-            { id: 'seg-mid',   ticker: '^CRSMID', name: 'NIFTY MIDCAP 100',  success: false },
-            { id: 'seg-small', ticker: '^CNXSC',  name: 'NIFTY SMALLCAP 100', success: false }
+            { id: 'seg-large', ticker: '^CNX100', name: 'NIFTY 100' },
+            { id: 'seg-mid',   ticker: '^CRSMID', name: 'NIFTY MIDCAP 100' },
+            { id: 'seg-small', ticker: '^CNXSC',  name: 'NIFTY SMALLCAP 100' }
         ];
 
-        await runWithConcurrency(indices.filter(i => !i.success), 3, async (item) => {
+        await runWithConcurrency(indices, 3, async (item) => {
             try {
                 const data = await fetchYahooFinanceData(item.ticker);
                 const meta = data.chart.result[0].meta;
@@ -4232,25 +4197,24 @@ async function fetchMarketIndices() {
                     }
                 }
             } catch (e) {
-                console.warn(`Failed to fetch fallback index ${item.name}:`, e.message);
+                console.warn(`Failed to fetch segment index ${item.name}:`, e.message);
             }
         });
 
-        // Calculate Segment Leader (Large vs Mid vs Small Cap)
         try {
             const largeValEl = document.getElementById('seg-large-val');
             const midValEl = document.getElementById('seg-mid-val');
             const smallValEl = document.getElementById('seg-small-val');
-            
+
             if (largeValEl && midValEl && smallValEl) {
                 const largePct = parseFloat(largeValEl.getAttribute('data-pct')) || 0;
                 const midPct = parseFloat(midValEl.getAttribute('data-pct')) || 0;
                 const smallPct = parseFloat(smallValEl.getAttribute('data-pct')) || 0;
-                
+
                 let leaderName = 'LARGE CAP (NIFTY 100)';
                 let leaderPct = largePct;
                 let leaderColor = '#3b82f6';
-                
+
                 if (midPct > leaderPct) {
                     leaderName = 'MID CAP (NIFTY MID 100)';
                     leaderPct = midPct;
@@ -4261,7 +4225,7 @@ async function fetchMarketIndices() {
                     leaderPct = smallPct;
                     leaderColor = '#ec4899';
                 }
-                
+
                 const leaderBadge = document.getElementById('segment-leader-badge');
                 const leaderContainer = document.getElementById('segment-leader-container');
                 if (leaderBadge) {
@@ -4275,97 +4239,6 @@ async function fetchMarketIndices() {
             }
         } catch (err) {
             console.warn("Failed to compute segment leader:", err);
-        }
-
-        // --- Gold & Silver (Primary: IBJA Scraper, Fallback: COMEX GC=F / SI=F) ---
-        try {
-            let ibjaSuccess = false;
-            try {
-                const ibjaRes = await fetchWithTimeout('/api/ibja', {}, FETCH_TIMEOUT_MS);
-                if (ibjaRes.ok) {
-                    const ibjaData = await ibjaRes.json();
-                    if (ibjaData && ibjaData.gold && ibjaData.silver) {
-                        const goldPrice = ibjaData.gold;
-                        const silverPrice = ibjaData.silver;
-                        const prevGold = ibjaData.prevGold || goldPrice;
-                        const prevSilver = ibjaData.prevSilver || silverPrice;
-                        const goldChange = goldPrice - prevGold;
-                        const goldChangePct = prevGold > 0 ? (goldChange / prevGold) * 100 : 0;
-                        const silverChange = silverPrice - prevSilver;
-                        const silverChangePct = prevSilver > 0 ? (silverChange / prevSilver) * 100 : 0;
-
-                        const goldValEl = document.getElementById('gold-val');
-                        const goldChgEl = document.getElementById('gold-chg');
-                        if (goldValEl && goldChgEl) {
-                            goldValEl.textContent = `\u20b9${goldPrice.toLocaleString('en-IN')}`;
-                            const sign = goldChange >= 0 ? '+' : '';
-                            const color = goldChange >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
-                            goldChgEl.textContent = `${sign}${goldChange.toLocaleString('en-IN')} (${sign}${goldChangePct.toFixed(2)}%)`;
-                            goldChgEl.style.color = color;
-                        }
-
-                        const silverValEl = document.getElementById('silver-val');
-                        const silverChgEl = document.getElementById('silver-chg');
-                        if (silverValEl && silverChgEl) {
-                            silverValEl.textContent = `\u20b9${silverPrice.toLocaleString('en-IN')}`;
-                            const sign = silverChange >= 0 ? '+' : '';
-                            const color = silverChange >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
-                            silverChgEl.textContent = `${sign}${silverChange.toLocaleString('en-IN')} (${sign}${silverChangePct.toFixed(2)}%)`;
-                            silverChgEl.style.color = color;
-                        }
-                        ibjaSuccess = true;
-                    }
-                }
-            } catch (ibjaErr) {
-                console.warn("[Market Indices] IBJA fetch failed, falling back to COMEX:", ibjaErr.message);
-            }
-
-            if (!ibjaSuccess) {
-                let usdInr = 84.5;
-                try {
-                    const fxData = await fetchYahooFinanceData('INR=X');
-                    const fxPrice = fxData?.chart?.result?.[0]?.meta?.regularMarketPrice;
-                    if (fxPrice) usdInr = fxPrice;
-                } catch (_) { /* use fallback */ }
-
-                const commodities = [
-                    { id: 'gold',   ticker: 'GC=F', name: 'Gold',   factor: 10 / 31.1035 },
-                    { id: 'silver', ticker: 'SI=F', name: 'Silver', factor: 1000 / 31.1035 },
-                ];
-
-                for (const com of commodities) {
-                    try {
-                        const data = await fetchYahooFinanceData(com.ticker);
-                        const meta = data?.chart?.result?.[0]?.meta;
-                        if (!meta) continue;
-
-                        const usdPrice  = meta.regularMarketPrice;
-                        const prevClose = meta.previousClose || meta.chartPreviousClose;
-                        if (!usdPrice) continue;
-
-                        const inrPrice  = usdPrice * usdInr * com.factor;
-                        const inrPrev   = prevClose ? prevClose * usdInr * com.factor : inrPrice;
-                        const change    = inrPrice - inrPrev;
-                        const changePct = inrPrev > 0 ? (change / inrPrev) * 100 : 0;
-
-                        const valEl = document.getElementById(`${com.id}-val`);
-                        const chgEl = document.getElementById(`${com.id}-chg`);
-                        if (valEl && chgEl) {
-                            valEl.textContent = `\u20b9${inrPrice.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
-                            const sign  = change >= 0 ? '+' : '';
-                            const color = change >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
-                            chgEl.textContent = `${sign}${change.toLocaleString('en-IN', { maximumFractionDigits: 0 })} (${sign}${changePct.toFixed(2)}%)`;
-                            chgEl.style.color = color;
-                        }
-                    } catch (e) {
-                        console.warn(`Failed to fetch fallback ${com.name}:`, e.message);
-                        const valEl = document.getElementById(`${com.id}-val`);
-                        if (valEl && valEl.textContent === 'Loading...') valEl.textContent = 'Price unavailable';
-                    }
-                }
-            }
-        } catch (e) {
-            console.warn('Gold/Silver fetch error:', e.message);
         }
     } finally {
         isMarketIndicesFetching = false;
@@ -7176,7 +7049,13 @@ function renderOptionChainPanel(oc) {
         }
     } else if (oc.symbol === 'SENSEX' && Number(oc.spotPrice) > 0) {
         const sVal = document.getElementById('sensex-val');
-        if (sVal) sVal.textContent = Number(oc.spotPrice).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+        const sChg = document.getElementById('sensex-chg');
+        if (sVal) sVal.textContent = Number(oc.spotPrice).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        if (sChg && oc.spotChange !== null && oc.spotChangePct !== null) {
+            const sign = oc.spotChange >= 0 ? '+' : '';
+            sChg.textContent = `${sign}${Number(oc.spotChange).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (${sign}${Number(oc.spotChangePct).toFixed(2)}%)`;
+            sChg.style.color = oc.spotChange >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+        }
     }
 
     const s = oc.summary;
@@ -7237,7 +7116,96 @@ function renderOptionChainPanel(oc) {
     }
 }
 
+function updateTickerPair(valId, chgId, item, opts = {}) {
+    if (!item || !Number.isFinite(Number(item.price))) return;
+    const valEl = document.getElementById(valId);
+    const chgEl = document.getElementById(chgId);
+    const decimals = opts.decimals !== undefined ? opts.decimals : 2;
+    const prefix = opts.prefix || '';
+    const price = Number(item.price);
+    const change = Number(item.change || 0);
+    const pct = Number(item.changePercent || 0);
+
+    if (valEl) {
+        valEl.textContent = `${prefix}${price.toLocaleString('en-IN', {
+            minimumFractionDigits: decimals,
+            maximumFractionDigits: decimals
+        })}`;
+    }
+    if (chgEl) {
+        const sign = change >= 0 ? '+' : '';
+        chgEl.textContent = `${sign}${change.toLocaleString('en-IN', {
+            minimumFractionDigits: decimals,
+            maximumFractionDigits: decimals
+        })} (${sign}${pct.toFixed(2)}%)`;
+        chgEl.style.color = change >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+    }
+}
+
+window.fetchLiveMarket1s = async function() {
+    if (isLiveMarket1sInFlight) return;
+    isLiveMarket1sInFlight = true;
+    try {
+        const res = await fetchWithTimeout('/api/live-market', { cache: 'no-store' }, 4000);
+        if (!res.ok) return;
+        const d = await res.json();
+
+        // 1. Update global header cards every 1 second (NIFTY 50, SENSEX, GOLD/10g, SILVER/1kg)
+        updateTickerPair('nifty-val', 'nifty-chg', d.nifty, { decimals: 2 });
+        updateTickerPair('sensex-val', 'sensex-chg', d.sensex, { decimals: 2 });
+        updateTickerPair('gold-val', 'gold-chg', d.gold, { decimals: 0, prefix: '\u20b9' });
+        updateTickerPair('silver-val', 'silver-chg', d.silver, { decimals: 0, prefix: '\u20b9' });
+
+        // 2. Update Call Put tab 1-second strip (including NASDAQ & SHANGHAI INDEX)
+        updateTickerPair('cp-live-nifty-val', 'cp-live-nifty-chg', d.nifty, { decimals: 2 });
+        updateTickerPair('cp-live-sensex-val', 'cp-live-sensex-chg', d.sensex, { decimals: 2 });
+        updateTickerPair('cp-live-gold-val', 'cp-live-gold-chg', d.gold, { decimals: 0, prefix: '\u20b9' });
+        updateTickerPair('cp-live-silver-val', 'cp-live-silver-chg', d.silver, { decimals: 0, prefix: '\u20b9' });
+        updateTickerPair('cp-live-nasdaq-val', 'cp-live-nasdaq-chg', d.nasdaq, { decimals: 2 });
+        updateTickerPair('cp-live-shanghai-val', 'cp-live-shanghai-chg', d.shanghai, { decimals: 2 });
+
+        const setElText = (id, text) => {
+            const el = document.getElementById(id);
+            if (el && text) el.textContent = text;
+        };
+        if (d.gold?.source) setElText('cp-live-gold-src', d.gold.source);
+        if (d.silver?.source) setElText('cp-live-silver-src', d.silver.source);
+
+        // 3. Update SENSEX 30 & NSE Market Advance/Decline (nseindia.com/market-data/decline)
+        const sBreadth = d.breadth?.sensex30;
+        if (sBreadth) {
+            setElText('cp-sensex-adv', String(sBreadth.advances));
+            setElText('cp-sensex-dec', String(sBreadth.declines));
+            const sTotal = (sBreadth.advances + sBreadth.declines) || 30;
+            const sPct = (sBreadth.advances / sTotal) * 100;
+            setElText('cp-sensex-adv-pct', `Adv ${sPct.toFixed(0)}% / Dec ${(100 - sPct).toFixed(0)}%`);
+            const sBar = document.getElementById('cp-sensex-ad-bar');
+            if (sBar) sBar.style.width = `${sPct.toFixed(1)}%`;
+        }
+
+        const nMarket = d.breadth?.nseMarket;
+        if (nMarket) {
+            setElText('cp-nse-adv', Number(nMarket.advances).toLocaleString('en-IN'));
+            setElText('cp-nse-dec', Number(nMarket.declines).toLocaleString('en-IN'));
+            setElText('cp-nse-unch', Number(nMarket.unchanged).toLocaleString('en-IN'));
+            setElText('cp-nse-total', Number(nMarket.total).toLocaleString('en-IN'));
+            const adTotal = (nMarket.advances + nMarket.declines) || 1;
+            const nPct = (nMarket.advances / adTotal) * 100;
+            const nBar = document.getElementById('cp-nse-ad-bar');
+            if (nBar) nBar.style.width = `${nPct.toFixed(1)}%`;
+            setElText('cp-breadth-time', `Source: nseindia.com/market-data/decline${nMarket.timestamp ? ' • Exchange: ' + nMarket.timestamp : ''}`);
+        }
+    } catch (err) {
+        console.warn('[Live Market 1s]', err.message);
+    } finally {
+        isLiveMarket1sInFlight = false;
+    }
+};
+
 window.fetchCallPutAndMmiData = async function(isManual = false) {
+    if (isManual && typeof fetchLiveMarket1s === 'function') {
+        fetchLiveMarket1s();
+    }
     if (isCallPutFetchInFlight) return;
     isCallPutFetchInFlight = true;
 
