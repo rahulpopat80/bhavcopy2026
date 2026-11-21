@@ -6,6 +6,8 @@ import ibjaHandler from './api/ibja.js';
 import indicesHandler from './api/indices.js';
 import yahooHandler from './api/yahoo.js';
 import corporateHandler from './api/corporate.js';
+import mmiHandler from './api/mmi.js';
+import optionChainHandler from './api/option-chain.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -55,6 +57,28 @@ app.all('/api/corporate', async (req, res) => {
     await corporateHandler(req, res);
   } catch (err) {
     console.error('Error in /api/corporate:', err);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+});
+
+app.all('/api/mmi', async (req, res) => {
+  try {
+    await mmiHandler(req, res);
+  } catch (err) {
+    console.error('Error in /api/mmi:', err);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+});
+
+app.all('/api/option-chain', async (req, res) => {
+  try {
+    await optionChainHandler(req, res);
+  } catch (err) {
+    console.error('Error in /api/option-chain:', err);
     if (!res.headersSent) {
       res.status(500).json({ error: 'Internal server error' });
     }

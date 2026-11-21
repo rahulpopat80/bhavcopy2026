@@ -178,6 +178,7 @@ let isAutoRefreshInFlight = false; // FIX: In-flight guard for central 10s inter
 let hasStartedDashboard = false;
 let marketIndicesTimer = null;
 let autoRefreshTimer = null;
+let callPutTimer = null;
 
 function isTabActive(tabId) {
     const activeTab = document.querySelector('.nav-btn.active');
@@ -265,6 +266,16 @@ function startDashboardAfterLogin() {
                 isAutoRefreshInFlight = false;
             }
         }, 10000);
+    }
+
+    // 1-second live updater for કોલ પુટ (Call Put) Option Chain & Tickertape Market Mood Index
+    if (!callPutTimer) {
+        callPutTimer = setInterval(() => {
+            if (!isTabActive('tab-call-put')) return;
+            if (typeof fetchCallPutAndMmiData === 'function') {
+                fetchCallPutAndMmiData(false);
+            }
+        }, 1000);
     }
 
     // Register Service Worker after dashboard startup so login screen paint stays immediate
@@ -468,6 +479,7 @@ function initEvents() {
     const tabGlobalIndices = document.getElementById('tab-global-indices');
     const tabIntraday    = document.getElementById('tab-intraday');
     const tabMasterPiece = document.getElementById('tab-master-piece');
+    const tabCallPut     = document.getElementById('tab-call-put');
     
     const researchTabContent      = document.getElementById('research-tab-content');
     const portfolioTabContent     = document.getElementById('portfolio-tab-content');
@@ -480,11 +492,12 @@ function initEvents() {
     const globalIndicesTabContent = document.getElementById('global-indices-tab-content');
     const intradayTabContent      = document.getElementById('intraday-tab-content');
     const masterPieceTabContent   = document.getElementById('master-piece-tab-content');
+    const callPutTabContent       = document.getElementById('call-put-tab-content');
 
     const hideAllTabs = () => {
-        [researchTabContent, portfolioTabContent, resultsTabContent, watchlistTabContent, morningPicksTabContent, adviceTabContent, volPromoterTabContent, circuitsTabContent, globalIndicesTabContent, intradayTabContent, masterPieceTabContent]
+        [researchTabContent, portfolioTabContent, resultsTabContent, watchlistTabContent, morningPicksTabContent, adviceTabContent, volPromoterTabContent, circuitsTabContent, globalIndicesTabContent, intradayTabContent, masterPieceTabContent, callPutTabContent]
             .forEach(el => el && el.classList.add('hidden'));
-        [tabResearch, tabPortfolio, tabResults, tabWatchlist, tabMorning, tabAdvice, tabVolPromoter, tabCircuits, tabGlobalIndices, tabIntraday, tabMasterPiece]
+        [tabResearch, tabPortfolio, tabResults, tabWatchlist, tabMorning, tabAdvice, tabVolPromoter, tabCircuits, tabGlobalIndices, tabIntraday, tabMasterPiece, tabCallPut]
             .forEach(el => el && el.classList.remove('active'));
     };
 
@@ -589,6 +602,21 @@ function initEvents() {
             masterPieceTabContent.classList.remove('hidden');
             renderMasterPiece();
         });
+    }
+
+    if (tabCallPut && callPutTabContent) {
+        tabCallPut.addEventListener('click', () => {
+            hideAllTabs();
+            tabCallPut.classList.add('active');
+            callPutTabContent.classList.remove('hidden');
+            if (typeof fetchCallPutAndMmiData === 'function') {
+                fetchCallPutAndMmiData(true);
+            }
+        });
+    }
+
+    if (typeof initCallPutControls === 'function') {
+        initCallPutControls();
     }
 
 
@@ -6994,6 +7022,281 @@ window.fetchMasterPieceLivePrices = async function() {
     }
 };
 
+// ==========================================
+// CALL PUT (કોલ પુટ) 5-LEVEL ITM/OTM VOLUME + TICKERTAPE MMI (1-SECOND LIVE)
+// ==========================================
+let isCallPutFetchInFlight = false;
+let cpLastExpiriesKey = '';
+let cpInitializedControls = false;
+
+function formatCpExact(num) {
+    const n = Number(num);
+    if (!Number.isFinite(n)) return '0';
+    return Math.round(n).toLocaleString('en-IN');
+}
+
+function formatCpCompact(num) {
+    const n = Number(num);
+    if (!Number.isFinite(n) || n === 0) return '0';
+    if (n >= 1e7) return `${(n / 1e7).toFixed(2)} Cr`;
+    if (n >= 1e5) return `${(n / 1e5).toFixed(2)} L`;
+    return Math.round(n).toLocaleString('en-IN');
+}
+
+window.initCallPutControls = function() {
+    if (cpInitializedControls) return;
+    cpInitializedControls = true;
+
+    const symSelect = document.getElementById('cp-symbol-select');
+    const expSelect = document.getElementById('cp-expiry-select');
+    const refreshBtn = document.getElementById('cp-refresh-btn');
+
+    if (symSelect) {
+        symSelect.addEventListener('change', () => {
+            cpLastExpiriesKey = '';
+            if (expSelect) {
+                expSelect.innerHTML = '<option value="">ચાલુ Expiry (Auto)</option>';
+                expSelect.value = '';
+            }
+            window.fetchCallPutAndMmiData(true);
+        });
+    }
+
+    if (expSelect) {
+        expSelect.addEventListener('change', () => {
+            window.fetchCallPutAndMmiData(true);
+        });
+    }
+
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', () => {
+            window.fetchCallPutAndMmiData(true);
+        });
+    }
+};
+
+function renderMmiPanel(mmi) {
+    if (!mmi || !Number.isFinite(Number(mmi.value))) return;
+
+    const val = Number(mmi.value);
+    const valEl = document.getElementById('cp-mmi-value');
+    const zoneEl = document.getElementById('cp-mmi-zone');
+    const chgEl = document.getElementById('cp-mmi-change');
+    const markerEl = document.getElementById('cp-mmi-marker');
+    const prevEl = document.getElementById('cp-mmi-prev');
+    const weekEl = document.getElementById('cp-mmi-week');
+    const monthEl = document.getElementById('cp-mmi-month');
+    const yearEl = document.getElementById('cp-mmi-year');
+    const dateEl = document.getElementById('cp-mmi-date');
+
+    if (valEl) {
+        valEl.textContent = val.toFixed(2);
+        valEl.style.color = mmi.color || '#f8fafc';
+    }
+    if (zoneEl) {
+        zoneEl.textContent = mmi.zoneGu || mmi.zone || 'Neutral';
+        zoneEl.style.color = mmi.color || '#93c5fd';
+        zoneEl.style.borderColor = `${mmi.color || '#3b82f6'}55`;
+        zoneEl.style.background = `${mmi.color || '#3b82f6'}1f`;
+    }
+    if (chgEl) {
+        if (mmi.changeFromPrevDay !== null && mmi.changeFromPrevDay !== undefined) {
+            const sign = mmi.changeFromPrevDay >= 0 ? '+' : '';
+            chgEl.textContent = `${sign}${Number(mmi.changeFromPrevDay).toFixed(2)} vs ગઈકાલ`;
+            chgEl.style.color = mmi.changeFromPrevDay >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+        } else {
+            chgEl.textContent = '-';
+        }
+    }
+    if (markerEl) {
+        const clamped = Math.max(0, Math.min(100, val));
+        markerEl.style.left = `${clamped}%`;
+    }
+    if (prevEl) prevEl.textContent = mmi.prevDay !== null ? Number(mmi.prevDay).toFixed(2) : '--';
+    if (weekEl) weekEl.textContent = mmi.lastWeek !== null ? Number(mmi.lastWeek).toFixed(2) : '--';
+    if (monthEl) monthEl.textContent = mmi.lastMonth !== null ? Number(mmi.lastMonth).toFixed(2) : '--';
+    if (yearEl) yearEl.textContent = mmi.lastYear !== null ? Number(mmi.lastYear).toFixed(2) : '--';
+    if (dateEl) {
+        const dtStr = mmi.date ? new Date(mmi.date).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '';
+        dateEl.textContent = `Source: ${mmi.source || 'tickertape.in/market-mood-index'}${dtStr ? ' • Feed Time: ' + dtStr : ''}`;
+    }
+}
+
+function renderOptionChainPanel(oc) {
+    if (!oc || !oc.summary) return;
+
+    const expSelect = document.getElementById('cp-expiry-select');
+    if (expSelect && Array.isArray(oc.expiries) && oc.expiries.length > 0) {
+        const key = `${oc.symbol}:${oc.expiries.join('|')}`;
+        if (key !== cpLastExpiriesKey) {
+            cpLastExpiriesKey = key;
+            const prevSelected = expSelect.value;
+            expSelect.innerHTML = oc.expiries
+                .map(exp => `<option value="${exp}">${exp}</option>`)
+                .join('');
+            expSelect.value = oc.expiries.includes(prevSelected) ? prevSelected : (oc.expiry || oc.expiries[0]);
+        }
+    }
+
+    const spotEl = document.getElementById('cp-spot-price');
+    const spotChgEl = document.getElementById('cp-spot-change');
+    const atmEl = document.getElementById('cp-atm-strike');
+    const expEl = document.getElementById('cp-active-expiry');
+    const srcEl = document.getElementById('cp-feed-source');
+
+    if (spotEl) {
+        spotEl.textContent = Number(oc.spotPrice).toLocaleString('en-IN', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        });
+    }
+    if (spotChgEl) {
+        if (oc.spotChange !== null && oc.spotChange !== undefined && oc.spotChangePct !== null) {
+            const sign = oc.spotChange >= 0 ? '+' : '';
+            spotChgEl.textContent = `${sign}${Number(oc.spotChange).toFixed(2)} (${sign}${Number(oc.spotChangePct).toFixed(2)}%)`;
+            spotChgEl.style.color = oc.spotChange >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+        } else {
+            spotChgEl.textContent = oc.symbol;
+            spotChgEl.style.color = '#94a3b8';
+        }
+    }
+    if (atmEl) atmEl.textContent = Number(oc.atmStrike).toLocaleString('en-IN');
+    if (expEl) expEl.textContent = oc.expiry || '--';
+    if (srcEl) srcEl.textContent = oc.source || '--';
+
+    // Sync top header NIFTY / SENSEX widget cleanly on 1s updates
+    if (oc.symbol === 'NIFTY' && Number(oc.spotPrice) > 0) {
+        const nVal = document.getElementById('nifty-val');
+        const nChg = document.getElementById('nifty-chg');
+        if (nVal) nVal.textContent = Number(oc.spotPrice).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        if (nChg && oc.spotChange !== null && oc.spotChangePct !== null) {
+            const sign = oc.spotChange >= 0 ? '+' : '';
+            nChg.textContent = `${sign}${Number(oc.spotChange).toFixed(2)} (${sign}${Number(oc.spotChangePct).toFixed(2)}%)`;
+            nChg.style.color = oc.spotChange >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+        }
+    } else if (oc.symbol === 'SENSEX' && Number(oc.spotPrice) > 0) {
+        const sVal = document.getElementById('sensex-val');
+        if (sVal) sVal.textContent = Number(oc.spotPrice).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    }
+
+    const s = oc.summary;
+    const setText = (id, text) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = text;
+    };
+
+    setText('cp-total-itm-vol', `${formatCpExact(s.totalItm5Vol)} (${formatCpCompact(s.totalItm5Vol)})`);
+    setText('cp-total-otm-vol', `${formatCpExact(s.totalOtm5Vol)} (${formatCpCompact(s.totalOtm5Vol)})`);
+    setText('cp-atm-ce-vol', `${formatCpExact(s.callAtmVol)} (${formatCpCompact(s.callAtmVol)})`);
+    setText('cp-atm-pe-vol', `${formatCpExact(s.putAtmVol)} (${formatCpCompact(s.putAtmVol)})`);
+
+    setText('cp-call-itm-vol', `${formatCpExact(s.callItm5Vol)} (${formatCpCompact(s.callItm5Vol)})`);
+    setText('cp-call-itm-range', s.itmRange || '--');
+    setText('cp-call-itm-oi', formatCpCompact(s.callItm5Oi));
+
+    setText('cp-call-otm-vol', `${formatCpExact(s.callOtm5Vol)} (${formatCpCompact(s.callOtm5Vol)})`);
+    setText('cp-call-otm-range', s.otmRange || '--');
+    setText('cp-call-otm-oi', formatCpCompact(s.callOtm5Oi));
+
+    setText('cp-put-itm-vol', `${formatCpExact(s.putItm5Vol)} (${formatCpCompact(s.putItm5Vol)})`);
+    setText('cp-put-itm-range', s.otmRange || '--');
+    setText('cp-put-itm-oi', formatCpCompact(s.putItm5Oi));
+
+    setText('cp-put-otm-vol', `${formatCpExact(s.putOtm5Vol)} (${formatCpCompact(s.putOtm5Vol)})`);
+    setText('cp-put-otm-range', s.itmRange || '--');
+    setText('cp-put-otm-oi', formatCpCompact(s.putOtm5Oi));
+
+    const tbody = document.getElementById('call-put-tbody');
+    if (tbody && Array.isArray(oc.rows)) {
+        const zonePill = (zone) => {
+            if (zone === 'ITM') return '<span class="cp-zone-pill cp-zone-itm">ITM</span>';
+            if (zone === 'OTM') return '<span class="cp-zone-pill cp-zone-otm">OTM</span>';
+            return '<span class="cp-zone-pill cp-zone-atm">ATM</span>';
+        };
+
+        tbody.innerHTML = oc.rows.map(r => {
+            const rowCls = r.isAtm ? 'cp-atm-row' : '';
+            const ceBg = r.callMoneyness === 'ITM' ? 'cp-itm-cell' : (r.callMoneyness === 'OTM' ? 'cp-otm-cell' : '');
+            const peBg = r.putMoneyness === 'ITM' ? 'cp-itm-cell' : (r.putMoneyness === 'OTM' ? 'cp-otm-cell' : '');
+
+            return `
+                <tr class="${rowCls}">
+                    <td style="text-align:center; font-weight:700; color:${r.isAtm ? '#22d3ee' : '#cbd5e1'};">${r.levelLabel}</td>
+                    <td class="${ceBg}">${zonePill(r.callMoneyness)}</td>
+                    <td class="${ceBg}" style="text-align:right; color:#cbd5e1;">${formatCpCompact(r.ceOi)}</td>
+                    <td class="${ceBg}" style="text-align:right; font-weight:600; color:#93c5fd;">₹${Number(r.ceLtp).toFixed(2)}</td>
+                    <td class="${ceBg}" style="text-align:right; font-weight:700; color:#ffffff;">${formatCpExact(r.ceVolume)}</td>
+                    <td style="text-align:center; font-weight:700; color:${r.isAtm ? '#22d3ee' : '#f8fafc'}; background:#162033;">${Number(r.strike).toLocaleString('en-IN')}</td>
+                    <td class="${peBg}" style="text-align:right; font-weight:700; color:#ffffff;">${formatCpExact(r.peVolume)}</td>
+                    <td class="${peBg}" style="text-align:right; font-weight:600; color:#d8b4fe;">₹${Number(r.peLtp).toFixed(2)}</td>
+                    <td class="${peBg}" style="text-align:right; color:#cbd5e1;">${formatCpCompact(r.peOi)}</td>
+                    <td class="${peBg}">${zonePill(r.putMoneyness)}</td>
+                </tr>
+            `;
+        }).join('');
+    }
+}
+
+window.fetchCallPutAndMmiData = async function(isManual = false) {
+    if (isCallPutFetchInFlight) return;
+    isCallPutFetchInFlight = true;
+
+    const symSelect = document.getElementById('cp-symbol-select');
+    const expSelect = document.getElementById('cp-expiry-select');
+    const statusEl = document.getElementById('cp-status-msg');
+    const updatedEl = document.getElementById('cp-last-updated');
+    const symbol = symSelect ? symSelect.value : 'NIFTY';
+    const expiry = expSelect && expSelect.value ? expSelect.value : '';
+
+    const ocUrl = `/api/option-chain?symbol=${encodeURIComponent(symbol)}${expiry ? '&expiry=' + encodeURIComponent(expiry) : ''}`;
+
+    try {
+        const [ocSettled, mmiSettled] = await Promise.allSettled([
+            fetchWithTimeout(ocUrl, { cache: 'no-store' }, 4500),
+            fetchWithTimeout('/api/mmi', { cache: 'no-store' }, 4500)
+        ]);
+
+        const errors = [];
+
+        if (ocSettled.status === 'fulfilled' && ocSettled.value.ok) {
+            const ocJson = await ocSettled.value.json();
+            renderOptionChainPanel(ocJson);
+        } else {
+            errors.push(`Option Chain (${symbol}) unavailable`);
+        }
+
+        if (mmiSettled.status === 'fulfilled' && mmiSettled.value.ok) {
+            const mmiJson = await mmiSettled.value.json();
+            renderMmiPanel(mmiJson);
+        } else {
+            errors.push('Market Mood Index (tickertape.in) unavailable');
+        }
+
+        if (statusEl) {
+            if (errors.length > 0) {
+                statusEl.textContent = `નોંધ: ${errors.join(' | ')}`;
+                statusEl.classList.remove('hidden');
+            } else {
+                statusEl.classList.add('hidden');
+            }
+        }
+
+        if (updatedEl) {
+            const nowStr = new Date().toLocaleTimeString('en-IN', { hour12: false });
+            updatedEl.textContent = `1s Live • ${nowStr}`;
+        }
+
+        if (isManual && errors.length === 0 && typeof showNotification === 'function') {
+            showNotification(`${symbol} કોલ-પુટ અને MMI અપડેટ થઈ ગયું`, 'success');
+        }
+    } catch (err) {
+        console.warn('[Call Put 1s Update]', err.message);
+    } finally {
+        isCallPutFetchInFlight = false;
+    }
+};
+
 // Run on load
 document.addEventListener('DOMContentLoaded', initEvents);
+
 

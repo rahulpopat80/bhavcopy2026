@@ -128,6 +128,9 @@
             <button class="nav-btn" id="tab-master-piece" style="border-color: #ec4899; color: #ec4899; font-weight: bold;">
                 <i class="fa-solid fa-gem"></i> MASTER PIECE
             </button>
+            <button class="nav-btn" id="tab-call-put" style="border-color: #06b6d4; color: #22d3ee; font-weight: bold;">
+                <i class="fa-solid fa-layer-group"></i> કોલ પુટ (Call Put)
+            </button>
         </nav>
 
         <!-- Tab 1: Stock Research Content -->
@@ -981,6 +984,219 @@
                             </tr>
                         </thead>
                         <tbody id="master-piece-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab 12: કોલ પુટ (Call Put - 5 Level ITM/OTM Volume & Market Mood Index - 1s Live) -->
+        <div id="call-put-tab-content" class="hidden">
+            <div class="card call-put-card">
+                <div class="card-header cp-header-row">
+                    <div>
+                        <h2 style="color: #22d3ee;">
+                            <i class="fa-solid fa-layer-group"></i> કોલ પુટ (Call / Put) – 5 સ્તર ITM &amp; OTM વોલ્યુમ
+                        </h2>
+                        <p class="card-desc" style="margin-bottom: 0; margin-top: 0.25rem;">
+                            ચાલુ Market ATM Strike થી ઉપર-નીચે 5-5 સ્તરના Call (CE) અને Put (PE) વોલ્યુમનો અલગ સરવાળો + Tickertape Market Mood Index (દર 1 સેકન્ડે લાઇવ અપડેટ).
+                        </p>
+                    </div>
+                    <div class="cp-controls">
+                        <select id="cp-symbol-select" class="cp-select" aria-label="Select Index">
+                            <option value="NIFTY">NIFTY 50</option>
+                            <option value="BANKNIFTY">BANKNIFTY</option>
+                            <option value="FINNIFTY">FINNIFTY</option>
+                            <option value="MIDCPNIFTY">MIDCPNIFTY</option>
+                            <option value="SENSEX">SENSEX</option>
+                        </select>
+                        <select id="cp-expiry-select" class="cp-select" aria-label="Select Expiry">
+                            <option value="">ચાલુ Expiry (Auto)</option>
+                        </select>
+                        <span id="cp-live-badge" class="cp-live-pill">
+                            <span class="cp-live-dot"></span>
+                            <span id="cp-last-updated">1s Live...</span>
+                        </span>
+                        <button type="button" id="cp-refresh-btn" class="btn btn-secondary cp-refresh-btn">
+                            <i class="fa-solid fa-rotate"></i> Refresh
+                        </button>
+                    </div>
+                </div>
+
+                <div id="cp-status-msg" class="cp-status-banner hidden"></div>
+
+                <!-- Row 1: Market Mood Index & Live Spot / ATM Summary -->
+                <div class="cp-top-grid">
+                    <!-- Tickertape Market Mood Index Card -->
+                    <div class="cp-panel cp-mmi-panel">
+                        <div class="cp-panel-header">
+                            <div>
+                                <span class="cp-kicker">TICKERTAPE MARKET MOOD INDEX (MMI)</span>
+                                <div class="cp-mmi-headline">
+                                    <span id="cp-mmi-value" class="cp-mmi-number">--</span>
+                                    <span id="cp-mmi-zone" class="cp-mmi-zone-badge">Loading...</span>
+                                    <span id="cp-mmi-change" class="cp-mmi-chg">--</span>
+                                </div>
+                            </div>
+                            <a href="https://www.tickertape.in/market-mood-index" target="_blank" rel="noopener noreferrer" class="cp-source-link">
+                                tickertape.in <i class="fa-solid fa-arrow-up-right-from-square"></i>
+                            </a>
+                        </div>
+
+                        <div class="mmi-gauge-wrap">
+                            <div class="mmi-gauge-bar">
+                                <div class="mmi-seg mmi-seg-ef" title="Extreme Fear (0-30)"></div>
+                                <div class="mmi-seg mmi-seg-f" title="Fear (30-50)"></div>
+                                <div class="mmi-seg mmi-seg-g" title="Greed (50-70)"></div>
+                                <div class="mmi-seg mmi-seg-eg" title="Extreme Greed (70-100)"></div>
+                                <div id="cp-mmi-marker" class="mmi-gauge-marker" style="left: 50%;"></div>
+                            </div>
+                            <div class="mmi-gauge-labels">
+                                <span>0 • અત્યંત ભય</span>
+                                <span>30 • ભય</span>
+                                <span>50 • લાલચ</span>
+                                <span>70 • અત્યંત લાલચ</span>
+                                <span>100</span>
+                            </div>
+                        </div>
+
+                        <div class="cp-mmi-baselines">
+                            <div class="cp-mini-stat">
+                                <span>ગઈકાલ (Yesterday)</span>
+                                <strong id="cp-mmi-prev">--</strong>
+                            </div>
+                            <div class="cp-mini-stat">
+                                <span>1 અઠવાડિયું (1W)</span>
+                                <strong id="cp-mmi-week">--</strong>
+                            </div>
+                            <div class="cp-mini-stat">
+                                <span>1 મહિનો (1M)</span>
+                                <strong id="cp-mmi-month">--</strong>
+                            </div>
+                            <div class="cp-mini-stat">
+                                <span>1 વર્ષ (1Y)</span>
+                                <strong id="cp-mmi-year">--</strong>
+                            </div>
+                        </div>
+                        <div class="cp-mmi-footer" id="cp-mmi-date">Source: tickertape.in/market-mood-index</div>
+                    </div>
+
+                    <!-- Live Spot, ATM Strike & Combined 5-Level ITM vs OTM -->
+                    <div class="cp-panel cp-spot-panel">
+                        <div class="cp-panel-header">
+                            <div>
+                                <span class="cp-kicker">ચાલુ બજાર ભાવ &amp; ATM STRIKE PRICE</span>
+                                <div class="cp-spot-headline">
+                                    <span id="cp-spot-price" class="cp-spot-number">--</span>
+                                    <span id="cp-spot-change" class="cp-spot-chg">--</span>
+                                </div>
+                            </div>
+                            <div class="cp-atm-pill-box">
+                                <span class="cp-atm-pill-label">ATM STRIKE</span>
+                                <strong id="cp-atm-strike" class="cp-atm-pill-val">--</strong>
+                            </div>
+                        </div>
+
+                        <div class="cp-spot-meta">
+                            <span>Expiry: <strong id="cp-active-expiry">--</strong></span>
+                            <span>Feed: <strong id="cp-feed-source">--</strong></span>
+                        </div>
+
+                        <div class="cp-combined-grid">
+                            <div class="cp-combined-box cp-itm-accent">
+                                <span class="cp-combined-label">કુલ ITM 5-સ્તર વોલ્યુમ (Call + Put ITM)</span>
+                                <strong id="cp-total-itm-vol" class="cp-combined-val">--</strong>
+                            </div>
+                            <div class="cp-combined-box cp-otm-accent">
+                                <span class="cp-combined-label">કુલ OTM 5-સ્તર વોલ્યુમ (Call + Put OTM)</span>
+                                <strong id="cp-total-otm-vol" class="cp-combined-val">--</strong>
+                            </div>
+                            <div class="cp-combined-box">
+                                <span class="cp-combined-label">ATM Call (CE) વોલ્યુમ</span>
+                                <strong id="cp-atm-ce-vol" class="cp-combined-val" style="color: #60a5fa;">--</strong>
+                            </div>
+                            <div class="cp-combined-box">
+                                <span class="cp-combined-label">ATM Put (PE) વોલ્યુમ</span>
+                                <strong id="cp-atm-pe-vol" class="cp-combined-val" style="color: #c084fc;">--</strong>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Row 2: Separate 5-Level Volume Totals for Call ITM, Call OTM, Put ITM, Put OTM -->
+                <div class="cp-summary-grid">
+                    <div class="cp-vol-card cp-vol-call-itm">
+                        <div class="cp-vol-title">
+                            <span>CALL (CE) – ITM 5 સ્તર સરવાળો</span>
+                            <span class="cp-side-tag cp-tag-itm">ATM થી નીચે</span>
+                        </div>
+                        <div id="cp-call-itm-vol" class="cp-vol-value">--</div>
+                        <div class="cp-vol-sub">
+                            <span>Strikes: <strong id="cp-call-itm-range">--</strong></span>
+                            <span>OI: <strong id="cp-call-itm-oi">--</strong></span>
+                        </div>
+                    </div>
+
+                    <div class="cp-vol-card cp-vol-call-otm">
+                        <div class="cp-vol-title">
+                            <span>CALL (CE) – OTM 5 સ્તર સરવાળો</span>
+                            <span class="cp-side-tag cp-tag-otm">ATM થી ઉપર</span>
+                        </div>
+                        <div id="cp-call-otm-vol" class="cp-vol-value">--</div>
+                        <div class="cp-vol-sub">
+                            <span>Strikes: <strong id="cp-call-otm-range">--</strong></span>
+                            <span>OI: <strong id="cp-call-otm-oi">--</strong></span>
+                        </div>
+                    </div>
+
+                    <div class="cp-vol-card cp-vol-put-itm">
+                        <div class="cp-vol-title">
+                            <span>PUT (PE) – ITM 5 સ્તર સરવાળો</span>
+                            <span class="cp-side-tag cp-tag-itm">ATM થી ઉપર</span>
+                        </div>
+                        <div id="cp-put-itm-vol" class="cp-vol-value">--</div>
+                        <div class="cp-vol-sub">
+                            <span>Strikes: <strong id="cp-put-itm-range">--</strong></span>
+                            <span>OI: <strong id="cp-put-itm-oi">--</strong></span>
+                        </div>
+                    </div>
+
+                    <div class="cp-vol-card cp-vol-put-otm">
+                        <div class="cp-vol-title">
+                            <span>PUT (PE) – OTM 5 સ્તર સરવાળો</span>
+                            <span class="cp-side-tag cp-tag-otm">ATM થી નીચે</span>
+                        </div>
+                        <div id="cp-put-otm-vol" class="cp-vol-value">--</div>
+                        <div class="cp-vol-sub">
+                            <span>Strikes: <strong id="cp-put-otm-range">--</strong></span>
+                            <span>OI: <strong id="cp-put-otm-oi">--</strong></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Row 3: 11-Row Option Chain Strike Breakdown -->
+                <div class="table-wrapper" style="margin-top: 1.25rem;">
+                    <table id="call-put-table" style="min-width: 780px;">
+                        <thead>
+                            <tr>
+                                <th style="text-align:center;">સ્તર</th>
+                                <th>CE ઝોન</th>
+                                <th style="text-align:right;">CALL OI</th>
+                                <th style="text-align:right;">CALL LTP</th>
+                                <th style="text-align:right;">CALL VOLUME</th>
+                                <th style="text-align:center; background: #1e293b; color: #22d3ee;">STRIKE PRICE</th>
+                                <th style="text-align:right;">PUT VOLUME</th>
+                                <th style="text-align:right;">PUT LTP</th>
+                                <th style="text-align:right;">PUT OI</th>
+                                <th>PE ઝોન</th>
+                            </tr>
+                        </thead>
+                        <tbody id="call-put-tbody">
+                            <tr>
+                                <td colspan="10" style="text-align:center; padding: 2rem; color: var(--text-secondary);">
+                                    કોલ પુટ ડેટા લોડ થઈ રહ્યો છે...
+                                </td>
+                            </tr>
+                        </tbody>
                     </table>
                 </div>
             </div>
