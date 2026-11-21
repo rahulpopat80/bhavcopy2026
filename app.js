@@ -176,11 +176,13 @@ const movementTable = document.getElementById('movement-table');
 // Initialize Event Listeners
 let isAutoRefreshInFlight = false; // FIX: In-flight guard for central 10s interval
 let isLiveMarket1sInFlight = false; // In-flight guard for 1s live market ticker
+let isCandle1sInFlight = false; // In-flight guard for 1s live candle updater
 let hasStartedDashboard = false;
 let marketIndicesTimer = null;
 let autoRefreshTimer = null;
 let callPutTimer = null;
 let liveMarket1sTimer = null;
+let candle1sTimer = null;
 
 function isTabActive(tabId) {
     const activeTab = document.querySelector('.nav-btn.active');
@@ -288,6 +290,15 @@ function startDashboardAfterLogin() {
             if (!isTabActive('tab-call-put')) return;
             if (typeof fetchCallPutAndMmiData === 'function') {
                 fetchCallPutAndMmiData(false);
+            }
+        }, 1000);
+    }
+
+    // 1-second live candle updater for active Candle Chart tab or open Research/Price modals
+    if (!candle1sTimer) {
+        candle1sTimer = setInterval(() => {
+            if (typeof refreshVisibleCandles1s === 'function') {
+                refreshVisibleCandles1s();
             }
         }, 1000);
     }
@@ -3669,6 +3680,9 @@ function showPriceChart(symbol) {
             volume: 0
         };
     });
+    // Show Modal before canvas draw so dimensions measure accurately
+    document.getElementById('chart-modal').classList.remove('hidden');
+
     if (typeof renderModalCandleChart === 'function') {
         renderModalCandleChart('cm', symbol, 'price-chart', fallbackCandles);
     }
@@ -3709,9 +3723,6 @@ function showPriceChart(symbol) {
             livePriceEl.textContent = 'Price unavailable';
         })();
     }
-    
-    // Show Modal overlay
-    document.getElementById('chart-modal').classList.remove('hidden');
 }
 
 // Fetch and Render Company Research Report in Modal
@@ -7188,29 +7199,70 @@ window.fetchCallPutAndMmiData = async function(isManual = false) {
 };
 
 // ==========================================
-// CANDLE CHART ENGINE: CANDLESTICK + BOLLINGER BANDS (20,2) + VOLUME + 1m/3m/5m/10m/1D + PATTERN GUIDE
+// CANDLE CHART ENGINE: CANDLESTICK + BOLLINGER BANDS (20,2) + VOLUME + 1m/3m/5m/10m/1D/5D/1W/1M/1Y + 1s LIVE UPDATES
 // ==========================================
+const VALID_CANDLE_TFS = ['1m', '3m', '5m', '10m', '1d', '5d', '1w', '1mo', '1y'];
 const candleSeriesCache = new Map();
 const modalChartState = {
-    rm: { symbol: '', interval: '5m', showBB: true, fallback: [], candles: [] },
-    cm: { symbol: '', interval: '5m', showBB: true, fallback: [], candles: [] }
+    rm: { symbol: '', interval: '5m', showBB: true, fallback: [], candles: [], visibleStartTime: null },
+    cm: { symbol: '', interval: '5m', showBB: true, fallback: [], candles: [], visibleStartTime: null }
 };
 const candleTabState = {
     symbol: 'RELIANCE',
     interval: '5m',
     showBB: true,
     candles: [],
+    visibleStartTime: null,
     guideFilter: 'all',
     initialized: false
 };
 
-async function fetchCandleSeries(symbol, interval = '5m') {
+function formatCandleLabel(unixSec, tf) {
+    const dt = new Date(unixSec * 1000);
+    if (tf === '1y') {
+        return dt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' });
+    }
+    if (tf === '5d' || tf === '1w' || tf === '1mo') {
+        const dPart = dt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+        const tPart = dt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false });
+        return `${dPart} ${tPart}`;
+    }
+    return dt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false });
+}
+
+function getBucketSecondsForTf(tf) {
+    switch (tf) {
+        case '1m': return 60;
+        case '3m': return 180;
+        case '5m': return 300;
+        case '10m': return 600;
+        case '1d': return 300;
+        case '5d': return 900;
+        case '1w': return 1800;
+        case '1mo': return 3600;
+        case '1y': return 86400;
+        default: return 300;
+    }
+}
+
+function getDefaultMaxBarsForTf(tf, isModal = false) {
+    switch (tf) {
+        case '1d': return 90;
+        case '5d': return isModal ? 125 : 135;
+        case '1w': return isModal ? 95 : 110;
+        case '1mo': return isModal ? 140 : 165;
+        case '1y': return isModal ? 160 : 255;
+        default: return isModal ? 65 : 85;
+    }
+}
+
+async function fetchCandleSeries(symbol, interval = '5m', forceRefresh = false) {
     const cleanSym = String(symbol || 'RELIANCE').trim().toUpperCase();
-    const tf = ['1m', '3m', '5m', '10m', '1d'].includes(interval) ? interval : '5m';
+    const tf = VALID_CANDLE_TFS.includes(interval) ? interval : '5m';
     const cacheKey = `${cleanSym}:${tf}`;
     const cached = candleSeriesCache.get(cacheKey);
-    if (cached && (Date.now() - cached.ts) < 5000) {
-        return cached.candles;
+    if (!forceRefresh && cached && (Date.now() - cached.ts) < 3000) {
+        return cached;
     }
 
     const url = `/api/yahoo?symbol=${encodeURIComponent(cleanSym)}&interval=${encodeURIComponent(tf)}`;
@@ -7222,16 +7274,18 @@ async function fetchCandleSeries(symbol, interval = '5m') {
         throw new Error('No candlestick bars returned');
     }
 
-    const formatted = rawCandles.map(c => {
-        const dt = new Date(c.time * 1000);
-        const label = tf === '1d'
-            ? dt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })
-            : dt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false });
-        return { ...c, label };
-    });
+    const formatted = rawCandles.map(c => ({
+        ...c,
+        label: formatCandleLabel(c.time, tf)
+    }));
 
-    candleSeriesCache.set(cacheKey, { candles: formatted, ts: Date.now() });
-    return formatted;
+    const payload = {
+        candles: formatted,
+        visibleStartTime: json.visibleStartTime || null,
+        ts: Date.now()
+    };
+    candleSeriesCache.set(cacheKey, payload);
+    return payload;
 }
 
 function computeBollingerBands(candles, period = 20, mult = 2) {
@@ -7503,33 +7557,56 @@ function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
         canvas.__ccCleanup();
     }
 
-    const maxBars = options.maxBars || 75;
-    const bbFull = computeBollingerBands(allCandles, 20, 2);
-    const volAvgFull = computeVolumeSma(allCandles, 20);
-    const analysis = detectCandlestickPatterns(allCandles, bbFull, volAvgFull);
-
-    const startIdx = Math.max(0, allCandles.length - maxBars);
-    const candles = allCandles.slice(startIdx);
-    const bb = {
-        upper: bbFull.upper.slice(startIdx),
-        middle: bbFull.middle.slice(startIdx),
-        lower: bbFull.lower.slice(startIdx)
-    };
-    const volAvg = volAvgFull.slice(startIdx);
-    const markers = analysis.markers.slice(startIdx);
-    const showBB = options.showBB !== false;
-
-    const readoutEl = options.readoutId ? document.getElementById(options.readoutId) : null;
+    let currentAllCandles = allCandles;
+    let currentOptions = options;
     let hoverIdx = -1;
 
+    let candles = [];
+    let bb = { upper: [], middle: [], lower: [] };
+    let volAvg = [];
+    let markers = [];
+    let analysis = null;
+    let showBB = true;
+
+    const recomputeView = (sourceCandles, opts) => {
+        const maxBars = opts.maxBars || 85;
+        const bbFull = computeBollingerBands(sourceCandles, 20, 2);
+        const volAvgFull = computeVolumeSma(sourceCandles, 20);
+        analysis = detectCandlestickPatterns(sourceCandles, bbFull, volAvgFull);
+
+        let startIdx = Math.max(0, sourceCandles.length - maxBars);
+        if (opts.visibleStartTime) {
+            const timeIdx = sourceCandles.findIndex(c => c.time >= opts.visibleStartTime);
+            if (timeIdx !== -1 && (sourceCandles.length - timeIdx) >= 5) {
+                startIdx = Math.max(timeIdx, sourceCandles.length - Math.max(maxBars, 260));
+            }
+        }
+
+        candles = sourceCandles.slice(startIdx);
+        bb = {
+            upper: bbFull.upper.slice(startIdx),
+            middle: bbFull.middle.slice(startIdx),
+            lower: bbFull.lower.slice(startIdx)
+        };
+        volAvg = volAvgFull.slice(startIdx);
+        markers = analysis.markers.slice(startIdx);
+        showBB = opts.showBB !== false;
+        if (hoverIdx >= candles.length) hoverIdx = candles.length - 1;
+    };
+
+    recomputeView(currentAllCandles, currentOptions);
+
     const draw = () => {
+        if (!canvas.parentElement) return;
         const rect = canvas.parentElement.getBoundingClientRect();
         const width = Math.max(280, Math.floor(rect.width || 600));
         const height = Math.max(180, Math.floor(rect.height || 320));
         const dpr = Math.min(window.devicePixelRatio || 1, 2);
 
-        canvas.width = width * dpr;
-        canvas.height = height * dpr;
+        if (canvas.width !== width * dpr || canvas.height !== height * dpr) {
+            canvas.width = width * dpr;
+            canvas.height = height * dpr;
+        }
         const ctx = canvas.getContext('2d');
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
@@ -7572,7 +7649,7 @@ function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
 
         const priceToY = (p) => padTop + ((maxP - p) / (maxP - minP)) * priceH;
         const stepX = plotW / candles.length;
-        const candleW = Math.max(2, Math.min(12, stepX * 0.65));
+        const candleW = Math.max(1.4, Math.min(12, stepX * 0.65));
 
         // Gridlines & Right Y-axis Price Labels
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
@@ -7593,7 +7670,6 @@ function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
 
         // Bollinger Bands fill + Upper/Mid/Lower lines
         if (showBB) {
-            // Shaded cloud between upper and lower
             const validIndices = [];
             for (let i = 0; i < candles.length; i++) {
                 if (bb.upper[i] !== null && bb.lower[i] !== null) validIndices.push(i);
@@ -7649,7 +7725,7 @@ function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
 
             // Wick
             ctx.strokeStyle = col;
-            ctx.lineWidth = 1.2;
+            ctx.lineWidth = stepX < 4 ? 1 : 1.2;
             ctx.beginPath();
             ctx.moveTo(cx, priceToY(c.high));
             ctx.lineTo(cx, priceToY(c.low));
@@ -7671,7 +7747,7 @@ function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
                 ctx.fillStyle = isBullMk ? '#10b981' : (isBearMk ? '#ef4444' : '#f59e0b');
                 const my = isBullMk ? Math.min(height - 26, priceToY(c.low) + 9) : Math.max(padTop + 9, priceToY(c.high) - 6);
                 ctx.beginPath();
-                ctx.arc(cx, my, 3.2, 0, Math.PI * 2);
+                ctx.arc(cx, my, 3.0, 0, Math.PI * 2);
                 ctx.fill();
             }
 
@@ -7681,6 +7757,29 @@ function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
                 ctx.fillStyle = isUp ? 'rgba(34, 197, 94, 0.55)' : 'rgba(239, 68, 68, 0.55)';
                 ctx.fillRect(cx - candleW / 2, volTop + volH - vH, candleW, vH);
             }
+        }
+
+        // Highlight latest live price horizontal dashed guide
+        const liveCandle = candles[candles.length - 1];
+        if (liveCandle) {
+            const ly = priceToY(liveCandle.close);
+            const liveCol = liveCandle.close >= liveCandle.open ? '#22c55e' : '#ef4444';
+            ctx.save();
+            ctx.strokeStyle = liveCol;
+            ctx.globalAlpha = 0.55;
+            ctx.setLineDash([2, 3]);
+            ctx.beginPath();
+            ctx.moveTo(padLeft, ly);
+            ctx.lineTo(padLeft + plotW, ly);
+            ctx.stroke();
+            ctx.restore();
+
+            ctx.fillStyle = liveCol;
+            ctx.fillRect(padLeft + plotW + 2, ly - 8, padRight - 4, 16);
+            ctx.fillStyle = '#0f172a';
+            ctx.font = 'bold 10px Outfit, sans-serif';
+            ctx.textAlign = 'left';
+            ctx.fillText('₹' + liveCandle.close.toFixed(liveCandle.close >= 1000 ? 0 : 2), padLeft + plotW + 5, ly + 3.5);
         }
 
         // Volume 20-SMA line
@@ -7701,6 +7800,7 @@ function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
 
             ctx.fillStyle = '#a855f7';
             ctx.font = '10px Outfit, sans-serif';
+            ctx.textAlign = 'left';
             ctx.fillText('VOL', padLeft + plotW + 6, volTop + 11);
         }
 
@@ -7713,10 +7813,11 @@ function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
             const idx = tickCount === 1 ? 0 : Math.round((t * (candles.length - 1)) / (tickCount - 1));
             const x = padLeft + (idx + 0.5) * stepX;
             const lbl = candles[idx].label || '';
-            ctx.fillText(lbl, Math.max(24, Math.min(padLeft + plotW - 24, x)), height - 6);
+            ctx.fillText(lbl, Math.max(32, Math.min(padLeft + plotW - 32, x)), height - 6);
         }
 
         // Hover crosshair
+        const readoutEl = currentOptions.readoutId ? document.getElementById(currentOptions.readoutId) : null;
         if (hoverIdx >= 0 && hoverIdx < candles.length) {
             const c = candles[hoverIdx];
             const hx = padLeft + (hoverIdx + 0.5) * stepX;
@@ -7769,15 +7870,78 @@ function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
     canvas.addEventListener('mouseleave', onLeave);
     window.addEventListener('resize', onResize);
 
+    canvas.__ccUpdateData = (newAllCandles, newOptions = {}) => {
+        currentAllCandles = newAllCandles;
+        currentOptions = { ...currentOptions, ...newOptions };
+        recomputeView(currentAllCandles, currentOptions);
+        draw();
+        return analysis;
+    };
+
+    canvas.__ccIsHovering = () => hoverIdx !== -1;
+
     canvas.__ccCleanup = () => {
         canvas.removeEventListener('mousemove', onMouseMove);
         canvas.removeEventListener('touchmove', onTouchMove);
         canvas.removeEventListener('mouseleave', onLeave);
         window.removeEventListener('resize', onResize);
+        delete canvas.__ccUpdateData;
+        delete canvas.__ccIsHovering;
     };
 
     draw();
     return analysis;
+}
+
+function applyCandleChartAnalysisUI(symbol, interval, candles, analysis) {
+    const badgeEl = document.getElementById('cc-verdict-badge');
+    const patEl = document.getElementById('cc-verdict-pattern');
+    const descEl = document.getElementById('cc-verdict-desc');
+    const detListEl = document.getElementById('cc-detected-list');
+
+    if (analysis && analysis.verdict) {
+        const v = analysis.verdict;
+        if (badgeEl) {
+            badgeEl.textContent = v.titleGu;
+            badgeEl.className = 'cc-verdict-badge ' + (
+                v.direction === 'BULLISH' ? 'cc-verdict-bullish' :
+                v.direction === 'BEARISH' ? 'cc-verdict-bearish' : 'cc-verdict-neutral'
+            );
+        }
+        if (patEl) patEl.textContent = v.patternTitle;
+        if (descEl) descEl.textContent = v.summaryGu;
+
+        const setText = (id, txt) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = txt;
+        };
+        setText('cc-stat-close', `₹${v.close.toFixed(2)}`);
+        setText('cc-stat-vol', `${v.volRatio.toFixed(2)}x Avg`);
+        setText('cc-stat-bb', v.bbUpper ? `${v.bbUpper.toFixed(0)} / ${v.bbMid.toFixed(0)} / ${v.bbLower.toFixed(0)}` : '--');
+        setText('cc-stat-meta', `${interval.toUpperCase()} • ${candles.length} Bars`);
+    }
+
+    if (detListEl) {
+        const recent = analysis?.recentPatterns || [];
+        if (recent.length === 0) {
+            detListEl.innerHTML = `<div class="cc-empty-note">તાજેતરની કેન્ડલ્સમાં કોઈ ખાસ રિવર્સલ પેટર્ન નથી — Bollinger Middle (20-SMA) અને Volume પર નજર રાખો.</div>`;
+        } else {
+            detListEl.innerHTML = recent.map(r => {
+                const bCls = r.direction === 'BULLISH' ? 'cc-verdict-bullish' : (r.direction === 'BEARISH' ? 'cc-verdict-bearish' : 'cc-verdict-neutral');
+                const dTxt = r.direction === 'BULLISH' ? 'વધશે' : (r.direction === 'BEARISH' ? 'ઘટશે' : 'રાહ જુઓ');
+                return `
+                    <div class="cc-detected-card">
+                        <div class="cc-detected-top">
+                            <strong style="font-size:0.84rem;color:#f8fafc;">${r.name}</strong>
+                            <span class="cc-guide-sig ${bCls}" style="margin:0;">${dTxt}</span>
+                        </div>
+                        <div style="font-size:0.72rem;color:#38bdf8;">Time: ${r.label} • Price: ₹${r.price.toFixed(2)} • ${r.volStr}</div>
+                        <p>${r.desc}</p>
+                    </div>
+                `;
+            }).join('');
+        }
+    }
 }
 
 window.renderModalCandleChart = async function(modalKey, symbol, canvasId, fallbackCandles = []) {
@@ -7791,20 +7955,24 @@ window.renderModalCandleChart = async function(modalKey, symbol, canvasId, fallb
     if (readoutEl) readoutEl.textContent = `${symbol} (${st.interval}) લોડ થઈ રહ્યું છે...`;
 
     try {
-        const candles = await fetchCandleSeries(symbol, st.interval);
-        st.candles = candles;
-        renderCandlestickBollingerChart(canvasId, candles, {
+        const series = await fetchCandleSeries(symbol, st.interval, true);
+        st.candles = series.candles;
+        st.visibleStartTime = series.visibleStartTime;
+        renderCandlestickBollingerChart(canvasId, series.candles, {
             showBB: st.showBB,
             readoutId,
-            maxBars: 65
+            maxBars: getDefaultMaxBarsForTf(st.interval, true),
+            visibleStartTime: series.visibleStartTime
         });
-        const last = candles[candles.length - 1];
+        const last = series.candles[series.candles.length - 1];
         if (readoutEl && last) {
-            readoutEl.textContent = `${symbol} (${st.interval}) | O:${last.open.toFixed(2)} H:${last.high.toFixed(2)} L:${last.low.toFixed(2)} C:${last.close.toFixed(2)}`;
+            const nowStr = new Date().toLocaleTimeString('en-IN', { hour12: false });
+            readoutEl.textContent = `${symbol} (${st.interval.toUpperCase()}) • 1s Live ${nowStr} | O:${last.open.toFixed(2)} H:${last.high.toFixed(2)} L:${last.low.toFixed(2)} C:${last.close.toFixed(2)}`;
         }
     } catch (err) {
         if (Array.isArray(fallbackCandles) && fallbackCandles.length > 0) {
             st.candles = fallbackCandles;
+            st.visibleStartTime = null;
             renderCandlestickBollingerChart(canvasId, fallbackCandles, {
                 showBB: st.showBB,
                 readoutId,
@@ -7846,11 +8014,18 @@ window.initModalChartControls = function() {
                 const st = modalChartState[modalKey];
                 const readoutId = modalKey === 'rm' ? 'rm-hover-readout' : 'cm-hover-readout';
                 if (st.candles && st.candles.length > 0) {
-                    renderCandlestickBollingerChart(canvasId, st.candles, {
+                    const canvas = document.getElementById(canvasId);
+                    const opts = {
                         showBB: st.showBB,
                         readoutId,
-                        maxBars: 65
-                    });
+                        maxBars: getDefaultMaxBarsForTf(st.interval, true),
+                        visibleStartTime: st.visibleStartTime
+                    };
+                    if (canvas && typeof canvas.__ccUpdateData === 'function') {
+                        canvas.__ccUpdateData(st.candles, opts);
+                    } else {
+                        renderCandlestickBollingerChart(canvasId, st.candles, opts);
+                    }
                 }
             });
         }
@@ -7858,6 +8033,162 @@ window.initModalChartControls = function() {
 
     setupModal('rm', 'rm-tf-group', 'rm-bb-toggle', 'research-price-chart');
     setupModal('cm', 'cm-tf-group', 'cm-bb-toggle', 'price-chart');
+};
+
+function mergeLiveTickIntoCandles(candles, interval, tickData) {
+    if (!Array.isArray(candles) || candles.length === 0 || !tickData) return false;
+    const livePrice = Number(tickData.livePrice);
+    const liveTime = Number(tickData.liveTime) || Math.floor(Date.now() / 1000);
+    const latestBar = tickData.latestBar;
+    const effectivePrice = Number.isFinite(livePrice) && livePrice > 0
+        ? livePrice
+        : (latestBar && Number.isFinite(Number(latestBar.close)) ? Number(latestBar.close) : null);
+
+    if (!effectivePrice || effectivePrice <= 0) return false;
+
+    const bucketSec = getBucketSecondsForTf(interval);
+    let targetBucket;
+    if (interval === '1y') {
+        // Align to IST day start so live ticks update today's daily candle
+        const istOffset = 19800;
+        const dayKey = Math.floor((liveTime + istOffset) / 86400);
+        targetBucket = dayKey * 86400 - istOffset;
+    } else {
+        targetBucket = Math.floor(liveTime / bucketSec) * bucketSec;
+    }
+
+    const last = candles[candles.length - 1];
+    // For 1y daily bars, check if last bar is already the same IST calendar date
+    const isSameDayFor1y = interval === '1y' &&
+        Math.floor((last.time + 19800) / 86400) === Math.floor((liveTime + 19800) / 86400);
+
+    if (isSameDayFor1y || last.time === targetBucket || liveTime < last.time + bucketSec) {
+        last.high = Math.max(last.high, effectivePrice, latestBar ? Number(latestBar.high || effectivePrice) : effectivePrice);
+        last.low = Math.min(last.low, effectivePrice, latestBar ? Number(latestBar.low || effectivePrice) : effectivePrice);
+        last.close = effectivePrice;
+        if (tickData.liveVolume && interval === '1y') {
+            last.volume = Math.max(last.volume || 0, Number(tickData.liveVolume));
+        } else if (latestBar && Number.isFinite(Number(latestBar.volume)) && latestBar.volume > 0 && interval === '1m') {
+            last.volume = Number(latestBar.volume);
+        }
+    } else {
+        const newOpen = (latestBar && Number(latestBar.open) > 0 && interval === '1m') ? Number(latestBar.open) : last.close;
+        const newCandle = {
+            time: targetBucket,
+            open: newOpen,
+            high: Math.max(newOpen, effectivePrice),
+            low: Math.min(newOpen, effectivePrice),
+            close: effectivePrice,
+            volume: latestBar && Number(latestBar.volume) > 0 ? Number(latestBar.volume) : 0,
+            label: formatCandleLabel(targetBucket, interval)
+        };
+        candles.push(newCandle);
+    }
+    return true;
+}
+
+window.refreshVisibleCandles1s = async function() {
+    if (isCandle1sInFlight) return;
+
+    const ccTabActive = isTabActive('tab-candle-chart');
+    const rmEl = document.getElementById('research-modal');
+    const cmEl = document.getElementById('chart-modal');
+    const rmOpen = rmEl && !rmEl.classList.contains('hidden') && modalChartState.rm.symbol;
+    const cmOpen = cmEl && !cmEl.classList.contains('hidden') && modalChartState.cm.symbol;
+
+    if (!ccTabActive && !rmOpen && !cmOpen) return;
+
+    isCandle1sInFlight = true;
+    try {
+        const jobs = [];
+        if (ccTabActive && candleTabState.symbol && candleTabState.candles.length > 0) {
+            jobs.push({ type: 'tab', state: candleTabState, canvasId: 'candle-main-canvas', readoutId: 'cc-hover-readout', isModal: false });
+        }
+        if (rmOpen && modalChartState.rm.candles.length > 0) {
+            jobs.push({ type: 'rm', state: modalChartState.rm, canvasId: 'research-price-chart', readoutId: 'rm-hover-readout', isModal: true });
+        }
+        if (cmOpen && modalChartState.cm.candles.length > 0) {
+            jobs.push({ type: 'cm', state: modalChartState.cm, canvasId: 'price-chart', readoutId: 'cm-hover-readout', isModal: true });
+        }
+
+        if (jobs.length === 0) return;
+
+        // Deduplicate by symbol if tab + modal show same symbol
+        const uniqueSyms = Array.from(new Set(jobs.map(j => j.state.symbol.trim().toUpperCase())));
+        const tickResults = new Map();
+
+        await Promise.allSettled(uniqueSyms.map(async (sym) => {
+            const url = `/api/yahoo?symbol=${encodeURIComponent(sym)}&tick=1`;
+            const res = await fetchWithTimeout(url, { cache: 'no-store' }, 3000);
+            if (res.ok) {
+                const tickJson = await res.json();
+                tickResults.set(sym, tickJson);
+            }
+        }));
+
+        const nowStr = new Date().toLocaleTimeString('en-IN', { hour12: false });
+
+        for (const job of jobs) {
+            const symKey = job.state.symbol.trim().toUpperCase();
+            const tickData = tickResults.get(symKey);
+            if (!tickData || !tickData.livePrice) continue;
+
+            const updated = mergeLiveTickIntoCandles(job.state.candles, job.state.interval, tickData);
+            if (!updated) continue;
+
+            const canvas = document.getElementById(job.canvasId);
+            const opts = {
+                showBB: job.state.showBB,
+                readoutId: job.readoutId,
+                maxBars: getDefaultMaxBarsForTf(job.state.interval, job.isModal),
+                visibleStartTime: job.state.visibleStartTime
+            };
+
+            let analysis = null;
+            if (canvas && typeof canvas.__ccUpdateData === 'function') {
+                analysis = canvas.__ccUpdateData(job.state.candles, opts);
+            } else {
+                analysis = renderCandlestickBollingerChart(job.canvasId, job.state.candles, opts);
+            }
+
+            if (job.type === 'tab') {
+                const liveBadgeTime = document.getElementById('cc-live-time');
+                if (liveBadgeTime) liveBadgeTime.textContent = `1s Live • ${nowStr}`;
+                if (analysis) {
+                    applyCandleChartAnalysisUI(job.state.symbol, job.state.interval, job.state.candles, analysis);
+                }
+                const readoutEl = document.getElementById('cc-hover-readout');
+                if (readoutEl && (!canvas || !canvas.__ccIsHovering || !canvas.__ccIsHovering())) {
+                    const last = job.state.candles[job.state.candles.length - 1];
+                    if (last) {
+                        readoutEl.textContent = `1s Live (${nowStr}) | O:${last.open.toFixed(2)} H:${last.high.toFixed(2)} L:${last.low.toFixed(2)} C:${last.close.toFixed(2)}`;
+                    }
+                }
+            } else {
+                const readoutEl = document.getElementById(job.readoutId);
+                if (readoutEl && (!canvas || !canvas.__ccIsHovering || !canvas.__ccIsHovering())) {
+                    const last = job.state.candles[job.state.candles.length - 1];
+                    if (last) {
+                        readoutEl.textContent = `${symKey} (${job.state.interval.toUpperCase()}) • 1s Live ${nowStr} | O:${last.open.toFixed(2)} H:${last.high.toFixed(2)} L:${last.low.toFixed(2)} C:${last.close.toFixed(2)}`;
+                    }
+                }
+                // Sync modal live price badge in real time every second
+                const liveEl = document.getElementById(job.type === 'rm' ? 'chart-live-price' : 'modal-live-price');
+                if (liveEl && tickData.livePrice) {
+                    const prev = tickData.prevClose || tickData.livePrice;
+                    const diff = tickData.livePrice - prev;
+                    const pct = prev > 0 ? (diff / prev) * 100 : 0;
+                    const sign = diff >= 0 ? '+' : '';
+                    const col = diff >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+                    liveEl.innerHTML = `₹${Number(tickData.livePrice).toFixed(2)} <span style="font-size:0.75rem;font-weight:600;color:${col};margin-left:0.35rem;">(${sign}${pct.toFixed(2)}%)</span>`;
+                }
+            }
+        }
+    } catch (e) {
+        // Silent fail on transient tick drops; 1s loop continues cleanly
+    } finally {
+        isCandle1sInFlight = false;
+    }
 };
 
 const CANDLE_PATTERN_GUIDE = [
@@ -8058,11 +8389,18 @@ window.initCandleChartTab = function() {
         bbToggle.addEventListener('change', () => {
             candleTabState.showBB = bbToggle.checked;
             if (candleTabState.candles.length > 0) {
-                renderCandlestickBollingerChart('candle-main-canvas', candleTabState.candles, {
+                const canvas = document.getElementById('candle-main-canvas');
+                const opts = {
                     showBB: candleTabState.showBB,
                     readoutId: 'cc-hover-readout',
-                    maxBars: 85
-                });
+                    maxBars: getDefaultMaxBarsForTf(candleTabState.interval, false),
+                    visibleStartTime: candleTabState.visibleStartTime
+                };
+                if (canvas && typeof canvas.__ccUpdateData === 'function') {
+                    canvas.__ccUpdateData(candleTabState.candles, opts);
+                } else {
+                    renderCandlestickBollingerChart('candle-main-canvas', candleTabState.candles, opts);
+                }
             }
         });
     }
@@ -8086,7 +8424,7 @@ window.initCandleChartTab = function() {
     });
 };
 
-window.loadCandleChartTab = async function() {
+window.loadCandleChartTab = async function(forceRefresh = false) {
     const symbol = candleTabState.symbol || 'RELIANCE';
     const interval = candleTabState.interval || '5m';
 
@@ -8094,69 +8432,32 @@ window.loadCandleChartTab = async function() {
     const patEl = document.getElementById('cc-verdict-pattern');
     const descEl = document.getElementById('cc-verdict-desc');
     const detSymEl = document.getElementById('cc-detected-symbol');
-    const detListEl = document.getElementById('cc-detected-list');
-    if (detSymEl) detSymEl.textContent = `${symbol} (${interval})`;
-    if (patEl) patEl.textContent = `${symbol} (${interval}) લોડ થઈ રહ્યું છે...`;
+    if (detSymEl) detSymEl.textContent = `${symbol} (${interval.toUpperCase()})`;
+    if (patEl) patEl.textContent = `${symbol} (${interval.toUpperCase()}) લોડ થઈ રહ્યું છે...`;
 
     try {
-        const candles = await fetchCandleSeries(symbol, interval);
-        candleTabState.candles = candles;
+        const series = await fetchCandleSeries(symbol, interval, forceRefresh);
+        candleTabState.candles = series.candles;
+        candleTabState.visibleStartTime = series.visibleStartTime;
 
-        const analysis = renderCandlestickBollingerChart('candle-main-canvas', candles, {
+        const analysis = renderCandlestickBollingerChart('candle-main-canvas', series.candles, {
             showBB: candleTabState.showBB,
             readoutId: 'cc-hover-readout',
-            maxBars: 85
+            maxBars: getDefaultMaxBarsForTf(interval, false),
+            visibleStartTime: series.visibleStartTime
         });
 
-        if (analysis && analysis.verdict) {
-            const v = analysis.verdict;
-            if (badgeEl) {
-                badgeEl.textContent = v.titleGu;
-                badgeEl.className = 'cc-verdict-badge ' + (
-                    v.direction === 'BULLISH' ? 'cc-verdict-bullish' :
-                    v.direction === 'BEARISH' ? 'cc-verdict-bearish' : 'cc-verdict-neutral'
-                );
-            }
-            if (patEl) patEl.textContent = v.patternTitle;
-            if (descEl) descEl.textContent = v.summaryGu;
-
-            const setText = (id, txt) => {
-                const el = document.getElementById(id);
-                if (el) el.textContent = txt;
-            };
-            setText('cc-stat-close', `₹${v.close.toFixed(2)}`);
-            setText('cc-stat-vol', `${v.volRatio.toFixed(2)}x Avg`);
-            setText('cc-stat-bb', v.bbUpper ? `${v.bbUpper.toFixed(0)} / ${v.bbMid.toFixed(0)} / ${v.bbLower.toFixed(0)}` : '--');
-            setText('cc-stat-meta', `${interval.toUpperCase()} • ${candles.length} Bars`);
-        }
-
-        if (detListEl) {
-            const recent = analysis?.recentPatterns || [];
-            if (recent.length === 0) {
-                detListEl.innerHTML = `<div class="cc-empty-note">તાજેતરની કેન્ડલ્સમાં કોઈ ખાસ રિવર્સલ પેટર્ન નથી — Bollinger Middle (20-SMA) અને Volume પર નજર રાખો.</div>`;
-            } else {
-                detListEl.innerHTML = recent.map(r => {
-                    const bCls = r.direction === 'BULLISH' ? 'cc-verdict-bullish' : (r.direction === 'BEARISH' ? 'cc-verdict-bearish' : 'cc-verdict-neutral');
-                    const dTxt = r.direction === 'BULLISH' ? 'વધશે' : (r.direction === 'BEARISH' ? 'ઘટશે' : 'રાહ જુઓ');
-                    return `
-                        <div class="cc-detected-card">
-                            <div class="cc-detected-top">
-                                <strong style="font-size:0.84rem;color:#f8fafc;">${r.name}</strong>
-                                <span class="cc-guide-sig ${bCls}" style="margin:0;">${dTxt}</span>
-                            </div>
-                            <div style="font-size:0.72rem;color:#38bdf8;">Time: ${r.label} • Price: ₹${r.price.toFixed(2)} • ${r.volStr}</div>
-                            <p>${r.desc}</p>
-                        </div>
-                    `;
-                }).join('');
-            }
+        applyCandleChartAnalysisUI(symbol, interval, series.candles, analysis);
+        const liveBadgeTime = document.getElementById('cc-live-time');
+        if (liveBadgeTime) {
+            liveBadgeTime.textContent = `1s Live • ${new Date().toLocaleTimeString('en-IN', { hour12: false })}`;
         }
     } catch (err) {
         if (badgeEl) {
             badgeEl.textContent = 'ડેટા ઉપલબ્ધ નથી';
             badgeEl.className = 'cc-verdict-badge cc-verdict-neutral';
         }
-        if (patEl) patEl.textContent = `${symbol} (${interval})`;
+        if (patEl) patEl.textContent = `${symbol} (${interval.toUpperCase()})`;
         if (descEl) descEl.textContent = `ચાર્ટ લોડ કરવામાં ભૂલ: ${err.message}. કૃપા કરી સાચો NSE Symbol (જેમ કે RELIANCE, TCS, ^NSEI) તપાસો.`;
     }
 };
