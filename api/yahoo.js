@@ -227,6 +227,7 @@ export default async function handler(req, res) {
             return res.status(200).json({
                 tick: true,
                 resolvedSymbol: nsSymbol,
+                companyName: String(meta.longName || meta.shortName || '').trim(),
                 livePrice: Number.isFinite(livePrice) && livePrice > 0 ? livePrice : (cleanBars.length > 0 ? cleanBars[cleanBars.length - 1].close : null),
                 prevClose: Number.isFinite(prevClose) && prevClose > 0 ? prevClose : null,
                 liveTime,
@@ -301,6 +302,7 @@ export default async function handler(req, res) {
             data.candles = candles;
             data.interval = requestedInterval;
             data.resolvedSymbol = nsSymbol;
+            data.companyName = String(meta.longName || meta.shortName || '').trim();
             data.visibleStartTime = computeVisibleStartTime(candles, requestedInterval);
             data.livePrice = Number.isFinite(Number(meta.regularMarketPrice)) ? Number(meta.regularMarketPrice) : (candles.length > 0 ? candles[candles.length - 1].close : null);
             data.liveTime = Number(meta.regularMarketTime) || (candles.length > 0 ? candles[candles.length - 1].time : null);

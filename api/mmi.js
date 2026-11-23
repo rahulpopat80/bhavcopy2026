@@ -19,15 +19,15 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 4500) {
 
 function classifyMmiZone(val) {
     if (val < 30) {
-        return { zone: 'Extreme Fear', zoneGu: 'અત્યંત ભય (Extreme Fear)', color: '#ef4444' };
+        return { zone: 'Extreme Fear', zoneGu: 'અત્યંત ભય (Extreme Fear)', color: '#16a34a', key: 'ef' };
     }
     if (val < 50) {
-        return { zone: 'Fear', zoneGu: 'ભય (Fear)', color: '#f97316' };
+        return { zone: 'Fear', zoneGu: 'ભય (Fear)', color: '#f59e0b', key: 'f' };
     }
     if (val < 70) {
-        return { zone: 'Greed', zoneGu: 'લાલચ (Greed)', color: '#eab308' };
+        return { zone: 'Greed', zoneGu: 'લાલચ (Greed)', color: '#f97316', key: 'g' };
     }
-    return { zone: 'Extreme Greed', zoneGu: 'અત્યંત લાલચ (Extreme Greed)', color: '#22c55e' };
+    return { zone: 'Extreme Greed', zoneGu: 'અત્યંત લાલચ (Extreme Greed)', color: '#dc2626', key: 'eg' };
 }
 
 function formatMmiPayload(rawData, source) {

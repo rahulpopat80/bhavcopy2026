@@ -2098,65 +2098,39 @@ html, body {
     text-decoration: underline;
 }
 
-.mmi-gauge-wrap {
-    margin: 0.95rem 0 0.85rem;
+.mmi-radial-wrap {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin: 0.4rem 0 0.55rem;
 }
 
-.mmi-gauge-bar {
-    position: relative;
-    height: 12px;
-    border-radius: 6px;
-    display: flex;
+.mmi-radial-svg {
+    width: 100%;
+    max-width: 280px;
+    height: auto;
     overflow: visible;
-    background: #1e293b;
+    user-select: none;
 }
 
-.mmi-seg {
-    height: 100%;
+.mmi-svg-value {
+    font-family: var(--font-family);
+    font-size: 36px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
 }
 
-.mmi-seg-ef {
-    width: 30%;
-    background: #ef4444;
-    border-radius: 6px 0 0 6px;
+.mmi-svg-sub {
+    font-family: var(--font-family);
+    font-size: 11px;
+    font-weight: 500;
 }
 
-.mmi-seg-f {
-    width: 20%;
-    background: #f97316;
-}
-
-.mmi-seg-g {
-    width: 20%;
-    background: #eab308;
-}
-
-.mmi-seg-eg {
-    width: 30%;
-    background: #22c55e;
-    border-radius: 0 6px 6px 0;
-}
-
-.mmi-gauge-marker {
-    position: absolute;
-    top: -4px;
-    width: 6px;
-    height: 20px;
-    background: #ffffff;
-    border: 2px solid #0f172a;
-    border-radius: 3px;
-    transform: translateX(-50%);
-    box-shadow: 0 0 8px rgba(255, 255, 255, 0.75);
-    transition: left 0.25s ease;
-}
-
-.mmi-gauge-labels {
-    display: flex;
-    justify-content: space-between;
-    font-size: 0.68rem;
-    color: var(--text-secondary);
-    margin-top: 0.35rem;
-    gap: 0.25rem;
+.mmi-zone-label-text {
+    font-family: var(--font-family);
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
 }
 
 .cp-mmi-baselines {
@@ -2667,6 +2641,47 @@ html, body {
 .cc-quick-btn:hover {
     border-color: #fbbf24;
     color: #fbbf24;
+}
+
+.cc-chart-company-bar {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+    padding-bottom: 0.55rem;
+    margin-bottom: 0.55rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.cc-company-title-group {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.55rem;
+}
+
+.cc-company-symbol-pill {
+    background: rgba(56, 189, 248, 0.16);
+    border: 1px solid rgba(56, 189, 248, 0.45);
+    color: #38bdf8;
+    font-size: 0.76rem;
+    font-weight: 800;
+    padding: 0.18rem 0.55rem;
+    border-radius: 6px;
+    letter-spacing: 0.03em;
+}
+
+.cc-company-full-name {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #f8fafc;
+}
+
+.cc-company-tf-note {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #94a3b8;
 }
 
 .cc-verdict-card {

@@ -2,7 +2,7 @@
 // Unified ultra-fast live feed (800ms micro-cache) for 1-second polling:
 // - NIFTY 50, SENSEX
 // - GOLD / 10g, SILVER / 1kg (MCX live futures with IBJA / COMEX fallbacks)
-// - NASDAQ (^IXIC), SHANGHAI INDEX (000001.SS)
+// - NASDAQ (^IXIC), HANG SENG (^HSI)
 // - Market Advance & Decline from nseindia.com/market-data/decline + SENSEX 30 Advance/Decline
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
@@ -246,7 +246,7 @@ export default async function handler(req, res) {
         mcxGoldRes,
         mcxSilverRes,
         nasdaqRes,
-        shanghaiRes
+        hangsengRes
     ] = await Promise.allSettled([
         fetchGrowwIndex('NSE', 'CASH', 'NIFTY'),
         fetchGrowwIndex('BSE', 'CASH', '1'),
@@ -255,7 +255,7 @@ export default async function handler(req, res) {
         fetchMcxCommodity('GOLD'),
         fetchMcxCommodity('SILVER'),
         fetchYahooChart('^IXIC'),
-        fetchYahooChart('000001.SS')
+        fetchYahooChart('^HSI')
     ]);
 
     const nseData = nseRes.status === 'fulfilled' ? nseRes.value : {};
@@ -266,7 +266,7 @@ export default async function handler(req, res) {
     let gold = mcxGoldRes.status === 'fulfilled' ? mcxGoldRes.value : null;
     let silver = mcxSilverRes.status === 'fulfilled' ? mcxSilverRes.value : null;
     let nasdaq = nasdaqRes.status === 'fulfilled' ? { ...nasdaqRes.value, source: 'Yahoo Finance' } : null;
-    let shanghai = shanghaiRes.status === 'fulfilled' ? { ...shanghaiRes.value, source: 'Yahoo Finance' } : null;
+    let hangseng = hangsengRes.status === 'fulfilled' ? { ...hangsengRes.value, source: 'Yahoo Finance' } : null;
 
     // Last-resort Yahoo fallbacks only for any missing feed
     const fallbacks = [];
@@ -310,7 +310,7 @@ export default async function handler(req, res) {
         gold,
         silver,
         nasdaq,
-        shanghai,
+        hangseng,
         breadth: {
             nseMarket: nseData.nseMarket || null,
             sensex30: mcSensexData.breadth || null,

@@ -4229,9 +4229,18 @@ window.fetchCorporateResults = async function(forceRefresh = false) {
         }
 
         corporateResultsData = payload.items;
-        corporateResultsSource = payload.source || 'NSE/BSE Live';
+        corporateResultsSource = payload.source || 'Moneycontrol / Exchange Live';
         corporateResultsLastFetch = Date.now();
         corporateResultsError = null;
+
+        corporateResultsData.forEach(item => {
+            const sym = String(item.symbol || '').trim().toUpperCase();
+            const lp = Number(item.livePrice);
+            if (sym && Number.isFinite(lp) && lp > 0 && !state.gainersLivePrices.has(sym)) {
+                state.gainersLivePrices.set(sym, lp);
+                if (typeof markPriceFresh === 'function') markPriceFresh(sym);
+            }
+        });
 
         if (sourceBadge) {
             sourceBadge.textContent = `Live: ${corporateResultsSource} (${corporateResultsData.length})`;
@@ -4313,7 +4322,7 @@ function renderResultsAndDividendsTable() {
         const bhavcopyRateVal = getLastKnownPrice(item.symbol);
         const bhavcopyRateHtml = bhavcopyRateVal ? `₹${bhavcopyRateVal.toFixed(2)}` : '<span style="font-size:0.75rem;color:var(--text-secondary);">No Data</span>';
 
-        const livePriceVal = state.gainersLivePrices.get(item.symbol);
+        const livePriceVal = state.gainersLivePrices.get(item.symbol) || (Number(item.livePrice) > 0 ? Number(item.livePrice) : null);
         const livePriceHtml = livePriceVal
             ? `₹${livePriceVal.toFixed(2)} <span class="live-pulse" style="width:6px;height:6px;box-shadow:0 0 0 0 rgba(16,185,129,0.7);animation:pulse 1.5s infinite;margin-left:0.2rem;display:inline-block;border-radius:50%;background:#10b981;"></span>`
             : isFailedSymbolRecent(item.symbol)
@@ -6882,29 +6891,86 @@ window.initCallPutControls = function() {
     }
 };
 
+function polarToSvg(cx, cy, r, deg) {
+    const rad = (deg * Math.PI) / 180;
+    return {
+        x: cx + r * Math.sin(rad),
+        y: cy - r * Math.cos(rad)
+    };
+}
+
+function describeSvgArc(cx, cy, r, startDeg, endDeg) {
+    const start = polarToSvg(cx, cy, r, startDeg);
+    const end = polarToSvg(cx, cy, r, endDeg);
+    const largeArc = Math.abs(endDeg - startDeg) > 180 ? 1 : 0;
+    return `M ${start.x.toFixed(2)} ${start.y.toFixed(2)} A ${r} ${r} 0 ${largeArc} 1 ${end.x.toFixed(2)} ${end.y.toFixed(2)}`;
+}
+
+function describeSvgSectorWedge(cx, cy, rOuter, startDeg, endDeg) {
+    const p1 = polarToSvg(cx, cy, rOuter, startDeg);
+    const p2 = polarToSvg(cx, cy, rOuter, endDeg);
+    const largeArc = Math.abs(endDeg - startDeg) > 180 ? 1 : 0;
+    return `M ${cx} ${cy} L ${p1.x.toFixed(2)} ${p1.y.toFixed(2)} A ${rOuter} ${rOuter} 0 ${largeArc} 1 ${p2.x.toFixed(2)} ${p2.y.toFixed(2)} Z`;
+}
+
+function describeSvgBandFrame(cx, cy, rInner, rOuter, startDeg, endDeg) {
+    const o1 = polarToSvg(cx, cy, rOuter, startDeg);
+    const o2 = polarToSvg(cx, cy, rOuter, endDeg);
+    const i2 = polarToSvg(cx, cy, rInner, endDeg);
+    const i1 = polarToSvg(cx, cy, rInner, startDeg);
+    const largeArc = Math.abs(endDeg - startDeg) > 180 ? 1 : 0;
+    return `M ${o1.x.toFixed(2)} ${o1.y.toFixed(2)} A ${rOuter} ${rOuter} 0 ${largeArc} 1 ${o2.x.toFixed(2)} ${o2.y.toFixed(2)} L ${i2.x.toFixed(2)} ${i2.y.toFixed(2)} A ${rInner} ${rInner} 0 ${largeArc} 0 ${i1.x.toFixed(2)} ${i1.y.toFixed(2)} Z`;
+}
+
+function formatMmiRelativeTime(isoDate) {
+    if (!isoDate) return 'Updated from tickertape.in';
+    const ts = new Date(isoDate).getTime();
+    if (!Number.isFinite(ts)) return 'Updated from tickertape.in';
+    const diffSec = Math.max(0, Math.round((Date.now() - ts) / 1000));
+    if (diffSec < 60) return 'Updated just now';
+    const diffMin = Math.round(diffSec / 60);
+    if (diffMin < 60) return `Updated ${diffMin} min ago`;
+    const diffHr = Math.round(diffMin / 60);
+    if (diffHr < 24) return `Updated ${diffHr} ${diffHr === 1 ? 'hour' : 'hours'} ago`;
+    const diffDays = Math.round(diffHr / 24);
+    return `Updated ${diffDays} ${diffDays === 1 ? 'day' : 'days'} ago`;
+}
+
 function renderMmiPanel(mmi) {
     if (!mmi || !Number.isFinite(Number(mmi.value))) return;
 
-    const val = Number(mmi.value);
+    const val = Math.max(0, Math.min(100, Number(mmi.value)));
     const valEl = document.getElementById('cp-mmi-value');
     const zoneEl = document.getElementById('cp-mmi-zone');
     const chgEl = document.getElementById('cp-mmi-change');
-    const markerEl = document.getElementById('cp-mmi-marker');
     const prevEl = document.getElementById('cp-mmi-prev');
     const weekEl = document.getElementById('cp-mmi-week');
     const monthEl = document.getElementById('cp-mmi-month');
     const yearEl = document.getElementById('cp-mmi-year');
     const dateEl = document.getElementById('cp-mmi-date');
+    const subEl = document.getElementById('cp-mmi-updated-sub');
+
+    const zones = [
+        { id: 'ef', name: 'EXTREME FEAR', min: 0, max: 30, startDeg: -135, endDeg: -54, color: '#16a34a' },
+        { id: 'f', name: 'FEAR', min: 30, max: 50, startDeg: -54, endDeg: 0, color: '#f59e0b' },
+        { id: 'g', name: 'GREED', min: 50, max: 70, startDeg: 0, endDeg: 54, color: '#f97316' },
+        { id: 'eg', name: 'EXTREME GREED', min: 70, max: 100, startDeg: 54, endDeg: 135, color: '#dc2626' }
+    ];
+    const activeZone = zones.find(z => val < z.max) || zones[zones.length - 1];
+    const activeColor = activeZone.color;
 
     if (valEl) {
         valEl.textContent = val.toFixed(2);
-        valEl.style.color = mmi.color || '#f8fafc';
+        valEl.setAttribute('fill', activeColor);
+    }
+    if (subEl) {
+        subEl.textContent = formatMmiRelativeTime(mmi.date || mmi.updatedAt);
     }
     if (zoneEl) {
-        zoneEl.textContent = mmi.zoneGu || mmi.zone || 'Neutral';
-        zoneEl.style.color = mmi.color || '#93c5fd';
-        zoneEl.style.borderColor = `${mmi.color || '#3b82f6'}55`;
-        zoneEl.style.background = `${mmi.color || '#3b82f6'}1f`;
+        zoneEl.textContent = mmi.zoneGu || activeZone.name;
+        zoneEl.style.color = activeColor;
+        zoneEl.style.borderColor = `${activeColor}66`;
+        zoneEl.style.background = `${activeColor}22`;
     }
     if (chgEl) {
         if (mmi.changeFromPrevDay !== null && mmi.changeFromPrevDay !== undefined) {
@@ -6915,10 +6981,64 @@ function renderMmiPanel(mmi) {
             chgEl.textContent = '-';
         }
     }
-    if (markerEl) {
-        const clamped = Math.max(0, Math.min(100, val));
-        markerEl.style.left = `${clamped}%`;
+
+    // Draw Tickertape 270° Circular Radial Gauge SVG
+    const sectorsGroup = document.getElementById('cp-mmi-sectors');
+    const needleGroup = document.getElementById('cp-mmi-needle');
+    const needleShape = document.getElementById('cp-mmi-needle-shape');
+    if (sectorsGroup) {
+        const cx = 160;
+        const cy = 146;
+        const rTrack = 84;
+        const rOuterArc = 104;
+
+        // Populate textPath arc definitions once
+        zones.forEach(z => {
+            const p = document.getElementById(`mmi-arc-${z.id}`);
+            if (p && !p.getAttribute('d')) {
+                p.setAttribute('d', describeSvgArc(cx, cy, rOuterArc, z.startDeg, z.endDeg));
+            }
+        });
+
+        const baseTrack = describeSvgArc(cx, cy, rTrack, -135, 135);
+        const wedgePath = describeSvgSectorWedge(cx, cy, 118, activeZone.startDeg, activeZone.endDeg);
+        const activeTrackPath = describeSvgArc(cx, cy, rTrack, activeZone.startDeg, activeZone.endDeg);
+        const activeFramePath = describeSvgBandFrame(cx, cy, 97, 114, activeZone.startDeg, activeZone.endDeg);
+
+        const outerSegmentsHtml = zones.map(z => {
+            const arcD = describeSvgArc(cx, cy, rOuterArc, z.startDeg + 1, z.endDeg - 1);
+            const tStart1 = polarToSvg(cx, cy, 100, z.startDeg);
+            const tStart2 = polarToSvg(cx, cy, 108, z.startDeg);
+            const tEnd1 = polarToSvg(cx, cy, 100, z.endDeg);
+            const tEnd2 = polarToSvg(cx, cy, 108, z.endDeg);
+            const isAct = z.id === activeZone.id;
+            return `
+                <path d="${arcD}" fill="none" stroke="${z.color}" stroke-width="${isAct ? 2 : 1.5}" opacity="${isAct ? 1 : 0.85}" />
+                <line x1="${tStart1.x.toFixed(1)}" y1="${tStart1.y.toFixed(1)}" x2="${tStart2.x.toFixed(1)}" y2="${tStart2.y.toFixed(1)}" stroke="${z.color}" stroke-width="1.6" />
+                <line x1="${tEnd1.x.toFixed(1)}" y1="${tEnd1.y.toFixed(1)}" x2="${tEnd2.x.toFixed(1)}" y2="${tEnd2.y.toFixed(1)}" stroke="${z.color}" stroke-width="1.6" />
+                <text fill="${z.color}" class="mmi-zone-label-text" dy="-4">
+                    <textPath href="#mmi-arc-${z.id}" startOffset="50%" text-anchor="middle">${z.name}</textPath>
+                </text>
+            `;
+        }).join('');
+
+        sectorsGroup.innerHTML = `
+            <path d="${baseTrack}" fill="none" stroke="rgba(148, 163, 184, 0.16)" stroke-width="18" />
+            <path d="${wedgePath}" fill="${activeColor}" fill-opacity="0.14" />
+            <path d="${activeTrackPath}" fill="none" stroke="${activeColor}" stroke-width="18" />
+            <path d="${activeFramePath}" fill="${activeColor}" fill-opacity="0.10" stroke="${activeColor}" stroke-width="1.2" stroke-opacity="0.65" />
+            ${outerSegmentsHtml}
+        `;
     }
+
+    if (needleGroup) {
+        const angleDeg = -135 + (val / 100) * 270;
+        needleGroup.style.transform = `rotate(${angleDeg.toFixed(2)}deg)`;
+    }
+    if (needleShape) {
+        needleShape.setAttribute('fill', activeColor);
+    }
+
     if (prevEl) prevEl.textContent = mmi.prevDay !== null ? Number(mmi.prevDay).toFixed(2) : '--';
     if (weekEl) weekEl.textContent = mmi.lastWeek !== null ? Number(mmi.lastWeek).toFixed(2) : '--';
     if (monthEl) monthEl.textContent = mmi.lastMonth !== null ? Number(mmi.lastMonth).toFixed(2) : '--';
@@ -7090,13 +7210,13 @@ window.fetchLiveMarket1s = async function() {
         updateTickerPair('gold-val', 'gold-chg', d.gold, { decimals: 0, prefix: '\u20b9' });
         updateTickerPair('silver-val', 'silver-chg', d.silver, { decimals: 0, prefix: '\u20b9' });
 
-        // 2. Update Call Put tab 1-second strip (including NASDAQ & SHANGHAI INDEX)
+        // 2. Update Call Put tab 1-second strip (including NASDAQ & HANG SENG)
         updateTickerPair('cp-live-nifty-val', 'cp-live-nifty-chg', d.nifty, { decimals: 2 });
         updateTickerPair('cp-live-sensex-val', 'cp-live-sensex-chg', d.sensex, { decimals: 2 });
         updateTickerPair('cp-live-gold-val', 'cp-live-gold-chg', d.gold, { decimals: 0, prefix: '\u20b9' });
         updateTickerPair('cp-live-silver-val', 'cp-live-silver-chg', d.silver, { decimals: 0, prefix: '\u20b9' });
         updateTickerPair('cp-live-nasdaq-val', 'cp-live-nasdaq-chg', d.nasdaq, { decimals: 2 });
-        updateTickerPair('cp-live-shanghai-val', 'cp-live-shanghai-chg', d.shanghai, { decimals: 2 });
+        updateTickerPair('cp-live-hangseng-val', 'cp-live-hangseng-chg', d.hangseng, { decimals: 2 });
 
         const setElText = (id, text) => {
             const el = document.getElementById(id);
@@ -7203,12 +7323,27 @@ window.fetchCallPutAndMmiData = async function(isManual = false) {
 // ==========================================
 const VALID_CANDLE_TFS = ['1m', '3m', '5m', '10m', '1d', '5d', '1w', '1mo', '1y'];
 const candleSeriesCache = new Map();
+const COMPANY_NAME_DEFAULTS = {
+    RELIANCE: 'Reliance Industries Limited',
+    TCS: 'Tata Consultancy Services Limited',
+    HDFCBANK: 'HDFC Bank Limited',
+    ICICIBANK: 'ICICI Bank Limited',
+    SBIN: 'State Bank of India',
+    INFY: 'Infosys Limited',
+    ITC: 'ITC Limited',
+    TATAMOTORS: 'Tata Motors Limited',
+    BHARTIARTL: 'Bharti Airtel Limited',
+    '^NSEI': 'NIFTY 50 Index',
+    '^BSESN': 'BSE SENSEX Index'
+};
+const companyNameCache = new Map(Object.entries(COMPANY_NAME_DEFAULTS));
 const modalChartState = {
-    rm: { symbol: '', interval: '5m', showBB: true, fallback: [], candles: [], visibleStartTime: null },
-    cm: { symbol: '', interval: '5m', showBB: true, fallback: [], candles: [], visibleStartTime: null }
+    rm: { symbol: '', companyName: '', interval: '5m', showBB: true, fallback: [], candles: [], visibleStartTime: null },
+    cm: { symbol: '', companyName: '', interval: '5m', showBB: true, fallback: [], candles: [], visibleStartTime: null }
 };
 const candleTabState = {
     symbol: 'RELIANCE',
+    companyName: 'Reliance Industries Limited',
     interval: '5m',
     showBB: true,
     candles: [],
@@ -7216,6 +7351,26 @@ const candleTabState = {
     guideFilter: 'all',
     initialized: false
 };
+
+function resolveCandleCompanyName(symbol, apiName = '') {
+    const clean = String(symbol || '').trim().toUpperCase();
+    const cleanedApi = String(apiName || '').trim();
+    if (cleanedApi) {
+        companyNameCache.set(clean, cleanedApi);
+        return cleanedApi;
+    }
+    if (companyNameCache.has(clean)) {
+        return companyNameCache.get(clean);
+    }
+    if (Array.isArray(corporateResultsData)) {
+        const hit = corporateResultsData.find(it => String(it.symbol || '').trim().toUpperCase() === clean && it.companyName);
+        if (hit) {
+            companyNameCache.set(clean, hit.companyName);
+            return hit.companyName;
+        }
+    }
+    return clean;
+}
 
 function formatCandleLabel(unixSec, tf) {
     const dt = new Date(unixSec * 1000);
@@ -7281,6 +7436,7 @@ async function fetchCandleSeries(symbol, interval = '5m', forceRefresh = false) 
 
     const payload = {
         candles: formatted,
+        companyName: resolveCandleCompanyName(cleanSym, json.companyName),
         visibleStartTime: json.visibleStartTime || null,
         ts: Date.now()
     };
@@ -7656,9 +7812,10 @@ function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
         const ctx = canvas.getContext('2d');
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
+        const hasChartHeader = Boolean(currentOptions.symbol || currentOptions.companyName);
         const padLeft = 10;
         const padRight = 64;
-        const padTop = 14;
+        const padTop = hasChartHeader ? 34 : 14;
         const padBottom = 26;
         const plotW = Math.max(80, width - padLeft - padRight);
         const totalPlotH = Math.max(100, height - padTop - padBottom);
@@ -7671,6 +7828,28 @@ function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
         // Clear background
         ctx.fillStyle = '#070c17';
         ctx.fillRect(0, 0, width, height);
+
+        // Draw Company Name & Symbol badge cleanly inside the top-left of the chart
+        if (hasChartHeader) {
+            const symLbl = String(currentOptions.symbol || '').trim().toUpperCase();
+            const compLbl = String(currentOptions.companyName || '').trim();
+            const tfLbl = currentOptions.interval ? ` • ${String(currentOptions.interval).toUpperCase()}` : '';
+            const headerText = compLbl && compLbl.toUpperCase() !== symLbl
+                ? `${compLbl} (${symLbl})${tfLbl}`
+                : `${symLbl}${tfLbl}`;
+            ctx.save();
+            ctx.font = 'bold 12px Outfit, sans-serif';
+            const textW = Math.min(plotW - 12, ctx.measureText(headerText).width + 18);
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+            ctx.strokeStyle = 'rgba(56, 189, 248, 0.35)';
+            ctx.lineWidth = 1;
+            ctx.fillRect(padLeft + 2, 6, textW, 21);
+            ctx.strokeRect(padLeft + 2, 6, textW, 21);
+            ctx.fillStyle = '#f8fafc';
+            ctx.textAlign = 'left';
+            ctx.fillText(headerText, padLeft + 10, 20.5, plotW - 24);
+            ctx.restore();
+        }
 
         // Compute Y range across visible candles & Bollinger bands
         let minP = Infinity;
@@ -8214,8 +8393,11 @@ window.renderModalCandleChart = async function(modalKey, symbol, canvasId, fallb
     try {
         const series = await fetchCandleSeries(symbol, st.interval, true);
         st.candles = series.candles;
+        st.companyName = series.companyName || resolveCandleCompanyName(symbol);
         st.visibleStartTime = series.visibleStartTime;
         renderCandlestickBollingerChart(canvasId, series.candles, {
+            symbol,
+            companyName: st.companyName,
             showBB: st.showBB,
             readoutId,
             interval: st.interval,
@@ -8225,19 +8407,22 @@ window.renderModalCandleChart = async function(modalKey, symbol, canvasId, fallb
         const last = series.candles[series.candles.length - 1];
         if (readoutEl && last) {
             const nowStr = new Date().toLocaleTimeString('en-IN', { hour12: false });
-            readoutEl.textContent = `${symbol} (${st.interval.toUpperCase()}) • 1s Live ${nowStr} | O:${last.open.toFixed(2)} H:${last.high.toFixed(2)} L:${last.low.toFixed(2)} C:${last.close.toFixed(2)}`;
+            readoutEl.textContent = `${st.companyName} (${symbol}) • ${st.interval.toUpperCase()} • 1s Live ${nowStr} | O:${last.open.toFixed(2)} H:${last.high.toFixed(2)} L:${last.low.toFixed(2)} C:${last.close.toFixed(2)}`;
         }
     } catch (err) {
         if (Array.isArray(fallbackCandles) && fallbackCandles.length > 0) {
             st.candles = fallbackCandles;
+            st.companyName = resolveCandleCompanyName(symbol);
             st.visibleStartTime = null;
             renderCandlestickBollingerChart(canvasId, fallbackCandles, {
+                symbol,
+                companyName: st.companyName,
                 showBB: st.showBB,
                 readoutId,
                 interval: st.interval,
                 maxBars: 65
             });
-            if (readoutEl) readoutEl.textContent = `${symbol} (Master Daily Fallback) | Candlestick + BB (20,2)`;
+            if (readoutEl) readoutEl.textContent = `${st.companyName} (${symbol}) (Master Daily Fallback) | Candlestick + BB (20,2)`;
         } else if (readoutEl) {
             readoutEl.textContent = `${symbol} ચાર્ટ ઉપલબ્ધ નથી (${err.message})`;
         }
@@ -8276,6 +8461,8 @@ window.initModalChartControls = function() {
                 if (st.candles && st.candles.length > 0) {
                     const canvas = document.getElementById(canvasId);
                     const opts = {
+                        symbol: st.symbol,
+                        companyName: st.companyName || resolveCandleCompanyName(st.symbol),
                         showBB: st.showBB,
                         readoutId,
                         interval: st.interval,
@@ -8397,8 +8584,14 @@ window.refreshVisibleCandles1s = async function() {
             const updated = mergeLiveTickIntoCandles(job.state.candles, job.state.interval, tickData);
             if (!updated) continue;
 
+            if (tickData.companyName && !job.state.companyName) {
+                job.state.companyName = resolveCandleCompanyName(symKey, tickData.companyName);
+            }
+
             const canvas = document.getElementById(job.canvasId);
             const opts = {
+                symbol: symKey,
+                companyName: job.state.companyName || resolveCandleCompanyName(symKey, tickData.companyName),
                 showBB: job.state.showBB,
                 readoutId: job.readoutId,
                 interval: job.state.interval,
@@ -8653,6 +8846,8 @@ window.initCandleChartTab = function() {
             if (candleTabState.candles.length > 0) {
                 const canvas = document.getElementById('candle-main-canvas');
                 const opts = {
+                    symbol: candleTabState.symbol,
+                    companyName: candleTabState.companyName || resolveCandleCompanyName(candleTabState.symbol),
                     showBB: candleTabState.showBB,
                     readoutId: 'cc-hover-readout',
                     interval: candleTabState.interval,
@@ -8695,15 +8890,32 @@ window.loadCandleChartTab = async function(forceRefresh = false) {
     const patEl = document.getElementById('cc-verdict-pattern');
     const descEl = document.getElementById('cc-verdict-desc');
     const detSymEl = document.getElementById('cc-detected-symbol');
-    if (detSymEl) detSymEl.textContent = `${symbol} (${interval.toUpperCase()})`;
-    if (patEl) patEl.textContent = `${symbol} (${interval.toUpperCase()}) લોડ થઈ રહ્યું છે...`;
+    const banSymEl = document.getElementById('cc-banner-symbol');
+    const banNameEl = document.getElementById('cc-banner-name');
+    const banTfEl = document.getElementById('cc-banner-tf');
+
+    const initialName = resolveCandleCompanyName(symbol);
+    if (banSymEl) banSymEl.textContent = symbol;
+    if (banNameEl) banNameEl.textContent = initialName;
+    if (banTfEl) banTfEl.textContent = `${interval.toUpperCase()} • 1s Live`;
+    if (detSymEl) detSymEl.textContent = `${initialName} (${symbol} • ${interval.toUpperCase()})`;
+    if (patEl) patEl.textContent = `${initialName} (${symbol} • ${interval.toUpperCase()}) લોડ થઈ રહ્યું છે...`;
 
     try {
         const series = await fetchCandleSeries(symbol, interval, forceRefresh);
+        const resolvedName = series.companyName || resolveCandleCompanyName(symbol);
         candleTabState.candles = series.candles;
+        candleTabState.companyName = resolvedName;
         candleTabState.visibleStartTime = series.visibleStartTime;
 
+        if (banSymEl) banSymEl.textContent = symbol;
+        if (banNameEl) banNameEl.textContent = resolvedName;
+        if (banTfEl) banTfEl.textContent = `${interval.toUpperCase()} • 1s Live`;
+        if (detSymEl) detSymEl.textContent = `${resolvedName} (${symbol} • ${interval.toUpperCase()})`;
+
         const analysis = renderCandlestickBollingerChart('candle-main-canvas', series.candles, {
+            symbol,
+            companyName: resolvedName,
             showBB: candleTabState.showBB,
             readoutId: 'cc-hover-readout',
             interval,
