@@ -28,6 +28,7 @@ function normalizeUpstreamSymbol(rawSym) {
     if (s === 'SILVER' || s === 'SILVER ($)' || s === 'XAG' || s === 'XAGUSD' || s === 'COMEX SILVER') return 'SI=F';
     if (s === 'NASDAQ' || s === 'IXIC') return '^IXIC';
     if (s === 'HANG SENG' || s === 'HANGSENG' || s === 'HSI') return '^HSI';
+    if (s === 'USD/INR' || s === 'USDINR' || s === 'USD-INR' || s === '$ - ₹' || s === '$-₹' || s === 'INR=X') return 'INR=X';
     const needsSuffix = !s.includes('.') && !s.includes('=') && !s.includes('^');
     return needsSuffix ? `${s}.NS` : s;
 }

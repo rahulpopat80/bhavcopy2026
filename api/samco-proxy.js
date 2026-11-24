@@ -1,11 +1,11 @@
 // Vercel Serverless Function / Express route: /api/samco-proxy.js
 // Server-side reverse proxy strictly allowlisted to *.samco.in and *.samco.app
-// Allows computers where web.samco.in is network-blocked to load SAMCO Web through the app backend.
+// Allows computers where web.samco.in is network-blocked to load & sign in to SAMCO Web through the app backend.
 
 const DEFAULT_SAMCO_URL = 'https://web.samco.in/';
-const UPSTREAM_TIMEOUT_MS = 12000;
+const UPSTREAM_TIMEOUT_MS = 15000;
 
-function isAllowedSamcoHost(hostname) {
+export function isAllowedSamcoHost(hostname) {
     const h = String(hostname || '').toLowerCase().trim().replace(/\.$/, '');
     if (!h) return false;
     // Block IP literals, localhost, internal hostnames
@@ -13,7 +13,7 @@ function isAllowedSamcoHost(hostname) {
     return h === 'samco.in' || h.endsWith('.samco.in') || h === 'samco.app' || h.endsWith('.samco.app');
 }
 
-function validateTargetUrl(rawUrl) {
+export function validateTargetUrl(rawUrl, allowWs = false) {
     const input = String(rawUrl || DEFAULT_SAMCO_URL).trim() || DEFAULT_SAMCO_URL;
     let parsed;
     try {
@@ -21,7 +21,8 @@ function validateTargetUrl(rawUrl) {
     } catch {
         return null;
     }
-    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+    const allowedSchemes = allowWs ? ['ws:', 'wss:'] : ['http:', 'https:'];
+    if (!allowedSchemes.includes(parsed.protocol)) {
         return null;
     }
     if (parsed.username || parsed.password) {
@@ -66,7 +67,7 @@ function rewriteHtmlForProxy(html, baseUrlObj) {
     const bootstrapScript = `<script>(function(){
   var BASE_ORIGIN=${JSON.stringify(proxyOrigin)};
   var BASE_HREF=${JSON.stringify(baseUrlObj.href)};
-  function isAllowedHost(h){h=String(h||'').toLowerCase();return h==='samco.in'||h.endsWith('.samco.in')||h==='samco.app'||h.endsWith('.samco.app');}
+  function isAllowedHost(h){h=String(h||'').toLowerCase().replace(/\\.$/,'');return h==='samco.in'||h.endsWith('.samco.in')||h==='samco.app'||h.endsWith('.samco.app');}
   function toProxy(u){
     if(u==null)return u;
     var s=String(u);
@@ -79,11 +80,25 @@ function rewriteHtmlForProxy(html, baseUrlObj) {
     }catch(e){}
     return s;
   }
+  function toWsProxy(u){
+    if(u==null)return u;
+    var s=String(u);
+    if(!s||s.indexOf('/api/samco-ws')!==-1)return s;
+    try{
+      var resolved=new URL(s, BASE_HREF);
+      if((resolved.protocol==='wss:'||resolved.protocol==='ws:')&&isAllowedHost(resolved.hostname)){
+        var proto=window.location.protocol==='https:'?'wss://':'ws://';
+        return proto+window.location.host+'/api/samco-ws?url='+encodeURIComponent(resolved.href);
+      }
+    }catch(e){}
+    return s;
+  }
   var origFetch=window.fetch;
   if(origFetch){
     window.fetch=function(input,init){
       try{
         if(typeof input==='string'){input=toProxy(input);}
+        else if(input&&typeof URL!=='undefined'&&input instanceof URL){input=toProxy(input.href);}
         else if(input&&typeof input.url==='string'){
           var nu=toProxy(input.url);
           if(nu!==input.url){input=new Request(nu,input);}
@@ -98,6 +113,29 @@ function rewriteHtmlForProxy(html, baseUrlObj) {
     try{if(typeof url==='string'){args[1]=toProxy(url);}}catch(e){}
     return origXhrOpen.apply(this,args);
   };
+  if(navigator&&typeof navigator.sendBeacon==='function'){
+    var origBeacon=navigator.sendBeacon.bind(navigator);
+    navigator.sendBeacon=function(url,data){return origBeacon(toProxy(url),data);};
+  }
+  var origWinOpen=window.open;
+  if(origWinOpen){
+    window.open=function(url,target,features){
+      return origWinOpen.call(window,toProxy(url),target,features);
+    };
+  }
+  var OrigWS=window.WebSocket;
+  if(OrigWS){
+    var WrappedWS=function(url,protocols){
+      var nextUrl=toWsProxy(url);
+      return protocols!==undefined?new OrigWS(nextUrl,protocols):new OrigWS(nextUrl);
+    };
+    WrappedWS.prototype=OrigWS.prototype;
+    WrappedWS.CONNECTING=OrigWS.CONNECTING;
+    WrappedWS.OPEN=OrigWS.OPEN;
+    WrappedWS.CLOSING=OrigWS.CLOSING;
+    WrappedWS.CLOSED=OrigWS.CLOSED;
+    window.WebSocket=WrappedWS;
+  }
   var origSetAttr=Element.prototype.setAttribute;
   Element.prototype.setAttribute=function(name,val){
     if((name==='src'||name==='href'||name==='action')&&typeof val==='string'){
@@ -105,7 +143,7 @@ function rewriteHtmlForProxy(html, baseUrlObj) {
     }
     return origSetAttr.call(this,name,val);
   };
-  [HTMLScriptElement,HTMLLinkElement,HTMLImageElement,HTMLIFrameElement].forEach(function(Ctor){
+  [HTMLScriptElement,HTMLLinkElement,HTMLImageElement,HTMLIFrameElement,HTMLSourceElement].forEach(function(Ctor){
     if(!Ctor||!Ctor.prototype)return;
     var prop=Ctor===HTMLLinkElement?'href':'src';
     var desc=Object.getOwnPropertyDescriptor(Ctor.prototype,prop);
@@ -156,16 +194,46 @@ async function readRequestBodyBuffer(req) {
     return chunks.length > 0 ? Buffer.concat(chunks) : undefined;
 }
 
+function rewriteSetCookieForProxy(cookieStr, isHttps) {
+    let rewritten = String(cookieStr || '').replace(/;\s*domain=[^;]*/gi, '');
+    if (isHttps) {
+        rewritten = rewritten.replace(/;\s*samesite=[^;]*/gi, '');
+        if (!/;\s*secure\b/i.test(rewritten)) rewritten += '; Secure';
+        rewritten += '; SameSite=None';
+    } else {
+        rewritten = rewritten.replace(/;\s*secure\b/gi, '').replace(/;\s*samesite=[^;]*/gi, '');
+        rewritten += '; SameSite=Lax';
+    }
+    return rewritten;
+}
+
+const SKIP_FORWARD_HEADERS = new Set([
+    'host',
+    'connection',
+    'content-length',
+    'origin',
+    'referer',
+    'accept-encoding',
+    'upgrade',
+    'keep-alive',
+    'transfer-encoding',
+    'te',
+    'trailer',
+    'proxy-authorization',
+    'proxy-connection',
+    'forwarded'
+]);
+
 export default async function handler(req, res) {
     if (req.method === 'OPTIONS') {
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+        res.setHeader('Access-Control-Allow-Headers', '*');
         return res.status(204).end();
     }
 
     const rawUrl = req.query?.url ? String(req.query.url) : DEFAULT_SAMCO_URL;
-    let currentUrl = validateTargetUrl(rawUrl);
+    let currentUrl = validateTargetUrl(rawUrl, false);
     if (!currentUrl) {
         return res.status(403).json({
             error: 'Only *.samco.in and *.samco.app URLs are permitted via /api/samco-proxy'
@@ -182,19 +250,20 @@ export default async function handler(req, res) {
             'Referer': 'https://web.samco.in/'
         };
 
+        // Preserve SAMCO custom headers (device, userid, sessionid, appid, market, authorization, etc.)
         for (const [k, v] of Object.entries(req.headers || {})) {
             const lk = k.toLowerCase();
             if (
-                lk === 'accept' ||
-                lk === 'accept-language' ||
-                lk === 'content-type' ||
-                lk === 'authorization' ||
-                lk === 'x-requested-with' ||
-                lk === 'cookie' ||
-                lk.startsWith('x-samco') ||
-                lk.startsWith('x-api')
+                SKIP_FORWARD_HEADERS.has(lk) ||
+                lk.startsWith('sec-fetch-') ||
+                lk.startsWith('sec-ch-') ||
+                lk.startsWith('x-forwarded-') ||
+                lk === 'x-cloud-trace-context'
             ) {
-                if (typeof v === 'string') forwardHeaders[k] = v;
+                continue;
+            }
+            if (typeof v === 'string') {
+                forwardHeaders[k] = v;
             }
         }
 
@@ -220,7 +289,7 @@ export default async function handler(req, res) {
                 } catch {
                     return res.status(403).json({ error: 'Invalid redirect URL' });
                 }
-                const validated = validateTargetUrl(nextUrl.href);
+                const validated = validateTargetUrl(nextUrl.href, false);
                 if (!validated) {
                     return res.status(403).json({ error: 'Blocked redirect outside Samco domain' });
                 }
@@ -239,6 +308,14 @@ export default async function handler(req, res) {
         res.setHeader('Content-Type', contentType);
         res.setHeader('Cache-Control', 'no-store');
         res.setHeader('X-Proxy-Host', currentUrl.hostname);
+
+        const isHttps = req.headers['x-forwarded-proto'] === 'https' || Boolean(req.secure);
+        const setCookies = typeof upstreamRes.headers.getSetCookie === 'function'
+            ? upstreamRes.headers.getSetCookie()
+            : (upstreamRes.headers.get('set-cookie') ? [upstreamRes.headers.get('set-cookie')] : []);
+        if (setCookies.length > 0) {
+            res.setHeader('Set-Cookie', setCookies.map(c => rewriteSetCookieForProxy(c, isHttps)));
+        }
 
         if (contentType.toLowerCase().includes('text/html')) {
             const html = await upstreamRes.text();

@@ -286,7 +286,8 @@ export default async function handler(req, res) {
         fetchMcxCommodity('GOLD'),
         fetchMcxCommodity('SILVER'),
         fetchSwissquoteMetal('XAU/USD', 'GC=F').catch(() => null),
-        fetchSwissquoteMetal('XAG/USD', 'SI=F').catch(() => null)
+        fetchSwissquoteMetal('XAG/USD', 'SI=F').catch(() => null),
+        fetchYahooChart('INR=X').catch(() => null)
     ];
 
     const secondaryPromises = needSecondary
@@ -304,7 +305,8 @@ export default async function handler(req, res) {
         mcxGoldRes,
         mcxSilverRes,
         comexGoldRes,
-        comexSilverRes
+        comexSilverRes,
+        fxUsdInrRes
     ] = await Promise.allSettled(corePromises);
 
     if (needSecondary) {
@@ -328,6 +330,8 @@ export default async function handler(req, res) {
     let silver = mcxSilverRes.status === 'fulfilled' ? mcxSilverRes.value : null;
     const goldUsd = comexGoldRes.status === 'fulfilled' && comexGoldRes.value ? comexGoldRes.value : null;
     const silverUsd = comexSilverRes.status === 'fulfilled' && comexSilverRes.value ? comexSilverRes.value : null;
+    const usdInrRaw = fxUsdInrRes.status === 'fulfilled' && fxUsdInrRes.value ? fxUsdInrRes.value : null;
+    const usdInr = usdInrRaw ? { ...usdInrRaw, symbol: 'INR=X', currency: 'INR', source: 'FX Live' } : (cachedPayload?.usdInr || null);
     const rawGoldUsd = goldUsd;
     const rawSilverUsd = silverUsd;
     const nasdaq = cachedSecondary.nasdaq;
@@ -344,8 +348,8 @@ export default async function handler(req, res) {
     if (!gold || !silver) {
         fallbacks.push((async () => {
             try {
-                const [fx, gc, si] = await Promise.all([
-                    fetchYahooChart('INR=X'),
+                const fx = usdInrRaw ? usdInrRaw : await fetchYahooChart('INR=X');
+                const [gc, si] = await Promise.all([
                     rawGoldUsd ? Promise.resolve(rawGoldUsd) : fetchYahooChart('GC=F'),
                     rawSilverUsd ? Promise.resolve(rawSilverUsd) : fetchYahooChart('SI=F')
                 ]);
@@ -379,6 +383,7 @@ export default async function handler(req, res) {
         silver,
         goldUsd,
         silverUsd,
+        usdInr,
         nasdaq,
         hangseng,
         breadth: {

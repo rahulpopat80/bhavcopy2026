@@ -10,6 +10,7 @@
     "lint": "node --check server.js && node --check api/ibja.js && node --check api/indices.js && node --check api/yahoo.js && node --check api/corporate.js && node --check api/mmi.js && node --check api/option-chain.js && node --check api/live-market.js && node --check api/samco-proxy.js && node --check sw.js && node --check app.js && node --check build.js"
   },
   "dependencies": {
-    "express": "^5.3.0"
+    "express": "^5.3.0",
+    "ws": "^8.23.0"
   }
 }

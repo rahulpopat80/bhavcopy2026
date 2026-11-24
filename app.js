@@ -7421,13 +7421,14 @@ window.fetchLiveMarket1s = async function() {
         const gUsd = d.goldUsd || d.gold?.usd;
         const sUsd = d.silverUsd || d.silver?.usd;
 
-        // 1. Update global header cards every ~500ms (NIFTY 50, SENSEX, GOLD/10g INR, SILVER/kg INR, GOLD $, SILVER $)
+        // 1. Update global header cards every ~500ms (NIFTY 50, SENSEX, GOLD/10g INR, SILVER/kg INR, GOLD $, SILVER $, USD/INR)
         updateTickerPair('nifty-val', 'nifty-chg', d.nifty, { decimals: 2 });
         updateTickerPair('sensex-val', 'sensex-chg', d.sensex, { decimals: 2 });
         updateTickerPair('gold-val', 'gold-chg', d.gold, { decimals: 0, prefix: '\u20b9' });
         updateTickerPair('silver-val', 'silver-chg', d.silver, { decimals: 0, prefix: '\u20b9' });
         updateTickerPair('gold-usd-val', 'gold-usd-chg', gUsd, { decimals: 2, prefix: '$' });
         updateTickerPair('silver-usd-val', 'silver-usd-chg', sUsd, { decimals: 3, prefix: '$' });
+        updateTickerPair('usdinr-val', 'usdinr-chg', d.usdInr, { decimals: 3, prefix: '\u20b9' });
 
         // 2. Update Call Put tab live strip (including separate INR & USD Gold/Silver cards, NASDAQ & HANG SENG)
         updateTickerPair('cp-live-nifty-val', 'cp-live-nifty-chg', d.nifty, { decimals: 2 });
@@ -7563,6 +7564,7 @@ const COMPANY_NAME_DEFAULTS = {
     'SILVER_INR': 'SILVER MCX / 1kg (INR ₹)',
     'GC=F': 'GOLD ($ USD)',
     'SI=F': 'SILVER ($ USD)',
+    'INR=X': 'USD / INR ($ - ₹)',
     '^IXIC': 'NASDAQ Composite',
     '^HSI': 'HANG SENG Index'
 };
@@ -7602,6 +7604,7 @@ function normalizeCandleSymbolInput(rawSym) {
     if (s === 'SILVER' || s === 'SILVER ($)' || s === 'SILVER ($ USD)' || s === 'SILVER COMEX (USD/OZ)' || s === 'XAG' || s === 'XAGUSD' || s === 'SI=F') return 'SI=F';
     if (s === 'NASDAQ' || s === 'NASDAQ COMPOSITE' || s === 'IXIC' || s === '^IXIC') return '^IXIC';
     if (s === 'HANG SENG' || s === 'HANG SENG INDEX' || s === 'HANGSENG' || s === 'HSI' || s === '^HSI') return '^HSI';
+    if (s === 'USD/INR' || s === 'USD / INR' || s === 'USDINR' || s === 'USD-INR' || s === '$ - ₹' || s === '$-₹' || s === 'USD / INR ($ - ₹)' || s === 'INR=X') return 'INR=X';
     return s;
 }
 
@@ -7609,6 +7612,7 @@ function getCandleCurrencyInfo(symbol) {
     const clean = normalizeCandleSymbolInput(symbol);
     if (clean === 'GOLD_INR' || clean === 'SILVER_INR') return { prefix: '₹', decimals: 0 };
     if (clean === 'SI=F') return { prefix: '$', decimals: 3 };
+    if (clean === 'INR=X') return { prefix: '₹', decimals: 3 };
     if (clean === 'GC=F' || clean === '^IXIC') return { prefix: '$', decimals: 2 };
     if (clean === '^HSI') return { prefix: 'HK$', decimals: 2 };
     return { prefix: '₹', decimals: 2 };
@@ -7670,6 +7674,7 @@ function resolveCandleCompanyName(symbol, apiName = '') {
     if (clean === 'SILVER_INR') return 'SILVER MCX / 1kg (INR ₹)';
     if (clean === 'GC=F') return 'GOLD ($ USD)';
     if (clean === 'SI=F') return 'SILVER ($ USD)';
+    if (clean === 'INR=X') return 'USD / INR ($ - ₹)';
     if (clean === '^IXIC') return 'NASDAQ Composite';
     if (clean === '^HSI') return 'HANG SENG Index';
 
@@ -9922,7 +9927,7 @@ function renderCandlePatternGuide(filter = 'all') {
 function populateCandleSymbolDatalist() {
     const dl = document.getElementById('cc-symbol-datalist');
     if (!dl) return;
-    const defaults = ['NIFTY 50', 'SENSEX', 'BANK NIFTY', 'GOLD (₹)', 'SILVER (₹)', 'GOLD ($)', 'SILVER ($)', 'GOLD_INR', 'SILVER_INR', 'GC=F', 'SI=F', 'RELIANCE', 'TCS', 'HDFCBANK', 'ICICIBANK', 'SBIN', 'INFY', 'ITC', 'TATAMOTORS', 'BHARTIARTL', '^NSEI', '^BSESN', '^NSEBANK'];
+    const defaults = ['NIFTY 50', 'SENSEX', 'BANK NIFTY', 'GOLD (₹)', 'SILVER (₹)', 'GOLD ($)', 'SILVER ($)', 'USD / INR ($ - ₹)', 'GOLD_INR', 'SILVER_INR', 'GC=F', 'SI=F', 'INR=X', 'RELIANCE', 'TCS', 'HDFCBANK', 'ICICIBANK', 'SBIN', 'INFY', 'ITC', 'TATAMOTORS', 'BHARTIARTL', '^NSEI', '^BSESN', '^NSEBANK'];
     const set = new Set(defaults);
     if (Array.isArray(state.processedMasterData) && state.symbolColIndex !== -1) {
         for (let i = 1; i < Math.min(state.processedMasterData.length, 400); i++) {
@@ -10160,9 +10165,10 @@ window.initSamcoWebTab = function() {
     const directUrl = (iframe && iframe.dataset.src) ? iframe.dataset.src : 'https://web.samco.in/';
     const proxyUrl = `/api/samco-proxy?url=${encodeURIComponent(directUrl)}`;
 
-    let useProxy = false;
+    let useProxy = true;
     try {
-        useProxy = sessionStorage.getItem('rf_samco_proxy_mode') === '1';
+        const saved = sessionStorage.getItem('rf_samco_proxy_mode');
+        if (saved === '0') useProxy = false;
     } catch (_) { /* ignore */ }
 
     const getActiveUrl = () => (useProxy ? proxyUrl : directUrl);
