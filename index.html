@@ -4,16 +4,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Rahul Finance – Stock Research & Portfolio Tracker</title>
-    <!-- Google Fonts for premium typography -->
+    <!-- Google Fonts for TradingView + Apple Pro typography -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&family=Noto+Sans+Gujarati:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <!-- FontAwesome for icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Favicon and PWA support -->
     <link rel="icon" type="image/png" href="icon.png">
     <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#3b82f6">
+    <meta name="theme-color" content="#0b0e14">
     <!-- CSS stylesheet -->
     <link rel="stylesheet" href="style.css">
     <!-- SheetJS and ChartJS for processing and visualization -->
@@ -57,7 +57,7 @@
                     <img src="./logo.png" alt="Rahul Finance Logo" class="logo-image">
                     <h1 class="logo-text">Rahul Finance</h1>
                 </div>
-                <!-- Nifty / Sensex / Gold (INR & USD) / Silver (INR & USD) live widget (Double-Click to open chart) -->
+                <!-- Nifty / Sensex / Gold (INR & USD) / Silver (INR & USD) / USD-INR live widget (Double-Click to open chart) -->
                 <div class="header-indices-widget no-print">
                     <div class="index-card live-chart-trigger" data-chart-symbol="^NSEI" title="ડબલ-ક્લિક કરી NIFTY 50 Chart જુઓ">
                         <span class="index-label">NIFTY 50</span>
@@ -69,52 +69,54 @@
                         <span class="index-val" id="sensex-val">—</span>
                         <span class="index-chg" id="sensex-chg">-</span>
                     </div>
-                    <div class="index-card live-chart-trigger" data-chart-symbol="GOLD_INR" style="border-color: rgba(255,193,7,0.35);" title="ડબલ-ક્લિક કરી GOLD (₹ INR) Candle Chart જુઓ">
-                        <span class="index-label" style="color:#f59e0b;"><i class="fa-solid fa-circle" style="font-size:0.55rem;margin-right:3px;"></i> GOLD /10g (₹)</span>
+                    <div class="index-card index-card-gold live-chart-trigger" data-chart-symbol="GOLD_INR" title="ડબલ-ક્લિક કરી GOLD (₹ INR) Candle Chart જુઓ">
+                        <span class="index-label index-label-gold">GOLD /10g (₹)</span>
                         <span class="index-val" id="gold-val">—</span>
                         <span class="index-chg" id="gold-chg">-</span>
                     </div>
-                    <div class="index-card live-chart-trigger" data-chart-symbol="SILVER_INR" style="border-color: rgba(148,163,184,0.35);" title="ડબલ-ક્લિક કરી SILVER (₹ INR) Candle Chart જુઓ">
-                        <span class="index-label" style="color:#cbd5e1;"><i class="fa-solid fa-circle" style="font-size:0.55rem;margin-right:3px;"></i> SILVER /kg (₹)</span>
+                    <div class="index-card index-card-silver live-chart-trigger" data-chart-symbol="SILVER_INR" title="ડબલ-ક્લિક કરી SILVER (₹ INR) Candle Chart જુઓ">
+                        <span class="index-label index-label-silver">SILVER /kg (₹)</span>
                         <span class="index-val" id="silver-val">—</span>
                         <span class="index-chg" id="silver-chg">-</span>
                     </div>
-                    <div class="index-card live-chart-trigger" data-chart-symbol="GC=F" style="border-color: rgba(56,189,248,0.38);" title="ડબલ-ક્લિક કરી GOLD ($ USD) Candle Chart જુઓ">
-                        <span class="index-label" style="color:#38bdf8;"><i class="fa-solid fa-dollar-sign" style="font-size:0.6rem;margin-right:2px;"></i> GOLD ($ USD)</span>
+                    <div class="index-card index-card-usd live-chart-trigger" data-chart-symbol="GC=F" title="ડબલ-ક્લિક કરી GOLD ($ USD) Candle Chart જુઓ">
+                        <span class="index-label index-label-usd">GOLD ($ USD)</span>
                         <span class="index-val" id="gold-usd-val">—</span>
                         <span class="index-chg" id="gold-usd-chg">-</span>
                     </div>
-                    <div class="index-card live-chart-trigger" data-chart-symbol="SI=F" style="border-color: rgba(56,189,248,0.38);" title="ડબલ-ક્લિક કરી SILVER ($ USD) Candle Chart જુઓ">
-                        <span class="index-label" style="color:#7dd3fc;"><i class="fa-solid fa-dollar-sign" style="font-size:0.6rem;margin-right:2px;"></i> SILVER ($ USD)</span>
+                    <div class="index-card index-card-usd live-chart-trigger" data-chart-symbol="SI=F" title="ડબલ-ક્લિક કરી SILVER ($ USD) Candle Chart જુઓ">
+                        <span class="index-label index-label-usd">SILVER ($ USD)</span>
                         <span class="index-val" id="silver-usd-val">—</span>
                         <span class="index-chg" id="silver-usd-chg">-</span>
                     </div>
-                    <div class="index-card live-chart-trigger" data-chart-symbol="INR=X" style="border-color: rgba(16,185,129,0.42);" title="ડબલ-ક્લિક કરી $ - ₹ (USD/INR) Candle Chart જુઓ">
-                        <span class="index-label" style="color:#34d399;"><i class="fa-solid fa-dollar-sign" style="font-size:0.6rem;"></i> - <i class="fa-solid fa-indian-rupee-sign" style="font-size:0.6rem;margin-right:2px;"></i> USD / INR</span>
+                    <div class="index-card index-card-fx live-chart-trigger" data-chart-symbol="INR=X" title="ડબલ-ક્લિક કરી $ - ₹ (USD/INR) Candle Chart જુઓ">
+                        <span class="index-label index-label-fx">$ - ₹ (USD/INR)</span>
                         <span class="index-val" id="usdinr-val">—</span>
                         <span class="index-chg" id="usdinr-chg">-</span>
                     </div>
                 </div>
-                <div class="cloud-sync-badge" id="cloud-sync-status">
-                    <i class="fa-solid fa-cloud-arrow-up sync-icon"></i>
-                    <span id="cloud-sync-text">Cloud Ready</span>
+                <div class="header-actions-group">
+                    <div class="cloud-sync-badge" id="cloud-sync-status">
+                        <i class="fa-solid fa-cloud-arrow-up sync-icon"></i>
+                        <span id="cloud-sync-text">Cloud Ready</span>
+                    </div>
+                    <button id="pwa-install-btn" class="btn btn-primary" style="display: none;">
+                        <i class="fa-solid fa-download"></i> Install App
+                    </button>
+                    <button id="change-password-btn" class="btn btn-secondary no-print" title="Change account password">
+                        <i class="fa-solid fa-key"></i> Password
+                    </button>
                 </div>
-                <button id="pwa-install-btn" class="btn" style="display: none; align-items: center; gap: 0.35rem; font-size: 0.78rem; padding: 0.4rem 0.75rem; background: linear-gradient(135deg, var(--accent-color) 0%, #b89626 100%); border: none; color: #000; font-weight: bold; border-radius: 6px; cursor: pointer; box-shadow: 0 4px 10px rgba(212,175,55,0.25); margin-right: 0.5rem;">
-                    <i class="fa-solid fa-download"></i> Install App
-                </button>
-                <button id="change-password-btn" class="btn btn-secondary no-print" style="display: flex; align-items: center; gap: 0.35rem; font-size: 0.78rem; padding: 0.4rem 0.75rem; border: 1px solid var(--card-border); background: rgba(59,130,246,0.1); color: #fff; border-radius: 6px; cursor: pointer; margin-right: 0.5rem;">
-                    <i class="fa-solid fa-key"></i> Change Password
-                </button>
             </div>
-            <p class="subtitle">Upload your Master Excel file and daily Bhavcopy (CSV) files to process and update stock prices in real-time.</p>
+            <p class="subtitle">Upload Master Excel &amp; daily Bhavcopy CSV for real-time research, technical charts, and portfolio tracking.</p>
         </header>
 
-        <nav class="app-nav">
+        <nav class="app-nav" aria-label="Primary Workspace Navigation">
             <button class="nav-btn active" id="tab-research">
-                <i class="fa-solid fa-chart-line"></i> Stock Research
+                <i class="fa-solid fa-chart-line"></i> Research
             </button>
             <button class="nav-btn" id="tab-portfolio">
-                <i class="fa-solid fa-briefcase"></i> My Portfolio
+                <i class="fa-solid fa-briefcase"></i> Portfolio
             </button>
             <button class="nav-btn" id="tab-watchlist">
                 <i class="fa-solid fa-star"></i> Watchlist
@@ -126,7 +128,7 @@
                 <i class="fa-solid fa-lightbulb"></i> Investor Advice
             </button>
             <button class="nav-btn" id="tab-results">
-                <i class="fa-solid fa-calendar-days"></i> Results &amp; Dividends
+                <i class="fa-solid fa-calendar-days"></i> Results
             </button>
             <button class="nav-btn" id="tab-volume-promoter">
                 <i class="fa-solid fa-fire"></i> Vol &amp; Promoter
@@ -135,21 +137,21 @@
                 <i class="fa-solid fa-bolt"></i> Circuits
             </button>
             <button class="nav-btn" id="tab-global-indices">
-                <i class="fa-solid fa-globe"></i> Global Indices
+                <i class="fa-solid fa-globe"></i> Global
             </button>
             <button class="nav-btn" id="tab-intraday">
                 <i class="fa-solid fa-gauge-high"></i> Intraday
             </button>
-            <button class="nav-btn" id="tab-master-piece" style="border-color: #ec4899; color: #ec4899; font-weight: bold;">
+            <button class="nav-btn nav-btn-accent-rose" id="tab-master-piece">
                 <i class="fa-solid fa-gem"></i> MASTER PIECE
             </button>
-            <button class="nav-btn" id="tab-call-put" style="border-color: #06b6d4; color: #22d3ee; font-weight: bold;">
-                <i class="fa-solid fa-layer-group"></i> કોલ પુટ (Call Put)
+            <button class="nav-btn nav-btn-accent-cyan" id="tab-call-put">
+                <i class="fa-solid fa-layer-group"></i> કોલ પુટ
             </button>
-            <button class="nav-btn" id="tab-candle-chart" style="border-color: #f59e0b; color: #fbbf24; font-weight: bold;">
+            <button class="nav-btn nav-btn-accent-amber" id="tab-candle-chart">
                 <i class="fa-solid fa-chart-column"></i> Candle Chart
             </button>
-            <button class="nav-btn" id="tab-samco-web" style="border-color: #10b981; color: #34d399; font-weight: bold;">
+            <button class="nav-btn nav-btn-accent-green" id="tab-samco-web">
                 <i class="fa-solid fa-arrow-up-right-dots"></i> SAMCO Web
             </button>
         </nav>
@@ -605,18 +607,16 @@
         <div id="morning-picks-tab-content" class="hidden">
             <div class="card" style="margin-bottom:0;">
                 <div class="movement-header" style="margin-bottom:0.75rem; flex-wrap:wrap; gap:0.5rem;">
-                    <i class="fa-solid fa-sun movement-icon" style="color:#f59e0b;"></i>
-                    <h2 style="color:var(--text-primary);">Morning Buy Picks <span class="results-badge" id="picks-count-badge" style="background:rgba(245,158,11,0.15);color:#f59e0b;border-color:rgba(245,158,11,0.3);">25 Scripts</span></h2>
-                    <input type="text" id="morning-search-input" placeholder="Search Symbol..." oninput="renderMorningPicks()" style="padding:0.4rem 0.75rem; border:1px solid rgba(255,255,255,0.15); border-radius:6px; background:rgba(0,0,0,0.2); color:#fff; font-size:0.8rem; width:180px; margin-left: auto; margin-right: 0.5rem;">
-                    <button onclick="renderMorningPicks()" class="btn" style="margin-left:auto;font-size:0.78rem;padding:0.35rem 0.9rem;background:linear-gradient(135deg,#f59e0b,#d97706);border:none;color:#000;font-weight:700;border-radius:6px;cursor:pointer;">
-                        <i class="fa-solid fa-rotate"></i> Refresh Analysis
+                    <i class="fa-solid fa-sun movement-icon" style="color:var(--warning-color);"></i>
+                    <h2>Morning Buy Picks <span class="results-badge" id="picks-count-badge">25 Scripts</span></h2>
+                    <input type="text" id="morning-search-input" class="tab-search-input" placeholder="Search Symbol..." oninput="renderMorningPicks()">
+                    <button onclick="renderMorningPicks()" class="btn btn-primary" style="margin-left:auto;font-size:0.78rem;padding:0.38rem 0.85rem;">
+                        <i class="fa-solid fa-rotate"></i> Refresh
                     </button>
                 </div>
-                <div style="background:rgba(245,158,11,0.07);border:1px solid rgba(245,158,11,0.2);border-radius:8px;padding:0.65rem 1rem;margin-bottom:0.9rem;">
-                    <p style="font-size:0.82rem;color:var(--text-secondary);margin:0;">
-                        <i class="fa-solid fa-circle-info" style="color:#f59e0b;margin-right:5px;"></i>
-                        <strong style="color:#f59e0b;">આજ સવારે 9:30 સુધીમાં ખરીદવા લાયક Top 25 Stocks</strong> — Master File ના ડેટા આધારિત Technical Scoring (Momentum + Trend Consistency + Price Position). <strong>NOTE:</strong> આ માત્ર technical analysis છે, investment advice નથી.
-                    </p>
+                <div class="tab-callout">
+                    <i class="fa-solid fa-circle-info" style="color:var(--warning-color);"></i>
+                    <span><strong>9:30 AM Top 25 Stocks</strong> · Momentum + Trend + Price Position Scoring (Technical Only).</span>
                 </div>
 
                 <!-- No-data state -->
@@ -746,17 +746,15 @@
             <div class="card results-dashboard-card">
                 <div class="dashboard-header" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 0.75rem;">
                     <div>
-                        <h2 style="color: var(--accent-color); font-size: 1.35rem; display: flex; align-items: center; gap: 0.5rem;">
-                            <i class="fa-solid fa-award"></i> પરિણામો અને ડિવિડન્ડ વિશ્લેષણ (Upcoming Results & Dividend)
+                        <h2 style="font-size: 1.15rem; display: flex; align-items: center; gap: 0.5rem;">
+                            <i class="fa-solid fa-award" style="color:var(--accent-sky);"></i> Results &amp; Dividends
                         </h2>
-                        <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.25rem;">આગામી બોર્ડ મીટિંગ્સ, પરિણામો અને ડિવિડન્ડ અંગેની એક્સચેન્જ જાહેરાતોની વિગતો.</p>
+                        <p class="card-desc" style="margin-top: 0.2rem; margin-bottom: 0;">આગામી બોર્ડ મીટિંગ્સ, પરિણામો અને ડિવિડન્ડ જાહેરાતો.</p>
                     </div>
                     <div style="display: flex; align-items: center; gap: 0.5rem; margin-left: auto; flex-wrap: wrap;">
-                        <input type="text" id="results-search-input" placeholder="Search Symbol..." oninput="renderResultsAndDividendsTable()" style="padding:0.4rem 0.75rem; border:1px solid rgba(255,255,255,0.15); border-radius:6px; background:rgba(0,0,0,0.2); color:#fff; font-size:0.8rem; width:180px;">
-                        <span id="results-source-badge" class="results-badge" style="background: rgba(34,197,94,0.12); border-color: var(--success-color); color: var(--success-color); font-weight: bold; font-size: 0.8rem; padding: 0.25rem 0.6rem; border-radius: 6px; border: 1px solid;">
-                            Exchange Live Feed
-                        </span>
-                        <button id="results-retry-btn" onclick="fetchCorporateResults(true)" class="btn btn-secondary" style="font-size:0.78rem; padding:0.35rem 0.85rem;">
+                        <input type="text" id="results-search-input" class="tab-search-input" placeholder="Search Symbol..." oninput="renderResultsAndDividendsTable()">
+                        <span id="results-source-badge" class="results-badge">Exchange Live Feed</span>
+                        <button id="results-retry-btn" onclick="fetchCorporateResults(true)" class="btn btn-secondary" style="font-size:0.78rem; padding:0.38rem 0.85rem;">
                             <i class="fa-solid fa-rotate"></i> Refresh
                         </button>
                     </div>
@@ -789,20 +787,18 @@
         <div id="volume-promoter-tab-content" class="hidden">
             <div class="card" style="margin-bottom:0;">
                 <div class="movement-header" style="margin-bottom:0.75rem; flex-wrap:wrap; gap:0.5rem;">
-                    <i class="fa-solid fa-fire movement-icon" style="color:#ef4444;"></i>
-                    <h2 style="color:var(--text-primary);">High Volume &amp; Promoter Stocks <span class="results-badge" id="vol-promoter-count-badge" style="background:rgba(239,68,68,0.15);color:#ef4444;border-color:rgba(239,68,68,0.3);">0 Stocks</span></h2>
+                    <i class="fa-solid fa-fire movement-icon" style="color:var(--danger-color);"></i>
+                    <h2>High Volume &amp; Promoter <span class="results-badge" id="vol-promoter-count-badge">0 Stocks</span></h2>
                     
-                    <input type="text" id="vol-promoter-search-input" placeholder="Search Symbol..." oninput="renderVolumePromoterPicks()" style="padding:0.4rem 0.75rem; border:1px solid rgba(255,255,255,0.15); border-radius:6px; background:rgba(0,0,0,0.2); color:#fff; font-size:0.8rem; width:180px; margin-left: auto; margin-right: 0.5rem;">
+                    <input type="text" id="vol-promoter-search-input" class="tab-search-input" placeholder="Search Symbol..." oninput="renderVolumePromoterPicks()">
 
-                    <button onclick="renderVolumePromoterPicks(true)" class="btn" style="font-size:0.78rem;padding:0.35rem 0.9rem;background:linear-gradient(135deg,#ef4444,#dc2626);border:none;color:#fff;font-weight:700;border-radius:6px;cursor:pointer;">
+                    <button onclick="renderVolumePromoterPicks(true)" class="btn btn-secondary" style="font-size:0.78rem;padding:0.38rem 0.85rem;">
                         <i class="fa-solid fa-rotate"></i> Refresh
                     </button>
                 </div>
-                <div style="background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.2);border-radius:8px;padding:0.65rem 1rem;margin-bottom:0.9rem;">
-                    <p style="font-size:0.82rem;color:var(--text-secondary);margin:0;">
-                        <i class="fa-solid fa-circle-info" style="color:#ef4444;margin-right:5px;"></i>
-                        <strong style="color:#ef4444;">નિયમો:</strong> ૧) છેલ્લા ૫ દિવસથી ભાવ સતત વધતો હોય, ૨) પ્રમોટરનો હિસ્સો ૭૦% થી વધુ હોય, ૩) સૌથી વધુ વોલ્યુમ વાળા શેર્સ ઉપર આવશે. **Global Mode** માં ૫૦+ કી કંપનીઓના લાઈવ ડેટા યાહુ ફાયનાન્સથી ડાયરેક્ટ ઓપન થાય છે.
-                    </p>
+                <div class="tab-callout">
+                    <i class="fa-solid fa-circle-info" style="color:var(--danger-color);"></i>
+                    <span>૫ દિવસનો સતત વધારો + ૭૦%+ પ્રમોટર હિસ્સો + સૌથી વધુ વોલ્યુમ.</span>
                 </div>
 
                 <!-- No-data state -->
@@ -836,18 +832,16 @@
         <div id="circuits-tab-content" class="hidden">
             <div class="card" style="margin-bottom:0;">
                 <div class="movement-header" style="margin-bottom:0.75rem; flex-wrap:wrap; gap:0.5rem;">
-                    <i class="fa-solid fa-bolt movement-icon" style="color:#eab308;"></i>
-                    <h2 style="color:var(--text-primary);">Circuits (સર્કિટ્સ) <span class="results-badge" id="circuits-count-badge" style="background:rgba(234,179,8,0.15);color:#eab308;border-color:rgba(234,179,8,0.3);">0 Stocks</span></h2>
-                    <input type="text" id="circuits-search-input" placeholder="Search Symbol..." oninput="renderCircuits()" style="padding:0.4rem 0.75rem; border:1px solid rgba(255,255,255,0.15); border-radius:6px; background:rgba(0,0,0,0.2); color:#fff; font-size:0.8rem; width:180px; margin-left: auto; margin-right: 0.5rem;">
-                    <button onclick="renderCircuits(true)" class="btn" style="font-size:0.78rem;padding:0.35rem 0.9rem;background:linear-gradient(135deg,#eab308,#ca8a04);border:none;color:#000;font-weight:700;border-radius:6px;cursor:pointer;">
+                    <i class="fa-solid fa-bolt movement-icon" style="color:var(--warning-color);"></i>
+                    <h2>Circuits (સર્કિટ્સ) <span class="results-badge" id="circuits-count-badge">0 Stocks</span></h2>
+                    <input type="text" id="circuits-search-input" class="tab-search-input" placeholder="Search Symbol..." oninput="renderCircuits()">
+                    <button onclick="renderCircuits(true)" class="btn btn-secondary" style="font-size:0.78rem;padding:0.38rem 0.85rem;">
                         <i class="fa-solid fa-rotate"></i> Refresh
                     </button>
                 </div>
-                <div style="background:rgba(234,179,8,0.07);border:1px solid rgba(234,179,8,0.2);border-radius:8px;padding:0.65rem 1rem;margin-bottom:0.9rem;">
-                    <p style="font-size:0.82rem;color:var(--text-secondary);margin:0;">
-                        <i class="fa-solid fa-circle-info" style="color:#eab308;margin-right:5px;"></i>
-                        <strong style="color:#eab308;">નિયમો:</strong> ૧) આજે સૌથી વધુ વોલ્યુમ ધરાવતી કંપનીઓ પહેલા આવશે, ૨) જે કંપનીઓ અપર સર્કિટ (20%, 10% અથવા 5%) ની નજીક અથવા ટચ થયેલ હોય તેને અલગ તારવવામાં આવે છે.
-                    </p>
+                <div class="tab-callout">
+                    <i class="fa-solid fa-circle-info" style="color:var(--warning-color);"></i>
+                    <span>ઊંચા વોલ્યુમ સાથે અપર સર્કિટ (20%, 10%, 5%) ની નજીકના શેર્સ.</span>
                 </div>
 
                 <!-- No-data state -->
@@ -881,22 +875,20 @@
         <div id="global-indices-tab-content" class="hidden">
             <div class="card" style="margin-bottom:0;">
                 <div class="movement-header" style="margin-bottom:0.75rem; flex-wrap:wrap; gap:0.5rem;">
-                    <i class="fa-solid fa-globe movement-icon" style="color:#3b82f6;"></i>
-                    <h2 style="color:var(--text-primary);">Global Stock Market Indices (ગ્લોબલ ઇન્ડેક્સ)</h2>
+                    <i class="fa-solid fa-globe movement-icon" style="color:var(--accent-sky);"></i>
+                    <h2>Global Stock Indices (ગ્લોબલ ઇન્ડેક્સ)</h2>
                     
-                    <button onclick="fetchGlobalIndices(true)" class="btn" style="margin-left:auto;font-size:0.78rem;padding:0.35rem 0.9rem;background:linear-gradient(135deg,#3b82f6,#2563eb);border:none;color:#fff;font-weight:700;border-radius:6px;cursor:pointer;">
+                    <button onclick="fetchGlobalIndices(true)" class="btn btn-secondary" style="margin-left:auto;font-size:0.78rem;padding:0.38rem 0.85rem;">
                         <i class="fa-solid fa-rotate"></i> Refresh
                     </button>
                 </div>
-                <div style="background:rgba(59,130,246,0.07);border:1px solid rgba(59,130,246,0.2);border-radius:8px;padding:0.65rem 1rem;margin-bottom:0.9rem;">
-                    <p style="font-size:0.82rem;color:var(--text-secondary);margin:0;">
-                        <i class="fa-solid fa-circle-info" style="color:#3b82f6;margin-right:5px;"></i>
-                        વિશ્વભરના મુખ્ય બજાર સૂચકાંકો (Global Indices) ના રીઅલ-ટાઇમ લાઈવ ભાવ અને માર્કેટ સ્થિતિ (ઓપન/ક્લોઝ).
-                    </p>
+                <div class="tab-callout">
+                    <i class="fa-solid fa-circle-info" style="color:var(--accent-sky);"></i>
+                    <span>વિશ્વભરના મુખ્ય બજારોના લાઈવ ભાવ અને ઓપન/ક્લોઝ સ્થિતિ.</span>
                 </div>
 
                 <!-- Global Indices Table -->
-                <div class="table-wrapper movement-table-wrapper" id="global-indices-table-wrapper" style="margin-top:1rem;">
+                <div class="table-wrapper movement-table-wrapper" id="global-indices-table-wrapper" style="margin-top:0.75rem;">
                     <table id="global-indices-table" style="min-width:700px;">
                         <thead>
                             <tr>
@@ -917,18 +909,16 @@
         <div id="intraday-tab-content" class="hidden">
             <div class="card" style="margin-bottom:0;">
                 <div class="movement-header" style="margin-bottom:0.75rem; flex-wrap:wrap; gap:0.5rem;">
-                    <i class="fa-solid fa-gauge-high movement-icon" style="color:#10b981;"></i>
-                    <h2 style="color:var(--text-primary);">Intraday Scanner (ઇન્ટ્રાડે સ્કેનર) <span class="results-badge" id="intraday-count-badge" style="background:rgba(16,185,129,0.15);color:#10b981;border-color:rgba(16,185,129,0.3);">0 Stocks</span></h2>
-                    <input type="text" id="intraday-search-input" placeholder="Search Symbol..." oninput="renderIntraday()" style="padding:0.4rem 0.75rem; border:1px solid rgba(255,255,255,0.15); border-radius:6px; background:rgba(0,0,0,0.2); color:#fff; font-size:0.8rem; width:180px; margin-left: auto; margin-right: 0.5rem;">
-                    <button onclick="renderIntraday(true)" class="btn" style="font-size:0.78rem;padding:0.35rem 0.9rem;background:linear-gradient(135deg,#10b981,#059669);border:none;color:#fff;font-weight:700;border-radius:6px;cursor:pointer;">
+                    <i class="fa-solid fa-gauge-high movement-icon" style="color:var(--success-color);"></i>
+                    <h2>Intraday Scanner (ઇન્ટ્રાડે) <span class="results-badge" id="intraday-count-badge">0 Stocks</span></h2>
+                    <input type="text" id="intraday-search-input" class="tab-search-input" placeholder="Search Symbol..." oninput="renderIntraday()">
+                    <button onclick="renderIntraday(true)" class="btn btn-secondary" style="font-size:0.78rem;padding:0.38rem 0.85rem;">
                         <i class="fa-solid fa-rotate"></i> Refresh
                     </button>
                 </div>
-                <div style="background:rgba(16,185,129,0.07);border:1px solid rgba(16,185,129,0.2);border-radius:8px;padding:0.65rem 1rem;margin-bottom:0.9rem;">
-                    <p style="font-size:0.82rem;color:var(--text-secondary);margin:0;">
-                        <i class="fa-solid fa-circle-info" style="color:#10b981;margin-right:5px;"></i>
-                        <strong style="color:#10b981;">ઇન્ટ્રાડે ગણતરી પદ્ધતિ:</strong> ૧) **લિક્વિડિટી:** હાઈ વોલ્યુમ ધરાવતા શેર્સ, ૨) **વોલેટિલિટી:** આજના દિવસની યોગ્ય વધઘટ ધરાવતા શેર્સ, ૩) **સ્ટોપ-લોસ (SL) & ટાર્ગેટ:** પિવોટ પોઈન્ટ્સ (Pivot Points) ના આધારે ગણતરી કરેલ સપોર્ટ અને રઝીસ્ટન્સ સ્તરો.
-                    </p>
+                <div class="tab-callout">
+                    <i class="fa-solid fa-circle-info" style="color:var(--success-color);"></i>
+                    <span>હાઈ વોલ્યુમ + વોલેટિલિટી + પિવોટ આધારિત Stop-Loss અને Target સ્તરો.</span>
                 </div>
 
                 <!-- No-data state -->
@@ -965,20 +955,18 @@
 
         <!-- Tab: MASTER PIECE (Hidden by default) -->
         <div id="master-piece-tab-content" class="hidden">
-            <div class="card" style="margin-bottom:0; border: 1px solid rgba(236,72,153,0.3); background: radial-gradient(circle at top right, rgba(236,72,153,0.05), transparent 60%);">
+            <div class="card" style="margin-bottom:0;">
                 <div class="movement-header" style="margin-bottom:0.75rem; flex-wrap:wrap; gap:0.5rem;">
-                    <i class="fa-solid fa-gem movement-icon" style="color:#ec4899; text-shadow: 0 0 10px rgba(236,72,153,0.4);"></i>
-                    <h2 style="color:var(--text-primary); background: linear-gradient(90deg, #ec4899, #f43f5e); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">MASTER PIECE (મહામૂલા ૫ મોતી)</h2>
+                    <i class="fa-solid fa-gem movement-icon" style="color:#ec4899;"></i>
+                    <h2>MASTER PIECE · Top 5 Picks</h2>
                     
-                    <button onclick="renderMasterPiece(true)" class="btn" style="margin-left:auto;font-size:0.78rem;padding:0.35rem 0.9rem;background:linear-gradient(135deg,#ec4899,#e11d48);border:none;color:#fff;font-weight:700;border-radius:6px;cursor:pointer;box-shadow: 0 4px 12px rgba(236,72,153,0.3);">
+                    <button onclick="renderMasterPiece(true)" class="btn btn-primary" style="margin-left:auto;font-size:0.78rem;padding:0.38rem 0.85rem;">
                         <i class="fa-solid fa-rotate"></i> Refresh
                     </button>
                 </div>
-                <div style="background:rgba(236,72,153,0.07);border:1px solid rgba(236,72,153,0.2);border-radius:8px;padding:0.65rem 1rem;margin-bottom:0.9rem;">
-                    <p style="font-size:0.82rem;color:var(--text-secondary);margin:0;">
-                        <i class="fa-solid fa-circle-info" style="color:#ec4899;margin-right:5px;"></i>
-                        <strong style="color:#ec4899;">માસ્ટર પીસ નિયમ:</strong> આ ટેબમાં ચાલુ દિવસના સૌથી મજબૂત ચાલવાની શક્યતા ધરાવતા **માત્ર ૫ ખાસ શેરો** આવશે. આ શેર્સ આપણી **Investor Advice, Circuits અને Intraday** ટેબમાં સૌથી કોમન/કોન્સિલિડેટેડ હોય તેમાંથી પસંદ થાય છે. જો આ ૫ શેરોના લાઈવ ભાવમાં અચાનક **૧.૫% કે તેથી વધુ ફેરફાર (વધારો/ઘટાડો)** થશે, તો સિસ્ટમ તુરંત જ સ્ક્રીન પર પોપ-અપ નોટિફિકેશન આપશે!
-                    </p>
+                <div class="tab-callout">
+                    <i class="fa-solid fa-circle-info" style="color:#ec4899;"></i>
+                    <span>Investor Advice, Circuits અને Intraday માંથી શ્રેષ્ઠ ૫ કોમન શેરો (૧.૫%+ લાઇવ મૂવ પર એલર્ટ).</span>
                 </div>
 
                 <!-- No-data state -->
@@ -1015,11 +1003,11 @@
             <div class="card call-put-card">
                 <div class="card-header cp-header-row">
                     <div>
-                        <h2 style="color: #22d3ee;">
-                            <i class="fa-solid fa-layer-group"></i> કોલ પુટ (Call / Put) – 5 સ્તર ITM &amp; OTM વોલ્યુમ
+                        <h2>
+                            <i class="fa-solid fa-layer-group" style="color:var(--accent-sky);"></i> કોલ પુટ (Call / Put) · 5-Level ITM/OTM
                         </h2>
                         <p class="card-desc" style="margin-bottom: 0; margin-top: 0.25rem;">
-                            ચાલુ Market ATM Strike થી ઉપર-નીચે 5-5 સ્તરના Call (CE) અને Put (PE) વોલ્યુમનો અલગ સરવાળો + Tickertape Market Mood Index (દર 1 સેકન્ડે લાઇવ અપડેટ).
+                            ATM Strike થી ઉપર-નીચે 5 સ્તરના CE / PE વોલ્યુમ અને Market Mood Index (1s Live).
                         </p>
                     </div>
                     <div class="cp-controls">
@@ -1312,19 +1300,19 @@
             <div class="card candle-chart-card">
                 <div class="card-header cc-header-row">
                     <div>
-                        <h2 style="color: #fbbf24;">
-                            <i class="fa-solid fa-chart-column"></i> Candle Chart – કેન્ડલસ્ટિક, બોલિંગર બેન્ડ &amp; વોલ્યુમ પેટર્ન ગાઇડ
+                        <h2>
+                            <i class="fa-solid fa-chart-column" style="color:var(--warning-color);"></i> Candle Chart
                         </h2>
                         <p class="card-desc" style="margin-bottom: 0; margin-top: 0.25rem;">
-                            ડિફોલ્ટ NIFTY 50 (10 મિનિટ) + 1/3/5/10 મિનિટ, 1D/5D/1W/1M/1Y કેન્ડલસ્ટિક (સેકન્ડે 2-3 વખત Live અપડેટ) + Bollinger Bands, MA, RSI, MACD, Volume, VWAP. ચાર્ટ પર ડબલ-ક્લિક કરી નવી ટેબમાં ફુલ સ્ક્રીન જુઓ.
+                            લાઇવ કેન્ડલસ્ટિક + 6 ઇન્ડિકેટર્સ (BB, EMA, RSI, MACD, Vol, VWAP). ડબલ-ક્લિક = Full Screen.
                         </p>
                     </div>
                     <div class="cc-controls">
                         <div class="cc-search-wrap">
-                            <input type="text" id="cc-symbol-input" list="cc-symbol-datalist" value="NIFTY 50" placeholder="Symbol (e.g. NIFTY 50, SENSEX, BANK NIFTY, RELIANCE)" aria-label="Stock Symbol">
+                            <input type="text" id="cc-symbol-input" list="cc-symbol-datalist" value="NIFTY 50" placeholder="Symbol (e.g. NIFTY 50, SENSEX, RELIANCE)" aria-label="Stock Symbol">
                             <datalist id="cc-symbol-datalist"></datalist>
                             <button type="button" id="cc-load-btn" class="btn btn-primary cc-load-btn">
-                                <i class="fa-solid fa-magnifying-glass-chart"></i> Chart જુઓ
+                                <i class="fa-solid fa-magnifying-glass-chart"></i> Load
                             </button>
                         </div>
                         <div class="cc-timeframe-group" id="cc-timeframe-group">
@@ -1348,28 +1336,28 @@
 
                 <!-- Indicator Toggles Bar (All 6 Indicators) -->
                 <div class="cc-indicator-bar" id="cc-indicator-bar">
-                    <span class="cc-ind-bar-label"><i class="fa-solid fa-sliders"></i> ઇન્ડિકેટર્સ:</span>
-                    <label class="cc-bb-label cc-ind-chk" style="color:#f472b6; border-color:rgba(244,114,182,0.35); background:rgba(244,114,182,0.08);">
+                    <span class="cc-ind-bar-label"><i class="fa-solid fa-sliders"></i> ઇન્ડિકેટર્સ</span>
+                    <label class="cc-bb-label cc-ind-chk">
                         <input type="checkbox" id="cc-ind-ma" checked>
-                        <span>Moving Averages (EMA 9/21 &amp; SMA 50)</span>
+                        <span>EMA 9/21 · SMA 50</span>
                     </label>
-                    <label class="cc-bb-label cc-ind-chk" style="color:#c084fc; border-color:rgba(192,132,252,0.35); background:rgba(192,132,252,0.08);">
+                    <label class="cc-bb-label cc-ind-chk">
                         <input type="checkbox" id="cc-ind-rsi" checked>
                         <span>RSI (14)</span>
                     </label>
-                    <label class="cc-bb-label cc-ind-chk" style="color:#2dd4bf; border-color:rgba(45,212,191,0.35); background:rgba(45,212,191,0.08);">
+                    <label class="cc-bb-label cc-ind-chk">
                         <input type="checkbox" id="cc-ind-macd" checked>
                         <span>MACD (12,26,9)</span>
                     </label>
                     <label class="cc-bb-label cc-ind-chk">
                         <input type="checkbox" id="cc-bb-toggle" checked>
-                        <span>Bollinger Bands (20,2)</span>
+                        <span>Bollinger Bands</span>
                     </label>
-                    <label class="cc-bb-label cc-ind-chk" style="color:#a855f7; border-color:rgba(168,85,247,0.35); background:rgba(168,85,247,0.08);">
+                    <label class="cc-bb-label cc-ind-chk">
                         <input type="checkbox" id="cc-ind-vol" checked>
-                        <span>Volume (વોલ્યુમ)</span>
+                        <span>Volume</span>
                     </label>
-                    <label class="cc-bb-label cc-ind-chk" style="color:#facc15; border-color:rgba(250,204,21,0.35); background:rgba(250,204,21,0.08);">
+                    <label class="cc-bb-label cc-ind-chk">
                         <input type="checkbox" id="cc-ind-vwap" checked>
                         <span>VWAP</span>
                     </label>
@@ -1377,14 +1365,14 @@
 
                 <!-- Quick Stock / Index Picks -->
                 <div class="cc-quick-picks" id="cc-quick-picks">
-                    <span class="cc-quick-label">ઝડપી પસંદગી:</span>
+                    <span class="cc-quick-label">Quick:</span>
                     <button type="button" class="cc-quick-btn active" data-sym="^NSEI">NIFTY 50</button>
                     <button type="button" class="cc-quick-btn" data-sym="^BSESN">SENSEX</button>
                     <button type="button" class="cc-quick-btn" data-sym="^NSEBANK">BANK NIFTY</button>
-                    <button type="button" class="cc-quick-btn" data-sym="GOLD_INR" style="border-color:rgba(245,158,11,0.45);color:#fbbf24;">GOLD (₹)</button>
-                    <button type="button" class="cc-quick-btn" data-sym="SILVER_INR" style="border-color:rgba(148,163,184,0.45);color:#e2e8f0;">SILVER (₹)</button>
-                    <button type="button" class="cc-quick-btn" data-sym="GC=F" style="border-color:rgba(56,189,248,0.45);color:#38bdf8;">GOLD ($)</button>
-                    <button type="button" class="cc-quick-btn" data-sym="SI=F" style="border-color:rgba(56,189,248,0.45);color:#7dd3fc;">SILVER ($)</button>
+                    <button type="button" class="cc-quick-btn" data-sym="GOLD_INR">GOLD (₹)</button>
+                    <button type="button" class="cc-quick-btn" data-sym="SILVER_INR">SILVER (₹)</button>
+                    <button type="button" class="cc-quick-btn" data-sym="GC=F">GOLD ($)</button>
+                    <button type="button" class="cc-quick-btn" data-sym="SI=F">SILVER ($)</button>
                     <button type="button" class="cc-quick-btn" data-sym="RELIANCE">RELIANCE</button>
                     <button type="button" class="cc-quick-btn" data-sym="TCS">TCS</button>
                     <button type="button" class="cc-quick-btn" data-sym="HDFCBANK">HDFCBANK</button>
@@ -1397,32 +1385,32 @@
                 <div class="cc-trade-signal-card" id="cc-trade-signal-card">
                     <div class="cc-signal-left">
                         <div class="cc-signal-kicker-row">
-                            <span class="cp-kicker">ટેકનિકલ બાય / સેલ, ટાર્ગેટ અને સ્ટોપ લોસ માર્ગદર્શન (ALL 6 INDICATORS LIVE)</span>
+                            <span class="cp-kicker">લાઇવ ટેકનિકલ સિગ્નલ · ટાર્ગેટ &amp; સ્ટોપ લોસ</span>
                             <span id="cc-signal-score-pill" class="cc-signal-score-pill">Score: --</span>
                         </div>
                         <div class="cc-signal-headline">
-                            <span id="cc-signal-action-badge" class="cc-signal-action-badge cc-sig-wait">વિશ્લેષણ ચાલુ...</span>
-                            <strong id="cc-signal-subhead" class="cc-signal-subhead">ચાર્ટ ઇન્ડિકેટર્સ ગણતરી થઈ રહી છે...</strong>
+                            <span id="cc-signal-action-badge" class="cc-signal-action-badge cc-sig-wait">વિશ્લેષણ...</span>
+                            <strong id="cc-signal-subhead" class="cc-signal-subhead">ગણતરી ચાલુ...</strong>
                         </div>
                         <div id="cc-signal-reasons" class="cc-signal-reasons"></div>
                     </div>
                     <div class="cc-signal-levels-grid">
                         <div class="cc-level-box cc-level-entry">
-                            <span>પ્રવેશ ભાવ (Entry / Live)</span>
+                            <span>પ્રવેશ ભાવ (Entry)</span>
                             <strong id="cc-signal-entry">--</strong>
                         </div>
                         <div class="cc-level-box cc-level-target">
-                            <span>🎯 ટાર્ગેટ 1 / ટાર્ગેટ 2</span>
+                            <span>ટાર્ગેટ 1 / ટાર્ગેટ 2</span>
                             <strong id="cc-signal-target">--</strong>
                             <small id="cc-signal-target2">T2: --</small>
                         </div>
                         <div class="cc-level-box cc-level-sl">
-                            <span>🛑 સ્ટોપ લોસ (Stop Loss)</span>
+                            <span>સ્ટોપ લોસ (SL)</span>
                             <strong id="cc-signal-sl">--</strong>
                             <small id="cc-signal-sl-pct">Risk: --</small>
                         </div>
                         <div class="cc-level-box cc-level-rr">
-                            <span>Risk : Reward &amp; ATR</span>
+                            <span>Risk : Reward · ATR</span>
                             <strong id="cc-signal-rr">--</strong>
                             <small id="cc-signal-atr">ATR(14): --</small>
                         </div>
@@ -1433,15 +1421,15 @@
                 <div class="cc-ten-min-3c-card" id="cc-ten-min-3c-card">
                     <div class="cc-3c-header">
                         <div class="cc-3c-title-wrap">
-                            <span class="cp-kicker" style="color:#38bdf8;">૧૦ મિનિટ ટાઇમફ્રેમ — છેલ્લી ૩ પૂર્ણ થયેલી કેન્ડલ્સનું અલગ ટેકનિકલ પરિણામ (10M LAST 3 CANDLES INDICATOR)</span>
+                            <span class="cp-kicker">10M · છેલ્લી ૩ કેન્ડલ સિગ્નલ</span>
                             <div class="cc-3c-headline">
-                                <span id="cc-3c-action-badge" class="cc-signal-action-badge cc-sig-wait">વિશ્લેષણ ચાલુ...</span>
-                                <strong id="cc-3c-pattern-title" class="cc-3c-pattern-title">૧૦ મિનિટની છેલ્લી ૩ કેન્ડલ તપાસી રહ્યા છીએ...</strong>
+                                <span id="cc-3c-action-badge" class="cc-signal-action-badge cc-sig-wait">વિશ્લેષણ...</span>
+                                <strong id="cc-3c-pattern-title" class="cc-3c-pattern-title">૧૦ મિનિટ કેન્ડલ તપાસી રહ્યા છીએ...</strong>
                             </div>
                         </div>
-                        <span id="cc-3c-status-pill" class="cc-3c-status-pill">10M Live Sync</span>
+                        <span id="cc-3c-status-pill" class="cc-3c-status-pill">10M Live</span>
                     </div>
-                    <p id="cc-3c-summary" class="cc-3c-summary">છેલ્લી ૩ પૂર્ણ થયેલી ૧૦-મિનિટની કેન્ડલ્સ (C1 → C2 → C3), વોલ્યુમ અને EMA/RSI/MACD/VWAP આધારે ખરીદી (BUY), વેચાણ (SELL) કે રાહ જોવી (WAIT) નો સ્પષ્ટ નિર્ણય અહીં દેખાશે.</p>
+                    <p id="cc-3c-summary" class="cc-3c-summary">છેલ્લી ૩ પૂર્ણ કેન્ડલ્સ મુજબ BUY / SELL / WAIT નિર્ણય.</p>
                     <div id="cc-3c-candles-row" class="cc-3c-candles-row"></div>
                     <div id="cc-3c-indicators-strip" class="cc-3c-indicators-strip"></div>
                 </div>
@@ -1449,12 +1437,12 @@
                 <!-- Future Price Direction Verdict (Bullish / Bearish + Volume + BB) -->
                 <div class="cc-verdict-card" id="cc-verdict-card">
                     <div class="cc-verdict-left">
-                        <span class="cp-kicker">VOLUME + CANDLE + BOLLINGER BANDS ભાવ અનુમાન</span>
+                        <span class="cp-kicker">વોલ્યુમ + બોલિંગર બેન્ડ અનુમાન</span>
                         <div class="cc-verdict-headline">
                             <span id="cc-verdict-badge" class="cc-verdict-badge">Loading...</span>
-                            <strong id="cc-verdict-pattern" class="cc-verdict-pattern">ડેટા લોડ થઈ રહ્યો છે...</strong>
+                            <strong id="cc-verdict-pattern" class="cc-verdict-pattern">ડેટા લોડ થાય છે...</strong>
                         </div>
-                        <p id="cc-verdict-desc" class="cc-verdict-desc">કેન્ડલસ્ટિક અને વોલ્યુમ પેટર્નનું વિશ્લેષણ ચાલુ છે...</p>
+                        <p id="cc-verdict-desc" class="cc-verdict-desc">પેટર્ન વિશ્લેષણ ચાલુ...</p>
                     </div>
                     <div class="cc-verdict-metrics">
                         <div class="cc-metric-box">
@@ -1470,7 +1458,7 @@
                             <strong id="cc-stat-bb">--</strong>
                         </div>
                         <div class="cc-metric-box">
-                            <span>ટાઇમફ્રેમ / સ્રોત</span>
+                            <span>ટાઇમફ્રેમ · બાર્સ</span>
                             <strong id="cc-stat-meta">10m</strong>
                         </div>
                     </div>
@@ -1619,32 +1607,32 @@
             <div class="card samco-web-card" id="samco-web-card">
                 <div class="samco-toolbar">
                     <div class="samco-title-wrap">
-                        <h2 style="color:#34d399; margin:0; font-size:1.05rem; display:flex; align-items:center; gap:0.45rem;">
-                            <i class="fa-solid fa-arrow-up-right-dots"></i> SAMCO Web (web.samco.in)
+                        <h2 style="color:var(--success-color); margin:0; font-size:1rem; display:flex; align-items:center; gap:0.45rem;">
+                            <i class="fa-solid fa-arrow-up-right-dots"></i> SAMCO Web
                             <span id="samco-mode-badge" class="samco-mode-pill">Server Proxy: ON</span>
                         </h2>
                         <p class="samco-subtitle">
-                            <strong>Full Screen Fit</strong> &bull; <strong>Minimize</strong> દબાવી લોગીન ચાલુ રાખી અમારું સોફ્ટવેર વાપરી શકો છો.
+                            Full Screen Fit · Minimize દબાવી લૉગિન ચાલુ રાખી અન્ય ટેબ વાપરો.
                         </p>
                     </div>
                     <div class="samco-actions">
                         <button type="button" id="samco-minimize-btn" class="btn samco-minimize-btn" title="SAMCO ને Minimize કરી સોફ્ટવેરના અન્ય ટેબ વાપરો (લૉગિન ચાલુ રહેશે)">
-                            <i class="fa-solid fa-window-minimize"></i> Minimize (સોફ્ટવેર વાપરો)
+                            <i class="fa-solid fa-window-minimize"></i> Minimize
                         </button>
                         <button type="button" id="samco-back-app-btn" class="btn samco-back-btn" title="Rahul Finance ના ટેબ મેનૂ પર પાછા જાઓ">
-                            <i class="fa-solid fa-arrow-left"></i> Rahul Finance (Tabs)
+                            <i class="fa-solid fa-arrow-left"></i> App Tabs
                         </button>
                         <button type="button" id="samco-open-cc-btn" class="btn btn-secondary samco-btn" title="સીધું Candle Chart ટેબ ખોલો">
                             <i class="fa-solid fa-chart-column"></i> Candle Chart
                         </button>
                         <button type="button" id="samco-home-btn" class="btn btn-secondary samco-btn" title="Login / Home Page પર જાઓ">
-                            <i class="fa-solid fa-right-to-bracket"></i> Web Login / Home
+                            <i class="fa-solid fa-right-to-bracket"></i> Login / Home
                         </button>
                         <button type="button" id="samco-reload-btn" class="btn btn-secondary samco-btn" title="SAMCO પેજ રિલોડ કરો">
                             <i class="fa-solid fa-rotate"></i> Reload
                         </button>
                         <button type="button" id="samco-proxy-btn" class="btn btn-secondary samco-btn" title="જો કોમ્પ્યુટરમાં web.samco.in બ્લોક હોય તો સર્વર Proxy દ્વારા ખોલો">
-                            <i class="fa-solid fa-shield-halved"></i> Server Proxy: ON
+                            <i class="fa-solid fa-shield-halved"></i> Proxy: ON
                         </button>
                         <button type="button" id="samco-expand-btn" class="btn btn-secondary samco-btn" title="Full Screen / Normal View બદલો">
                             <i class="fa-solid fa-compress"></i> Exit Full Screen
@@ -1655,9 +1643,9 @@
                     </div>
                 </div>
                 <div class="samco-login-tip" id="samco-login-tip">
-                    <i class="fa-solid fa-circle-info" style="color:#38bdf8;"></i>
+                    <i class="fa-solid fa-circle-info" style="color:var(--accent-sky);"></i>
                     <span>
-                        <strong>Banned/Blocked PC ઉપાય:</strong> ડિફોલ્ટ <strong>Server Proxy Mode (/api/samco-proxy)</strong> દ્વારા તમારા કોમ્પ્યુટર/ઓફિસ નેટવર્ક પર <code>web.samco.in</code> બ્લોક હોય તો પણ લોગીન અને ટ્રેડિંગ ચાલુ રહે છે.
+                        <strong>Blocked Network Fix:</strong> Server Proxy Mode (<code>/api/samco-proxy</code>) દ્વારા બ્લોક નેટવર્કમાં પણ SAMCO લોગીન અને ટ્રેડિંગ ચાલુ રહે છે.
                     </span>
                 </div>
                 <div class="samco-iframe-wrap" id="samco-iframe-wrap">
@@ -1681,22 +1669,22 @@
                     <h2>Automated Daily Bhavcopy Fetch</h2>
                     <span style="font-size: 0.8rem; color: var(--text-secondary);">Direct NSE archives download or cloud proxy fetch</span>
                 </div>
-                <button class="modal-close" id="fetch-modal-close">&times;</button>
+                <button class="modal-close" id="fetch-modal-close" aria-label="Close modal">&times;</button>
             </div>
             <div class="modal-body" style="display: flex; flex-direction: column; gap: 1.2rem; padding: 1.5rem 0;">
                 <div class="form-group">
                     <label for="fetch-date" style="font-weight: 600; margin-bottom: 0.5rem; display: block;">Select Trading Date</label>
-                    <input type="date" id="fetch-date" style="width: 100%; padding: 0.65rem; background: rgba(15,23,42,0.6); border: 1px solid var(--card-border); border-radius: 6px; color: #fff; font-family: var(--font-family);">
+                    <input type="date" id="fetch-date" style="width: 100%; padding: 0.65rem; background: var(--bg-color); border: 1px solid var(--card-border); border-radius: 8px; color: #fff; font-family: var(--font-family);">
                     <small style="color: var(--text-secondary); margin-top: 0.35rem; display: block;">Bhavcopy is typically published on trading days after 6:30 PM.</small>
                 </div>
 
                 <div style="border-top: 1px solid var(--card-border); padding-top: 1.2rem; display: flex; flex-direction: column; gap: 0.5rem;">
                     <h3 style="display: flex; align-items: center; justify-content: space-between;">
                         <span>Option A: Auto Cloud Fetch</span>
-                        <span style="font-size: 0.7rem; color: var(--danger-color); background: rgba(239,68,68,0.1); padding: 0.15rem 0.4rem; border-radius: 4px;">May Block</span>
+                        <span style="font-size: 0.7rem; color: var(--danger-color); background: rgba(239,83,80,0.1); padding: 0.15rem 0.45rem; border-radius: 4px;">May Block</span>
                     </h3>
-                    <p style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.4;">Attempts to fetch and parse the ZIP dynamically via a public proxy. <span style="color: var(--danger-color);">Note: Often fails because NSE/Cloudflare blocks foreign cloud IPs.</span></p>
-                    <button class="btn btn-primary" id="btn-cloud-fetch" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 0.5rem; background: rgba(6, 182, 212, 0.1); border-color: var(--accent-color); color: #fff;">
+                    <p style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.4;">Attempts to fetch and parse the ZIP dynamically via a public proxy. <span style="color: var(--danger-color);">Often fails if NSE blocks cloud IPs.</span></p>
+                    <button class="btn btn-secondary" id="btn-cloud-fetch" style="width: 100%;">
                         <i class="fa-solid fa-cloud-arrow-down"></i> Try Cloud Fetch
                     </button>
                 </div>
@@ -1704,11 +1692,11 @@
                 <div style="border-top: 1px solid var(--card-border); padding-top: 1.2rem; display: flex; flex-direction: column; gap: 0.5rem;">
                     <h3 style="display: flex; align-items: center; justify-content: space-between;">
                         <span>Option B: Direct Samco Download</span>
-                        <span style="font-size: 0.7rem; color: var(--success-color); background: rgba(16,185,129,0.15); padding: 0.15rem 0.4rem; border-radius: 4px; font-weight: bold;">100% Working</span>
+                        <span style="font-size: 0.7rem; color: var(--success-color); background: rgba(38,166,154,0.14); padding: 0.15rem 0.45rem; border-radius: 4px; font-weight: 600;">Recommended</span>
                     </h3>
-                    <p style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.4;">Downloads the ZIP directly using your browser's local connection (bypassing CORS/IP firewalls). Once downloaded, **simply drag the ZIP file** into the uploader. Our app will unzip and process it in 1 second!</p>
-                    <button class="btn btn-secondary" id="btn-direct-download" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 0.5rem; background: linear-gradient(135deg, var(--success-color) 0%, #059669 100%); border: none; color: #fff; font-weight: bold;">
-                        <i class="fa-solid fa-download"></i> Download Zip & Drag-Drop
+                    <p style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.4;">Downloads the ZIP via your browser connection. Drag the downloaded ZIP into the Step 2 uploader.</p>
+                    <button class="btn btn-success" id="btn-direct-download" style="width: 100%;">
+                        <i class="fa-solid fa-download"></i> Download Zip &amp; Drag-Drop
                     </button>
                 </div>
                 
@@ -1721,23 +1709,23 @@
 
     <!-- Company Research Modal -->
     <div class="modal-overlay hidden" id="research-modal">
-        <div class="modal-card" style="max-width: 650px;">
+        <div class="modal-card" style="max-width: 720px;">
             <div class="modal-header">
                 <div>
                     <h2 id="research-company-title">COMPANY RESEARCH</h2>
-                    <span style="font-size: 0.8rem; color: var(--text-secondary);">Business summary & expert investment analysis</span>
+                    <span style="font-size: 0.8rem; color: var(--text-secondary);">Live chart &amp; technical analysis</span>
                 </div>
-                <button class="modal-close" id="research-modal-close">&times;</button>
+                <button class="modal-close" id="research-modal-close" aria-label="Close research modal">&times;</button>
             </div>
             <div class="modal-body" style="display: flex; flex-direction: column; gap: 0.8rem; padding: 0.8rem 0; max-height: 80vh; overflow-y: auto; padding-right: 0.3rem;">
                 
                 <!-- Section 0: Candlestick + Bollinger Bands Chart -->
-                <div class="card" style="background: rgba(13,21,38,0.6); padding: 1rem; border: 1px solid var(--card-border); margin: 0;">
+                <div class="card" style="background: rgba(11,14,20,0.65); padding: 0.9rem; margin: 0;">
                     <div style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:0.5rem; margin-bottom: 0.55rem;">
-                        <h3 style="color: var(--accent-color); margin:0; display: flex; align-items: center; gap: 0.5rem; font-size: 0.92rem;">
-                            <i class="fa-solid fa-chart-column"></i> કેન્ડલસ્ટિક + Bollinger Bands ચાર્ટ
-                            <button type="button" id="rm-open-candle-tab-btn" class="cc-modal-launch-btn" title="Candle Chart ટેબમાં સંપૂર્ણ ઇન્ડિકેટર્સ સાથે ખોલો">
-                                <i class="fa-solid fa-up-right-from-square"></i> Candle Chart ટેબમાં ખોલો
+                        <h3 style="color: var(--text-primary); margin:0; display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem;">
+                            <i class="fa-solid fa-chart-column" style="color:var(--accent-sky);"></i> કેન્ડલસ્ટિક ચાર્ટ
+                            <button type="button" id="rm-open-candle-tab-btn" class="cc-modal-launch-btn" title="Candle Chart ટેબમાં ખોલો">
+                                <i class="fa-solid fa-up-right-from-square"></i> Candle Chart માં ખોલો
                             </button>
                         </h3>
                         <div style="display:flex; flex-wrap:wrap; align-items:center; gap:0.35rem;">
@@ -1761,88 +1749,88 @@
                                 <span>BB</span>
                             </label>
                             <div class="cc-zoom-controls cc-zoom-mini" data-target-canvas="research-price-chart">
-                                <button type="button" class="cc-zoom-btn" data-action="pan-left" title="Scroll Left"><i class="fa-solid fa-chevron-left"></i></button>
-                                <button type="button" class="cc-zoom-btn" data-action="pan-right" title="Scroll Right"><i class="fa-solid fa-chevron-right"></i></button>
-                                <button type="button" class="cc-zoom-btn" data-action="zoom-in" title="Zoom In"><i class="fa-solid fa-plus"></i></button>
-                                <button type="button" class="cc-zoom-btn" data-action="zoom-out" title="Zoom Out"><i class="fa-solid fa-minus"></i></button>
-                                <button type="button" class="cc-zoom-btn" data-action="reset" title="Reset">R</button>
+                                <button type="button" class="cc-zoom-btn" data-action="pan-left" title="Scroll Left" aria-label="Scroll Left"><i class="fa-solid fa-chevron-left"></i></button>
+                                <button type="button" class="cc-zoom-btn" data-action="pan-right" title="Scroll Right" aria-label="Scroll Right"><i class="fa-solid fa-chevron-right"></i></button>
+                                <button type="button" class="cc-zoom-btn" data-action="zoom-in" title="Zoom In" aria-label="Zoom In"><i class="fa-solid fa-plus"></i></button>
+                                <button type="button" class="cc-zoom-btn" data-action="zoom-out" title="Zoom Out" aria-label="Zoom Out"><i class="fa-solid fa-minus"></i></button>
+                                <button type="button" class="cc-zoom-btn" data-action="reset" title="Reset Zoom">R</button>
                             </div>
                         </div>
                     </div>
                     <div style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:0.4rem; margin-bottom:0.35rem;">
-                        <div id="rm-hover-readout" style="font-size:0.72rem; color:#94a3b8;">Candlestick + Bollinger Bands (20,2) + Volume</div>
-                        <span style="font-size:0.7rem; color:#fbbf24; font-weight:600;"><i class="fa-solid fa-computer-mouse"></i> ચાર્ટ પર ડબલ-ક્લિક કરતા Candle Chart ટેબમાં ખૂલશે</span>
+                        <div id="rm-hover-readout" style="font-size:0.72rem; color:var(--text-secondary);">Candlestick + BB (20,2) + Volume</div>
+                        <span style="font-size:0.7rem; color:var(--text-secondary);">ડબલ-ક્લિક = Candle Chart ટેબ</span>
                     </div>
                     <div class="chart-container" style="height: 220px; position: relative;">
                         <canvas id="research-price-chart" title="ડબલ-ક્લિક કરવાથી આ શેર Candle Chart ટેબમાં સંપૂર્ણ માહિતી સાથે ખૂલશે"></canvas>
                     </div>
                     <!-- Live Price / Data High / Data Low stats strip -->
                     <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin-top: 0.65rem;">
-                        <div style="background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.2); border-radius: 6px; padding: 0.4rem 0.6rem; text-align: center;">
-                            <div style="font-size: 0.65rem; color: var(--text-secondary); margin-bottom: 0.15rem;">Live Price</div>
-                            <div id="chart-live-price" style="font-size: 0.95rem; font-weight: 700; color: #60a5fa;">-</div>
+                        <div class="modal-stat-box">
+                            <span class="stat-label">Live Price</span>
+                            <span id="chart-live-price" class="stat-value" style="color: var(--accent-sky);">-</span>
                         </div>
-                        <div style="background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.2); border-radius: 6px; padding: 0.4rem 0.6rem; text-align: center;">
-                            <div style="font-size: 0.65rem; color: var(--text-secondary); margin-bottom: 0.15rem;">Data Highest</div>
-                            <div id="chart-data-high" style="font-size: 0.95rem; font-weight: 700; color: var(--success-color);">-</div>
+                        <div class="modal-stat-box">
+                            <span class="stat-label">Data High</span>
+                            <span id="chart-data-high" class="stat-value" style="color: var(--success-color);">-</span>
                         </div>
-                        <div style="background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.2); border-radius: 6px; padding: 0.4rem 0.6rem; text-align: center;">
-                            <div style="font-size: 0.65rem; color: var(--text-secondary); margin-bottom: 0.15rem;">Data Lowest</div>
-                            <div id="chart-data-low" style="font-size: 0.95rem; font-weight: 700; color: var(--danger-color);">-</div>
+                        <div class="modal-stat-box">
+                            <span class="stat-label">Data Low</span>
+                            <span id="chart-data-low" class="stat-value" style="color: var(--danger-color);">-</span>
                         </div>
                     </div>
                 </div>
                 
                 <!-- Section 1: Company Profile (Gujarati) -->
-                <div class="card" style="background: rgba(13,21,38,0.6); padding: 1rem; border: 1px solid var(--card-border); margin: 0;">
-                    <h3 style="color: var(--accent-color); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem; font-size: 0.92rem;">
-                        <i class="fa-solid fa-building"></i> કંપની વિશે માહિતી (Gujarati)
+                <div class="card" style="background: rgba(11,14,20,0.65); padding: 0.9rem; margin: 0;">
+                    <h3 style="color: var(--accent-sky); margin-bottom: 0.45rem; display: flex; align-items: center; gap: 0.45rem; font-size: 0.88rem;">
+                        <i class="fa-solid fa-building"></i> કંપની વિશે માહિતી
                     </h3>
-                    <p id="research-description" style="font-size: 0.82rem; line-height: 1.45; color: #cbd5e1; min-height: 40px; margin: 0;">કંપનીની માહિતી મેળવી રહ્યા છીએ...</p>
+                    <p id="research-description" style="font-size: 0.82rem; line-height: 1.45; color: var(--text-secondary); min-height: 40px; margin: 0;">કંપનીની માહિતી મેળવી રહ્યા છીએ...</p>
                 </div>
                 
                 <!-- Side-by-Side Sections: Technical Sentiment & External Links -->
                 <div class="modal-sidebar-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem;">
                     
                     <!-- Section 2: Technical Sentiment & Advice -->
-                    <div class="card" style="background: rgba(13,21,38,0.6); padding: 1rem; border: 1px solid var(--card-border); margin: 0;">
-                        <h3 style="color: var(--accent-color); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem; font-size: 0.92rem;">
-                            <i class="fa-solid fa-chart-line"></i> રોકાણ વિશ્લેષણ (Technical Sentiment)
+                    <div class="card" style="background: rgba(11,14,20,0.65); padding: 0.9rem; margin: 0;">
+                        <h3 style="color: var(--accent-sky); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.45rem; font-size: 0.88rem;">
+                            <i class="fa-solid fa-chart-line"></i> રોકાણ વિશ્લેષણ
                         </h3>
                         <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem; margin-bottom: 0.6rem;">
-                            <div class="modal-stat-box" style="padding: 0.4rem 0.6rem; border-radius: 4px; background: rgba(13,21,38,0.6); border: 1px solid var(--card-border); display: flex; flex-direction: column;">
-                                <span class="stat-label" style="font-size: 0.65rem; color: var(--text-secondary);">52W High</span>
-                                <span class="stat-value" id="research-52w-high" style="font-size: 0.95rem; color: #ffffff; font-weight: bold; margin-top: 0.15rem;">₹0.00</span>
+                            <div class="modal-stat-box">
+                                <span class="stat-label">52W High</span>
+                                <span class="stat-value" id="research-52w-high">₹0.00</span>
                             </div>
-                            <div class="modal-stat-box" style="padding: 0.4rem 0.6rem; border-radius: 4px; background: rgba(13,21,38,0.6); border: 1px solid var(--card-border); display: flex; flex-direction: column;">
-                                <span class="stat-label" style="font-size: 0.65rem; color: var(--text-secondary);">52W Low</span>
-                                <span class="stat-value" id="research-52w-low" style="font-size: 0.95rem; color: #ffffff; font-weight: bold; margin-top: 0.15rem;">₹0.00</span>
+                            <div class="modal-stat-box">
+                                <span class="stat-label">52W Low</span>
+                                <span class="stat-value" id="research-52w-low">₹0.00</span>
                             </div>
                         </div>
-                        <div style="padding: 0.6rem; border-radius: 4px; background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(255,255,255,0.05);">
+                        <div style="padding: 0.55rem; border-radius: 6px; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--card-border);">
                             <div style="font-weight: 600; font-size: 0.78rem; margin-bottom: 0.25rem;">
-                                સલાહ: <span id="research-sentiment-badge" style="padding: 0.1rem 0.3rem; border-radius: 3px; font-size: 0.7rem; font-weight: bold;">Calculating...</span>
+                                સલાહ: <span id="research-sentiment-badge" style="padding: 0.1rem 0.35rem; border-radius: 4px; font-size: 0.7rem; font-weight: 700;">Calculating...</span>
                             </div>
-                            <p id="research-sentiment-text" style="font-size: 0.78rem; line-height: 1.4; color: #cbd5e1; margin: 0;">ગણતરી કરી રહ્યા છીએ...</p>
+                            <p id="research-sentiment-text" style="font-size: 0.78rem; line-height: 1.4; color: var(--text-secondary); margin: 0;">ગણતરી ચાલુ...</p>
                         </div>
                     </div>
                     
                     <!-- Section 3: Expert Advice External Links -->
-                    <div class="card" style="background: rgba(13,21,38,0.6); padding: 1rem; border: 1px solid var(--card-border); margin: 0; display: flex; flex-direction: column; justify-content: space-between;">
+                    <div class="card" style="background: rgba(11,14,20,0.65); padding: 0.9rem; margin: 0; display: flex; flex-direction: column; justify-content: space-between;">
                         <div>
-                            <h3 style="color: var(--accent-color); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem; font-size: 0.92rem;">
-                                <i class="fa-solid fa-users"></i> બાહ્ય નિષ્ણાત સલાહ (Links)
+                            <h3 style="color: var(--accent-sky); margin-bottom: 0.45rem; display: flex; align-items: center; gap: 0.45rem; font-size: 0.88rem;">
+                                <i class="fa-solid fa-arrow-up-right-from-square"></i> બાહ્ય રિસર્ચ લિંક્સ
                             </h3>
-                            <p style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.6rem; line-height: 1.35; margin-top: 0;">વિગતો અને એનાલિસિસ જોવા માટે ક્લિક કરો:</p>
+                            <p style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.6rem; line-height: 1.35; margin-top: 0;">વિગતવાર ફંડામેન્ટલ્સ:</p>
                         </div>
                         <div style="display: flex; flex-direction: column; gap: 0.4rem;">
-                            <a id="link-screener" href="#" target="_blank" class="btn btn-secondary" style="font-size: 0.78rem; padding: 0.4rem; text-align: center; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 0.3rem; background: rgba(59,130,246,0.08); border-color: rgba(59,130,246,0.2); color: #93c5fd; border-radius: 4px;">
+                            <a id="link-screener" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-secondary" style="font-size: 0.78rem;">
                                 <i class="fa-solid fa-square-poll-vertical"></i> Screener.in
                             </a>
-                            <a id="link-tickertape" href="#" target="_blank" class="btn btn-secondary" style="font-size: 0.78rem; padding: 0.4rem; text-align: center; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 0.3rem; background: rgba(59,130,246,0.08); border-color: rgba(59,130,246,0.2); color: #93c5fd; border-radius: 4px;">
+                            <a id="link-tickertape" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-secondary" style="font-size: 0.78rem;">
                                 <i class="fa-solid fa-chart-pie"></i> Tickertape
                             </a>
-                            <a id="link-moneycontrol" href="#" target="_blank" class="btn btn-secondary" style="font-size: 0.78rem; padding: 0.4rem; text-align: center; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 0.3rem; background: rgba(59,130,246,0.08); border-color: rgba(59,130,246,0.2); color: #93c5fd; border-radius: 4px;">
+                            <a id="link-moneycontrol" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-secondary" style="font-size: 0.78rem;">
                                 <i class="fa-solid fa-newspaper"></i> Moneycontrol
                             </a>
                         </div>
@@ -1859,22 +1847,21 @@
 
     <!-- Price History Chart Modal -->
     <div class="modal-overlay hidden" id="chart-modal">
-        <div class="modal-card">
+        <div class="modal-card" style="max-width: 720px;">
             <div class="modal-header">
                 <div>
                     <h2 id="modal-company-title">COMPANY</h2>
                     <span id="modal-company-isin">ISIN</span>
                 </div>
-                <button class="modal-close" id="modal-close-btn">&times;</button>
+                <button class="modal-close" id="modal-close-btn" aria-label="Close chart modal">&times;</button>
             </div>
             <div class="modal-body">
                 <div style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:0.5rem; margin-bottom:0.5rem;">
                     <div style="display:flex; flex-wrap:wrap; align-items:center; gap:0.45rem;">
-                        <span id="cm-hover-readout" style="font-size:0.74rem; color:#94a3b8;">Candlestick + Bollinger Bands (20,2) + Volume</span>
-                        <button type="button" id="cm-open-candle-tab-btn" class="cc-modal-launch-btn" title="Candle Chart ટેબમાં સંપૂર્ણ ઇન્ડિકેટર્સ સાથે ખોલો">
-                            <i class="fa-solid fa-up-right-from-square"></i> Candle Chart ટેબમાં ખોલો
+                        <span id="cm-hover-readout" style="font-size:0.74rem; color:var(--text-secondary);">Candlestick + BB (20,2) + Volume</span>
+                        <button type="button" id="cm-open-candle-tab-btn" class="cc-modal-launch-btn" title="Candle Chart ટેબમાં ખોલો">
+                            <i class="fa-solid fa-up-right-from-square"></i> Candle Chart માં ખોલો
                         </button>
-                        <span style="font-size:0.7rem; color:#fbbf24; font-weight:600;">(ચાર્ટ પર ડબલ-ક્લિક = Candle Chart ટેબ)</span>
                     </div>
                     <div style="display:flex; flex-wrap:wrap; align-items:center; gap:0.35rem;">
                         <div class="cc-timeframe-group cc-modal-tf-group" id="cm-tf-group">
@@ -1897,10 +1884,10 @@
                             <span>BB</span>
                         </label>
                         <div class="cc-zoom-controls cc-zoom-mini" data-target-canvas="price-chart">
-                            <button type="button" class="cc-zoom-btn" data-action="pan-left" title="Scroll Left"><i class="fa-solid fa-chevron-left"></i></button>
-                            <button type="button" class="cc-zoom-btn" data-action="pan-right" title="Scroll Right"><i class="fa-solid fa-chevron-right"></i></button>
-                            <button type="button" class="cc-zoom-btn" data-action="zoom-in" title="Zoom In"><i class="fa-solid fa-plus"></i></button>
-                            <button type="button" class="cc-zoom-btn" data-action="zoom-out" title="Zoom Out"><i class="fa-solid fa-minus"></i></button>
+                            <button type="button" class="cc-zoom-btn" data-action="pan-left" title="Scroll Left" aria-label="Scroll Left"><i class="fa-solid fa-chevron-left"></i></button>
+                            <button type="button" class="cc-zoom-btn" data-action="pan-right" title="Scroll Right" aria-label="Scroll Right"><i class="fa-solid fa-chevron-right"></i></button>
+                            <button type="button" class="cc-zoom-btn" data-action="zoom-in" title="Zoom In" aria-label="Zoom In"><i class="fa-solid fa-plus"></i></button>
+                            <button type="button" class="cc-zoom-btn" data-action="zoom-out" title="Zoom Out" aria-label="Zoom Out"><i class="fa-solid fa-minus"></i></button>
                             <button type="button" class="cc-zoom-btn" data-action="reset" title="Reset">R</button>
                         </div>
                     </div>
@@ -1910,22 +1897,22 @@
                 </div>
                 <div class="modal-stats-grid">
                     <div class="modal-stat-box">
-                        <span class="stat-label">Highest Price (HIGH)</span>
+                        <span class="stat-label">Highest Price</span>
                         <span class="stat-value" id="modal-high-price">₹0.00</span>
                     </div>
                     <div class="modal-stat-box">
-                        <span class="stat-label">Latest Close Price</span>
+                        <span class="stat-label">Latest Close</span>
                         <span class="stat-value" id="modal-latest-price">₹0.00</span>
                     </div>
                     <div class="modal-stat-box">
-                        <span class="stat-label">Price 30 Days Ago</span>
+                        <span class="stat-label">30 Days Ago</span>
                         <span class="stat-value" id="modal-old-price">₹0.00</span>
                     </div>
-                    <div class="modal-stat-box" style="border: 1px solid var(--accent-color); background: rgba(6, 182, 212, 0.05);">
-                        <span class="stat-label" style="color: var(--accent-color); font-weight: bold; display: flex; align-items: center; gap: 0.35rem;">
-                            <span class="live-pulse"></span> Live Price (Real-Time)
+                    <div class="modal-stat-box" style="border-color: rgba(56, 189, 248, 0.3);">
+                        <span class="stat-label" style="color: var(--accent-sky); font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 0.35rem;">
+                            <span class="live-pulse"></span> Live Price
                         </span>
-                        <span class="stat-value" id="modal-live-price" style="color: #ffffff;">Fetching...</span>
+                        <span class="stat-value" id="modal-live-price" style="color: var(--text-primary);">Fetching...</span>
                     </div>
                 </div>
             </div>
@@ -1937,10 +1924,10 @@
         <div class="modal-card" style="max-width: 600px;">
             <div class="modal-header">
                 <div>
-                    <h2 id="advice-details-title" style="color: var(--accent-color);">Investor Analysis Details</h2>
+                    <h2 id="advice-details-title" style="color: var(--accent-sky);">Investor Analysis Details</h2>
                     <span id="advice-details-subtitle" style="color: var(--text-secondary); font-size: 0.85rem;">Stock analysis breakdown</span>
                 </div>
-                <button class="modal-close" id="advice-details-close">&times;</button>
+                <button class="modal-close" id="advice-details-close" aria-label="Close advice details">&times;</button>
             </div>
             <div class="modal-body" id="advice-details-body" style="color: var(--text-primary); font-size: 0.9rem; display: flex; flex-direction: column; gap: 1.2rem; padding: 1rem 0; max-height: 80vh; overflow-y: auto;">
                 <!-- Filled dynamically by JavaScript -->
@@ -1953,38 +1940,38 @@
         <div class="modal-card" style="max-width: 400px;">
             <div class="modal-header">
                 <div>
-                    <h2 style="color: var(--accent-color);"><i class="fa-solid fa-key"></i> Change Password</h2>
-                    <span style="color: var(--text-secondary); font-size: 0.85rem;">Update your account credentials</span>
+                    <h2 style="color: var(--text-primary);"><i class="fa-solid fa-key" style="color:var(--accent-sky);"></i> Change Password</h2>
+                    <span style="color: var(--text-secondary); font-size: 0.82rem;">Update your account credentials</span>
                 </div>
-                <button class="modal-close" id="password-modal-close-btn">&times;</button>
+                <button class="modal-close" id="password-modal-close-btn" aria-label="Close password modal">&times;</button>
             </div>
             <div class="modal-body" style="padding: 1rem 0;">
                 <form id="change-password-form" style="display: flex; flex-direction: column; gap: 1rem;">
-                    <div class="form-group" style="display: flex; flex-direction: column; gap: 0.4rem;">
-                        <label for="current-password-input" style="font-weight: 500; color: var(--text-secondary);">Current Password</label>
+                    <div class="form-group">
+                        <label for="current-password-input">Current Password</label>
                         <div class="input-wrapper">
-                            <i class="fa-solid fa-lock" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: var(--text-secondary);"></i>
-                            <input type="password" id="current-password-input" required placeholder="Enter current password..." style="width: 100%; padding: 0.65rem 1rem 0.65rem 2.5rem; background: rgba(3, 7, 18, 0.5); border: 1px solid var(--card-border); border-radius: 8px; color: #ffffff;">
+                            <i class="fa-solid fa-lock"></i>
+                            <input type="password" id="current-password-input" required placeholder="Current password...">
                         </div>
                     </div>
-                    <div class="form-group" style="display: flex; flex-direction: column; gap: 0.4rem;">
-                        <label for="new-password-input" style="font-weight: 500; color: var(--text-secondary);">New Password</label>
+                    <div class="form-group">
+                        <label for="new-password-input">New Password</label>
                         <div class="input-wrapper">
-                            <i class="fa-solid fa-key" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: var(--text-secondary);"></i>
-                            <input type="password" id="new-password-input" required placeholder="Enter new password..." style="width: 100%; padding: 0.65rem 1rem 0.65rem 2.5rem; background: rgba(3, 7, 18, 0.5); border: 1px solid var(--card-border); border-radius: 8px; color: #ffffff;">
+                            <i class="fa-solid fa-key"></i>
+                            <input type="password" id="new-password-input" required placeholder="New password...">
                         </div>
                     </div>
-                    <div class="form-group" style="display: flex; flex-direction: column; gap: 0.4rem;">
-                        <label for="confirm-password-input" style="font-weight: 500; color: var(--text-secondary);">Confirm New Password</label>
+                    <div class="form-group">
+                        <label for="confirm-password-input">Confirm New Password</label>
                         <div class="input-wrapper">
-                            <i class="fa-solid fa-key" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: var(--text-secondary);"></i>
-                            <input type="password" id="confirm-password-input" required placeholder="Confirm new password..." style="width: 100%; padding: 0.65rem 1rem 0.65rem 2.5rem; background: rgba(3, 7, 18, 0.5); border: 1px solid var(--card-border); border-radius: 8px; color: #ffffff;">
+                            <i class="fa-solid fa-key"></i>
+                            <input type="password" id="confirm-password-input" required placeholder="Confirm password...">
                         </div>
                     </div>
-                    <div id="change-password-error" class="login-error hidden" style="margin-top: 0.5rem;">
+                    <div id="change-password-error" class="login-error hidden">
                         <i class="fa-solid fa-triangle-exclamation"></i> <span></span>
                     </div>
-                    <button type="submit" class="btn btn-primary login-btn" style="margin-top: 0.5rem; justify-content: center;">Update Password</button>
+                    <button type="submit" class="btn btn-primary login-btn">Update Password</button>
                 </form>
             </div>
         </div>
@@ -1995,10 +1982,10 @@
         <div class="modal-card" style="max-width: 420px;">
             <div class="modal-header">
                 <div>
-                    <h2 style="color: var(--accent-color);"><i class="fa-regular fa-calendar"></i> Confirm Trading Date</h2>
+                    <h2><i class="fa-regular fa-calendar" style="color:var(--accent-sky);"></i> Confirm Trading Date</h2>
                     <span id="date-confirm-filename" style="color: var(--text-secondary); font-size: 0.8rem; word-break: break-all;">filename.csv</span>
                 </div>
-                <button class="modal-close" id="date-confirm-close-btn">&times;</button>
+                <button class="modal-close" id="date-confirm-close-btn" aria-label="Close date modal">&times;</button>
             </div>
             <div class="modal-body" style="padding: 0.75rem 0; display: flex; flex-direction: column; gap: 0.9rem;">
                 <p style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.4;">
