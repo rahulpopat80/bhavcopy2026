@@ -11,6 +11,7 @@ import corporateHandler from './api/corporate.js';
 import mmiHandler from './api/mmi.js';
 import optionChainHandler from './api/option-chain.js';
 import liveMarketHandler from './api/live-market.js';
+import optionTipsHandler from './api/option-tips.js';
 import samcoProxyHandler, { validateTargetUrl as validateSamcoUrl } from './api/samco-proxy.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -107,6 +108,17 @@ app.all('/api/live-market', async (req, res) => {
     await liveMarketHandler(req, res);
   } catch (err) {
     console.error('Error in /api/live-market:', err);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+});
+
+app.all('/api/option-tips', async (req, res) => {
+  try {
+    await optionTipsHandler(req, res);
+  } catch (err) {
+    console.error('Error in /api/option-tips:', err);
     if (!res.headersSent) {
       res.status(500).json({ error: 'Internal server error' });
     }

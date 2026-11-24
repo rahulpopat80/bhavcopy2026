@@ -146,6 +146,9 @@
             <button class="nav-btn" id="tab-call-put" style="border-color: #06b6d4; color: #22d3ee; font-weight: bold;">
                 <i class="fa-solid fa-layer-group"></i> કોલ પુટ (Call Put)
             </button>
+            <button class="nav-btn" id="tab-option-tips" style="border-color: #818cf8; color: #a5b4fc; font-weight: bold;">
+                <i class="fa-solid fa-bolt"></i> OPTION TIPS
+            </button>
             <button class="nav-btn" id="tab-candle-chart" style="border-color: #f59e0b; color: #fbbf24; font-weight: bold;">
                 <i class="fa-solid fa-chart-column"></i> Candle Chart
             </button>
@@ -1303,6 +1306,117 @@
                             </tr>
                         </tbody>
                     </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab 12B: OPTION TIPS (1-Second Live Call/Put, Index & 12-Brokerage Tips) -->
+        <div id="option-tips-tab-content" class="hidden">
+            <div class="card ot-card">
+                <div class="ot-header-row">
+                    <div class="ot-title-wrap">
+                        <h2 class="ot-heading">
+                            <i class="fa-solid fa-bolt"></i> OPTION TIPS &mdash; 1s Live Call / Put &amp; Brokerage Calls
+                        </h2>
+                        <p class="ot-subtitle">
+                            NIFTY 50, BANK NIFTY, SENSEX (CE / PE) &amp; 12 SEBI-registered brokerage / advisory live calls &bull; Short Format &bull; Double-click any row to open Candle Chart
+                        </p>
+                    </div>
+                    <div class="ot-status-actions">
+                        <span class="ot-live-indicator" id="ot-live-badge">
+                            <span class="live-dot-green"></span>
+                            <span id="ot-live-time">1s Live</span>
+                        </span>
+                        <button type="button" id="ot-refresh-btn" class="ot-refresh-btn" title="Refresh Option &amp; Brokerage Tips">
+                            <i class="fa-solid fa-rotate"></i> Refresh
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Single-line Filter Bar -->
+                <div class="ot-controls-bar">
+                    <div class="ot-seg-group" id="ot-segment-group" role="tablist" aria-label="Segment Filter">
+                        <button type="button" class="ot-seg-btn active" data-seg="all">All Tips</button>
+                        <button type="button" class="ot-seg-btn" data-seg="OPTION">Options (CE / PE)</button>
+                        <button type="button" class="ot-seg-btn" data-seg="INDEX">Index (NIFTY / SENSEX)</button>
+                        <button type="button" class="ot-seg-btn" data-seg="EQUITY">Brokerage Calls</button>
+                    </div>
+                    <div class="ot-filter-right">
+                        <select id="ot-broker-select" class="ot-select" aria-label="Filter by Brokerage">
+                            <option value="all">All Sources (12 Brokers + Live Option Chain)</option>
+                            <option value="live-option-chain">Live Option Chain &amp; Index Tech (CE / PE)</option>
+                            <option value="5paisa">5paisa Capital Limited (INH000025188)</option>
+                            <option value="motilal-oswal">Motilal Oswal Financial Services</option>
+                            <option value="icici-direct">ICICI Direct</option>
+                            <option value="kotak-neo">Kotak Securities (Kotak Neo)</option>
+                            <option value="angel-one">Angel One</option>
+                            <option value="hdfc-sec">HDFC Securities</option>
+                            <option value="axis-sec">Axis Securities</option>
+                            <option value="sharekhan">Sharekhan</option>
+                            <option value="stockboxtech">StockBoxTech</option>
+                            <option value="mangal-keshav">Mangal Keshav Financial Services</option>
+                            <option value="finkuber">FinKuber Capital</option>
+                            <option value="abj-finstocks">ABJ Finstocks</option>
+                        </select>
+                        <div class="ot-search-wrap">
+                            <i class="fa-solid fa-magnifying-glass ot-search-icon"></i>
+                            <input type="text" id="ot-search-input" class="ot-search-input" placeholder="Search Script / Broker..." aria-label="Search Option Tips">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Summary Metrics Strip (Tabular Nums) -->
+                <div class="ot-summary-grid">
+                    <div class="ot-metric-card">
+                        <span class="ot-metric-label">Total Active Tips</span>
+                        <strong class="ot-metric-value" id="ot-stat-total">--</strong>
+                    </div>
+                    <div class="ot-metric-card">
+                        <span class="ot-metric-label">Live Options (CE / PE) &amp; Index</span>
+                        <strong class="ot-metric-value ot-accent-cyan" id="ot-stat-options">--</strong>
+                    </div>
+                    <div class="ot-metric-card">
+                        <span class="ot-metric-label">Public Brokerage Calls</span>
+                        <strong class="ot-metric-value ot-accent-indigo" id="ot-stat-brokers">--</strong>
+                    </div>
+                    <div class="ot-metric-card">
+                        <span class="ot-metric-label">Target Hit / Bullish Signals</span>
+                        <strong class="ot-metric-value ot-accent-green" id="ot-stat-hits">--</strong>
+                    </div>
+                </div>
+
+                <!-- Short Format Live Tips Table -->
+                <div class="table-wrapper ot-table-wrapper">
+                    <table id="option-tips-table" class="ot-table">
+                        <thead>
+                            <tr>
+                                <th>SCRIPT NAME</th>
+                                <th class="ot-th-center">BUY / SELL</th>
+                                <th class="ot-th-right">ENTRY (₹)</th>
+                                <th class="ot-th-right">LIVE CMP (₹)</th>
+                                <th class="ot-th-right">TARGET (₹)</th>
+                                <th class="ot-th-right">STOPLOSS (₹)</th>
+                                <th>BROKER / SOURCE</th>
+                                <th class="ot-th-center">STATUS</th>
+                            </tr>
+                        </thead>
+                        <tbody id="option-tips-tbody">
+                            <tr>
+                                <td colspan="8" class="ot-loading-cell">
+                                    Loading 1-second live Option &amp; Brokerage Tips...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- 12 Brokerage & Advisory Coverage Directory -->
+                <div class="ot-directory-section">
+                    <div class="ot-directory-head">
+                        <h3><i class="fa-solid fa-building-columns"></i> Covered Brokerages &amp; Advisory Desks (12 Firms)</h3>
+                        <span class="ot-directory-note">Click any firm to filter its calls &bull; Client-only F&amp;O tips link directly to official research desk</span>
+                    </div>
+                    <div id="ot-broker-directory" class="ot-broker-grid"></div>
                 </div>
             </div>
         </div>

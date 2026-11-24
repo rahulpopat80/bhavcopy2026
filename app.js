@@ -181,6 +181,8 @@ let hasStartedDashboard = false;
 let marketIndicesTimer = null;
 let autoRefreshTimer = null;
 let callPutTimer = null;
+let optionTipsTimer = null;
+let isOptionTipsInFlight = false;
 let liveMarket1sTimer = null;
 let candle1sTimer = null;
 
@@ -316,6 +318,16 @@ function startDashboardAfterLogin() {
                 fetchCallPutAndMmiData(false);
             }
         }, 500);
+    }
+
+    // 1-second live updater for OPTION TIPS (Options CE/PE + 12 Brokerages)
+    if (!optionTipsTimer) {
+        optionTipsTimer = setInterval(() => {
+            if (!isTabActive('tab-option-tips')) return;
+            if (typeof window.fetchOptionTipsData === 'function') {
+                window.fetchOptionTipsData(false);
+            }
+        }, 700);
     }
 
     // Live 2x/sec (~500ms) candle updater for active Candle Chart tab or open Research/Price modals
@@ -571,6 +583,7 @@ function initEvents() {
     const tabIntraday    = document.getElementById('tab-intraday');
     const tabMasterPiece = document.getElementById('tab-master-piece');
     const tabCallPut     = document.getElementById('tab-call-put');
+    const tabOptionTips  = document.getElementById('tab-option-tips');
     const tabCandleChart = document.getElementById('tab-candle-chart');
     const tabSamcoWeb    = document.getElementById('tab-samco-web');
     
@@ -586,6 +599,7 @@ function initEvents() {
     const intradayTabContent      = document.getElementById('intraday-tab-content');
     const masterPieceTabContent   = document.getElementById('master-piece-tab-content');
     const callPutTabContent       = document.getElementById('call-put-tab-content');
+    const optionTipsTabContent    = document.getElementById('option-tips-tab-content');
     const candleChartTabContent   = document.getElementById('candle-chart-tab-content');
     const samcoWebTabContent      = document.getElementById('samco-web-tab-content');
 
@@ -594,9 +608,9 @@ function initEvents() {
         if (!keepSamcoFullscreen) {
             document.body.classList.remove('samco-fullscreen-mode');
         }
-        [researchTabContent, portfolioTabContent, resultsTabContent, watchlistTabContent, morningPicksTabContent, adviceTabContent, volPromoterTabContent, circuitsTabContent, globalIndicesTabContent, intradayTabContent, masterPieceTabContent, callPutTabContent, candleChartTabContent, samcoWebTabContent]
+        [researchTabContent, portfolioTabContent, resultsTabContent, watchlistTabContent, morningPicksTabContent, adviceTabContent, volPromoterTabContent, circuitsTabContent, globalIndicesTabContent, intradayTabContent, masterPieceTabContent, callPutTabContent, optionTipsTabContent, candleChartTabContent, samcoWebTabContent]
             .forEach(el => el && el.classList.add('hidden'));
-        [tabResearch, tabPortfolio, tabResults, tabWatchlist, tabMorning, tabAdvice, tabVolPromoter, tabCircuits, tabGlobalIndices, tabIntraday, tabMasterPiece, tabCallPut, tabCandleChart, tabSamcoWeb]
+        [tabResearch, tabPortfolio, tabResults, tabWatchlist, tabMorning, tabAdvice, tabVolPromoter, tabCircuits, tabGlobalIndices, tabIntraday, tabMasterPiece, tabCallPut, tabOptionTips, tabCandleChart, tabSamcoWeb]
             .forEach(el => el && el.classList.remove('active'));
         const dock = document.getElementById('samco-minimized-dock');
         const samcoIframe = document.getElementById('samco-web-iframe');
@@ -737,6 +751,22 @@ function initEvents() {
 
     if (typeof initCallPutControls === 'function') {
         initCallPutControls();
+    }
+
+    if (tabOptionTips && optionTipsTabContent) {
+        tabOptionTips.addEventListener('click', () => {
+            lastNonSamcoTabBtn = tabOptionTips;
+            hideAllTabs();
+            tabOptionTips.classList.add('active');
+            optionTipsTabContent.classList.remove('hidden');
+            if (typeof window.fetchOptionTipsData === 'function') {
+                window.fetchOptionTipsData(true);
+            }
+        });
+    }
+
+    if (typeof initOptionTipsControls === 'function') {
+        initOptionTipsControls();
     }
 
     if (tabCandleChart && candleChartTabContent) {
@@ -10672,6 +10702,350 @@ window.initSamcoWebTab = function() {
         });
     }
 };
+
+// =========================================================================
+// OPTION TIPS TAB — 1-Second Live Option Chain (CE/PE) & 12 Broker Calls
+// =========================================================================
+const optionTipsState = {
+    tips: [],
+    brokers: [],
+    segment: 'all',
+    brokerId: 'all',
+    search: '',
+    prevCmpMap: new Map(),
+    lastUpdated: null
+};
+
+function escapeOtHtml(str) {
+    return String(str ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function sanitizeOtUrl(rawUrl) {
+    try {
+        const parsed = new URL(String(rawUrl || '').trim());
+        if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+            return parsed.href;
+        }
+    } catch (_) {
+        // ignore invalid URL
+    }
+    return '';
+}
+
+function formatOtPrice(val) {
+    const n = Number(val);
+    if (!Number.isFinite(n) || n <= 0) return '--';
+    return '₹' + n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function computeOtStatus(tip) {
+    const cmp = Number(tip.cmp);
+    const target = Number(tip.target);
+    const sl = Number(tip.stoploss);
+    const entry = Number(tip.entry);
+    const isSell = tip.action === 'SELL';
+
+    if (!Number.isFinite(cmp) || cmp <= 0) {
+        return { label: 'CALL OPEN', cls: 'ot-status-open' };
+    }
+    if (Number.isFinite(target) && target > 0) {
+        if ((!isSell && cmp >= target) || (isSell && cmp <= target)) {
+            return { label: 'TARGET HIT', cls: 'ot-status-hit' };
+        }
+    }
+    if (Number.isFinite(sl) && sl > 0) {
+        if ((!isSell && cmp <= sl) || (isSell && cmp >= sl)) {
+            return { label: 'SL HIT', cls: 'ot-status-sl' };
+        }
+    }
+    if (Number.isFinite(entry) && entry > 0) {
+        const pct = ((cmp - entry) / entry) * 100 * (isSell ? -1 : 1);
+        const sign = pct >= 0 ? '+' : '';
+        return {
+            label: `${sign}${pct.toFixed(2)}%`,
+            cls: pct >= 0 ? 'ot-status-hit' : 'ot-status-run'
+        };
+    }
+    return { label: 'LIVE', cls: 'ot-status-run' };
+}
+
+function initOptionTipsControls() {
+    if (document.body.dataset.optionTipsWired) return;
+    document.body.dataset.optionTipsWired = '1';
+
+    const segGroup = document.getElementById('ot-segment-group');
+    const brokerSelect = document.getElementById('ot-broker-select');
+    const searchInput = document.getElementById('ot-search-input');
+    const refreshBtn = document.getElementById('ot-refresh-btn');
+    const tbody = document.getElementById('option-tips-tbody');
+    const dirGrid = document.getElementById('ot-broker-directory');
+
+    if (segGroup) {
+        segGroup.addEventListener('click', (e) => {
+            const btn = e.target.closest('.ot-seg-btn[data-seg]');
+            if (!btn) return;
+            segGroup.querySelectorAll('.ot-seg-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            optionTipsState.segment = btn.dataset.seg || 'all';
+            renderOptionTipsTable();
+        });
+    }
+
+    if (brokerSelect) {
+        brokerSelect.addEventListener('change', () => {
+            optionTipsState.brokerId = brokerSelect.value || 'all';
+            renderOptionTipsTable();
+            renderOptionTipsBrokerDirectory();
+        });
+    }
+
+    if (searchInput) {
+        searchInput.addEventListener('input', () => {
+            optionTipsState.search = searchInput.value.trim().toLowerCase();
+            renderOptionTipsTable();
+        });
+    }
+
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', () => {
+            window.fetchOptionTipsData(true);
+        });
+    }
+
+    if (tbody) {
+        tbody.addEventListener('click', (e) => {
+            const chartBtn = e.target.closest('.ot-chart-btn[data-chart-symbol]');
+            if (!chartBtn) return;
+            const sym = chartBtn.dataset.chartSymbol;
+            if (sym && typeof window.openSymbolInCandleChart === 'function') {
+                window.openSymbolInCandleChart(sym);
+            }
+        });
+
+        tbody.addEventListener('dblclick', (e) => {
+            if (e.target.closest('a')) return;
+            const row = e.target.closest('tr[data-chart-symbol]');
+            if (!row) return;
+            const sym = row.dataset.chartSymbol;
+            if (sym && typeof window.openSymbolInCandleChart === 'function') {
+                window.openSymbolInCandleChart(sym);
+            }
+        });
+    }
+
+    if (dirGrid) {
+        dirGrid.addEventListener('click', (e) => {
+            if (e.target.closest('a')) return;
+            const card = e.target.closest('.ot-broker-card[data-broker-id]');
+            if (!card) return;
+            const bId = card.dataset.brokerId || 'all';
+            optionTipsState.brokerId = (optionTipsState.brokerId === bId) ? 'all' : bId;
+            if (brokerSelect) {
+                brokerSelect.value = optionTipsState.brokerId;
+            }
+            renderOptionTipsTable();
+            renderOptionTipsBrokerDirectory();
+        });
+    }
+}
+
+window.fetchOptionTipsData = async function(force = false) {
+    if (isOptionTipsInFlight && !force) return;
+    isOptionTipsInFlight = true;
+
+    const refreshBtn = document.getElementById('ot-refresh-btn');
+    if (force && refreshBtn) {
+        refreshBtn.disabled = true;
+    }
+
+    try {
+        const url = force ? '/api/option-tips?force=1' : '/api/option-tips';
+        const res = await fetch(url, { cache: 'no-store' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+
+        const nextTips = Array.isArray(data.tips) ? data.tips : [];
+        optionTipsState.tips = nextTips;
+        optionTipsState.brokers = Array.isArray(data.brokers) ? data.brokers : [];
+        optionTipsState.lastUpdated = data.updatedAt || new Date().toISOString();
+
+        const timeEl = document.getElementById('ot-live-time');
+        if (timeEl) {
+            const nowStr = new Date().toLocaleTimeString('en-IN', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false
+            });
+            timeEl.textContent = `1s Live · ${nowStr}`;
+        }
+
+        renderOptionTipsSummary(data);
+        renderOptionTipsTable();
+        renderOptionTipsBrokerDirectory();
+
+        // Update prevCmpMap after rendering so tick delta colors show on current render
+        nextTips.forEach(t => {
+            const c = Number(t.cmp);
+            if (Number.isFinite(c) && c > 0) {
+                optionTipsState.prevCmpMap.set(t.id, c);
+            }
+        });
+    } catch (err) {
+        const timeEl = document.getElementById('ot-live-time');
+        if (timeEl) timeEl.textContent = 'Retrying 1s...';
+        if (optionTipsState.tips.length === 0) {
+            const tbody = document.getElementById('option-tips-tbody');
+            if (tbody) {
+                tbody.innerHTML = `<tr><td colspan="8" class="ot-loading-cell">Unable to load tips (${escapeOtHtml(err.message)}). Retrying...</td></tr>`;
+            }
+        }
+    } finally {
+        isOptionTipsInFlight = false;
+        if (refreshBtn) refreshBtn.disabled = false;
+    }
+};
+
+function renderOptionTipsSummary(data) {
+    const tips = optionTipsState.tips;
+    const totalEl = document.getElementById('ot-stat-total');
+    const optEl = document.getElementById('ot-stat-options');
+    const brkEl = document.getElementById('ot-stat-brokers');
+    const hitEl = document.getElementById('ot-stat-hits');
+
+    if (totalEl) totalEl.textContent = String(data?.totalTips ?? tips.length);
+    if (optEl) optEl.textContent = String(data?.optionTipsCount ?? tips.filter(t => t.segment === 'OPTION' || t.segment === 'INDEX').length);
+    if (brkEl) brkEl.textContent = String(data?.brokerTipsCount ?? tips.filter(t => t.brokerId !== 'live-option-chain').length);
+    if (hitEl) {
+        const hitCount = tips.filter(t => {
+            const st = computeOtStatus(t);
+            return st.label === 'TARGET HIT' || t.action === 'BUY';
+        }).length;
+        hitEl.textContent = String(hitCount);
+    }
+}
+
+function renderOptionTipsTable() {
+    const tbody = document.getElementById('option-tips-tbody');
+    if (!tbody) return;
+
+    const seg = optionTipsState.segment;
+    const brk = optionTipsState.brokerId;
+    const q = optionTipsState.search;
+
+    const filtered = optionTipsState.tips.filter(t => {
+        if (seg !== 'all') {
+            if (seg === 'EQUITY') {
+                if (t.brokerId === 'live-option-chain') return false;
+            } else if (t.segment !== seg) {
+                return false;
+            }
+        }
+        if (brk !== 'all' && t.brokerId !== brk) return false;
+        if (q) {
+            const hay = `${t.scriptName || ''} ${t.broker || ''} ${t.segment || ''} ${t.action || ''}`.toLowerCase();
+            if (!hay.includes(q)) return false;
+        }
+        return true;
+    });
+
+    if (filtered.length === 0) {
+        const msg = optionTipsState.tips.length === 0
+            ? 'Loading 1-second live Option & Brokerage Tips...'
+            : 'No active calls matched this filter. Select "All Sources" or clear search.';
+        tbody.innerHTML = `<tr><td colspan="8" class="ot-loading-cell">${escapeOtHtml(msg)}</td></tr>`;
+        return;
+    }
+
+    const html = filtered.map(tip => {
+        const script = escapeOtHtml(tip.scriptName || '--');
+        const subMeta = escapeOtHtml(tip.publishedAt || tip.segment || '');
+        const action = tip.action === 'SELL' ? 'SELL' : 'BUY';
+        const actionCls = action === 'SELL' ? 'ot-action-sell' : 'ot-action-buy';
+        const chartSym = escapeOtHtml(tip.chartSymbol || tip.scriptName || '');
+
+        const cmpNum = Number(tip.cmp);
+        const prevCmp = optionTipsState.prevCmpMap.get(tip.id);
+        let tickCls = '';
+        if (Number.isFinite(cmpNum) && Number.isFinite(prevCmp)) {
+            if (cmpNum > prevCmp) tickCls = 'ot-tick-up';
+            else if (cmpNum < prevCmp) tickCls = 'ot-tick-down';
+        }
+
+        const safeUrl = sanitizeOtUrl(tip.sourceUrl);
+        const linkHtml = safeUrl
+            ? `<a href="${escapeOtHtml(safeUrl)}" target="_blank" rel="noopener noreferrer" class="ot-src-link" title="Open Brokerage Note"><i class="fa-solid fa-arrow-up-right-from-square"></i></a>`
+            : '';
+
+        const slEstNote = tip.stoplossEstimated ? '<span class="ot-sl-note" title="4% reference SL">ref</span>' : '';
+        const status = computeOtStatus(tip);
+
+        return `
+            <tr data-chart-symbol="${chartSym}" title="Double-click to open ${script} in Candle Chart">
+                <td>
+                    <div class="ot-script-cell">
+                        <div class="ot-script-main">
+                            <span class="ot-script-name">${script}</span>
+                            <span class="ot-script-sub">${subMeta}</span>
+                        </div>
+                        <button type="button" class="ot-chart-btn" data-chart-symbol="${chartSym}" title="Open Candle Chart">
+                            <i class="fa-solid fa-chart-column"></i>
+                        </button>
+                    </div>
+                </td>
+                <td class="ot-th-center"><span class="ot-action-badge ${actionCls}">${action}</span></td>
+                <td class="ot-num">${escapeOtHtml(formatOtPrice(tip.entry))}</td>
+                <td class="ot-num ${tickCls}">${escapeOtHtml(formatOtPrice(tip.cmp))}</td>
+                <td class="ot-num ot-target-val">${escapeOtHtml(formatOtPrice(tip.target))}</td>
+                <td class="ot-num ot-sl-val">${escapeOtHtml(formatOtPrice(tip.stoploss))}${slEstNote}</td>
+                <td>
+                    <div class="ot-broker-cell">
+                        <span class="ot-broker-name">${escapeOtHtml(tip.broker || '--')}</span>
+                        ${linkHtml}
+                    </div>
+                </td>
+                <td class="ot-th-center"><span class="ot-status-text ${status.cls}">${escapeOtHtml(status.label)}</span></td>
+            </tr>
+        `;
+    }).join('');
+
+    tbody.innerHTML = html;
+}
+
+function renderOptionTipsBrokerDirectory() {
+    const grid = document.getElementById('ot-broker-directory');
+    if (!grid) return;
+
+    const brokers = optionTipsState.brokers || [];
+    if (brokers.length === 0) return;
+
+    grid.innerHTML = brokers.map(b => {
+        const isActive = optionTipsState.brokerId === b.id;
+        const safeHref = sanitizeOtUrl(b.researchUrl);
+        const countLabel = b.count > 0 ? `${b.count} live` : 'Client Desk';
+        const linkHtml = safeHref
+            ? `<a href="${escapeOtHtml(safeHref)}" target="_blank" rel="noopener noreferrer" class="ot-broker-ext">Research <i class="fa-solid fa-arrow-up-right-from-square"></i></a>`
+            : '';
+
+        return `
+            <div class="ot-broker-card${isActive ? ' active' : ''}" data-broker-id="${escapeOtHtml(b.id)}" role="button" tabindex="0">
+                <div class="ot-broker-card-top">
+                    <span class="ot-broker-card-title">${escapeOtHtml(b.name)}</span>
+                    <span class="ot-broker-count">${escapeOtHtml(countLabel)}</span>
+                </div>
+                <div class="ot-broker-card-foot">
+                    <span>${escapeOtHtml(b.sebiReg || 'SEBI Registered')}</span>
+                    ${linkHtml}
+                </div>
+            </div>
+        `;
+    }).join('');
+}
 
 // Run on load
 document.addEventListener('DOMContentLoaded', initEvents);
