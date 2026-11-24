@@ -1319,7 +1319,7 @@
                             <i class="fa-solid fa-bolt"></i> OPTION TIPS &mdash; 1s Live Call / Put &amp; Brokerage Calls
                         </h2>
                         <p class="ot-subtitle">
-                            NIFTY 50, BANK NIFTY, SENSEX (CE / PE) &amp; 12 SEBI-registered brokerage / advisory live calls &bull; Short Format &bull; Double-click any row to open Candle Chart
+                            NIFTY 50, BANK NIFTY, SENSEX (CE / PE) &bull; Gold &amp; Silver (₹ / $) &bull; All NSE Scripts &bull; 12 SEBI-registered brokerages &bull; Double-click any row for Candle Chart
                         </p>
                     </div>
                     <div class="ot-status-actions">
@@ -1338,13 +1338,17 @@
                     <div class="ot-seg-group" id="ot-segment-group" role="tablist" aria-label="Segment Filter">
                         <button type="button" class="ot-seg-btn active" data-seg="all">All Tips</button>
                         <button type="button" class="ot-seg-btn" data-seg="OPTION">Options (CE / PE)</button>
-                        <button type="button" class="ot-seg-btn" data-seg="INDEX">Index (NIFTY / SENSEX)</button>
+                        <button type="button" class="ot-seg-btn" data-seg="INDEX">Index</button>
+                        <button type="button" class="ot-seg-btn" data-seg="COMMODITY">Gold / Silver</button>
+                        <button type="button" class="ot-seg-btn" data-seg="NSE_ALL">All NSE Scripts</button>
                         <button type="button" class="ot-seg-btn" data-seg="EQUITY">Brokerage Calls</button>
                     </div>
                     <div class="ot-filter-right">
-                        <select id="ot-broker-select" class="ot-select" aria-label="Filter by Brokerage">
-                            <option value="all">All Sources (12 Brokers + Live Option Chain)</option>
+                        <select id="ot-broker-select" class="ot-select" aria-label="Filter by Brokerage or Feed">
+                            <option value="all">All Sources (Options + Gold/Silver + NSE + 12 Brokers)</option>
                             <option value="live-option-chain">Live Option Chain &amp; Index Tech (CE / PE)</option>
+                            <option value="live-commodity">Gold &amp; Silver Live (MCX ₹ / Spot $)</option>
+                            <option value="nse-all-live">NSE Live Screener (All NSE Scripts)</option>
                             <option value="5paisa">5paisa Capital Limited (INH000025188)</option>
                             <option value="motilal-oswal">Motilal Oswal Financial Services</option>
                             <option value="icici-direct">ICICI Direct</option>
@@ -1360,7 +1364,7 @@
                         </select>
                         <div class="ot-search-wrap">
                             <i class="fa-solid fa-magnifying-glass ot-search-icon"></i>
-                            <input type="text" id="ot-search-input" class="ot-search-input" placeholder="Search Script / Broker..." aria-label="Search Option Tips">
+                            <input type="text" id="ot-search-input" class="ot-search-input" placeholder="Search Gold, Silver, Any NSE..." aria-label="Search Option Tips">
                         </div>
                     </div>
                 </div>
@@ -1368,11 +1372,11 @@
                 <!-- Summary Metrics Strip (Tabular Nums) -->
                 <div class="ot-summary-grid">
                     <div class="ot-metric-card">
-                        <span class="ot-metric-label">Total Active Tips</span>
+                        <span class="ot-metric-label">Total Live Universe</span>
                         <strong class="ot-metric-value" id="ot-stat-total">--</strong>
                     </div>
                     <div class="ot-metric-card">
-                        <span class="ot-metric-label">Live Options (CE / PE) &amp; Index</span>
+                        <span class="ot-metric-label">Options + Gold / Silver</span>
                         <strong class="ot-metric-value ot-accent-cyan" id="ot-stat-options">--</strong>
                     </div>
                     <div class="ot-metric-card">
@@ -1380,7 +1384,7 @@
                         <strong class="ot-metric-value ot-accent-indigo" id="ot-stat-brokers">--</strong>
                     </div>
                     <div class="ot-metric-card">
-                        <span class="ot-metric-label">Target Hit / Bullish Signals</span>
+                        <span class="ot-metric-label">NSE Live Scripts</span>
                         <strong class="ot-metric-value ot-accent-green" id="ot-stat-hits">--</strong>
                     </div>
                 </div>
@@ -1392,10 +1396,10 @@
                             <tr>
                                 <th>SCRIPT NAME</th>
                                 <th class="ot-th-center">BUY / SELL</th>
-                                <th class="ot-th-right">ENTRY (₹)</th>
-                                <th class="ot-th-right">LIVE CMP (₹)</th>
-                                <th class="ot-th-right">TARGET (₹)</th>
-                                <th class="ot-th-right">STOPLOSS (₹)</th>
+                                <th class="ot-th-right">ENTRY</th>
+                                <th class="ot-th-right">LIVE CMP</th>
+                                <th class="ot-th-right">TARGET</th>
+                                <th class="ot-th-right">STOPLOSS</th>
                                 <th>BROKER / SOURCE</th>
                                 <th class="ot-th-center">STATUS</th>
                             </tr>
@@ -1403,11 +1407,20 @@
                         <tbody id="option-tips-tbody">
                             <tr>
                                 <td colspan="8" class="ot-loading-cell">
-                                    Loading 1-second live Option &amp; Brokerage Tips...
+                                    Loading 1-second live Option, Gold/Silver &amp; All NSE Tips...
                                 </td>
                             </tr>
                         </tbody>
                     </table>
+                </div>
+
+                <div id="ot-pagination-bar" class="ot-pagination-bar hidden">
+                    <span id="ot-showing-info" class="ot-showing-info">Showing 0 of 0</span>
+                    <div class="ot-page-actions">
+                        <button type="button" id="ot-load-more-btn" class="ot-refresh-btn">
+                            <i class="fa-solid fa-plus"></i> Show More (+150 NSE)
+                        </button>
+                    </div>
                 </div>
 
                 <!-- 12 Brokerage & Advisory Coverage Directory -->

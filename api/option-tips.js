@@ -1,8 +1,10 @@
 // Vercel Serverless Function: /api/option-tips.js
 // Aggregates:
-// 1. Real-time NSE/BSE Option Chain (NIFTY, BANKNIFTY, SENSEX, FINNIFTY) CE/PE & Spot signals (800ms cache for 1s live updates)
-// 2. Real public brokerage calls & research tips from 5paisa, Moneycontrol, Economic Times & Google News RSS
-//    covering the 12 Indian brokerages/advisories requested, enriched every 1s with live Yahoo Finance CMP.
+// 1. Real-time NSE/BSE Option Chain (NIFTY, BANKNIFTY, SENSEX, FINNIFTY) CE/PE & Spot signals
+// 2. Real-time GOLD & SILVER tips in both INR (MCX /10g & /1kg) and USD (Spot $/oz)
+// 3. All active NSE Listed Scripts (3,000+ equities) live technical BUY/SELL/Target/SL via TradingView India Scanner
+// 4. Real public brokerage calls from 5paisa, Moneycontrol, Economic Times & Google News RSS
+//    covering the 12 Indian brokerages/advisories requested, enriched with live CMP.
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
@@ -106,17 +108,27 @@ export const BROKER_DIRECTORY = [
 ];
 
 const BROKER_FEEDS_TTL_MS = 3 * 60 * 1000;
-const LIVE_TIPS_TTL_MS = 800;
-const SPOT_CANDLES_TTL_MS = 12 * 1000;
+const NSE_ALL_TTL_MS = 1800;
+const CORE_LIVE_TTL_MS = 450;
+const SPOT_CANDLES_TTL_MS = 10 * 1000;
 const QUOTE_TTL_MS = 850;
 const ANCHOR_TTL_MS = 4 * 60 * 60 * 1000;
 
 let brokerFeedCache = { ts: 0, tips: [], inFlight: null };
-let livePayloadCache = { ts: 0, data: null };
+let nseAllCache = { ts: 0, tips: [], inFlight: null };
+let coreCache = { ts: 0, optionTips: [], commodityTips: [], brokerTips: [], nseAllTips: [] };
 const spotTechCache = new Map();
 const symbolResolveCache = new Map();
 const liveQuoteCache = new Map();
 const optionAnchorCache = new Map();
+const mcxExpiryCache = {
+    GOLD: { expiry: '2026-12-04' },
+    SILVER: { expiry: '2026-12-04' }
+};
+const mcxParityState = {
+    GOLD: { basePrice: null, lastUpd: '', baseFactor: null },
+    SILVER: { basePrice: null, lastUpd: '', baseFactor: null }
+};
 
 function toNum(val) {
     if (val === null || val === undefined || val === '') return NaN;
@@ -128,6 +140,11 @@ function roundTick(val, decimals = 2) {
     if (!Number.isFinite(val)) return null;
     const factor = Math.pow(10, decimals);
     return Math.round(val * factor) / factor;
+}
+
+function roundNseTick(val) {
+    if (!Number.isFinite(val) || val <= 0) return null;
+    return Math.round(val * 20) / 20;
 }
 
 function roundOptionTick(val) {
@@ -238,7 +255,7 @@ async function fetchLiveYahooQuote(symbol) {
     }
     try {
         const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1m&range=1d`;
-        const res = await fetchWithTimeout(url, { headers: { 'User-Agent': UA, Accept: 'application/json' } }, 3000);
+        const res = await fetchWithTimeout(url, { headers: { 'User-Agent': UA, Accept: 'application/json' } }, 2800);
         if (!res.ok) return cached ? cached.data : null;
         const json = await res.json();
         const meta = json?.chart?.result?.[0]?.meta;
@@ -285,6 +302,7 @@ async function fetch5paisaTips() {
                 id: `5paisa-${scriptRaw.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
                 scriptName: scriptRaw.replace(/\s+Ltd\.?$/i, '').trim(),
                 segment: 'EQUITY',
+                currency: 'INR',
                 action,
                 entry: Number.isFinite(entry) ? entry : (Number.isFinite(cmp) ? cmp : null),
                 cmp: Number.isFinite(cmp) ? cmp : null,
@@ -337,6 +355,7 @@ async function fetchMoneycontrolBrokerCalls() {
                 id: `mc-${key.replace(/[^a-z0-9]+/g, '-')}`,
                 scriptName,
                 segment: 'EQUITY',
+                currency: 'INR',
                 action,
                 entry: null,
                 cmp: null,
@@ -362,19 +381,16 @@ function parseHeadlineTip(title, link, pubDate) {
     const matchedBroker = matchBrokerInfo(clean);
     if (!matchedBroker) return null;
 
-    // Extract Buy/Sell action
     const hasSell = /\b(sell|bearish|short|reduce|underweight)\b/i.test(clean);
     const hasBuy = /\b(buy|bullish|long|accumulate|outperform|upside|top picks?)\b/i.test(clean);
     if (!hasBuy && !hasSell) return null;
     const action = hasSell && !hasBuy ? 'SELL' : 'BUY';
 
-    // Extract target and stop loss numbers if present in headline
     const targetMatch = clean.match(/target(?:\s+price)?(?:\s+of|\s+at)?\s*(?:Rs\.?|₹)?\s*([\d,]+(?:\.\d+)?)/i);
     const slMatch = clean.match(/(?:stop\s*loss|stoploss|sl)\s*(?:of|at|:)?\s*(?:Rs\.?|₹)?\s*([\d,]+(?:\.\d+)?)/i);
     const target = targetMatch ? toNum(targetMatch[1]) : null;
     const stoploss = slMatch ? toNum(slMatch[1]) : null;
 
-    // Determine script name (Index or Company)
     let scriptName = '';
     if (/\bbank\s*nifty\b/i.test(clean)) scriptName = 'BANK NIFTY';
     else if (/\bnifty(?:\s*50)?\b/i.test(clean)) scriptName = 'NIFTY 50';
@@ -394,6 +410,7 @@ function parseHeadlineTip(title, link, pubDate) {
         id: `rss-${matchedBroker.id}-${scriptName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
         scriptName,
         segment: isIndex ? 'INDEX' : 'EQUITY',
+        currency: 'INR',
         action,
         entry: null,
         cmp: null,
@@ -412,8 +429,8 @@ function parseHeadlineTip(title, link, pubDate) {
 async function fetchBrokerageNewsTips() {
     const tips = [];
     const queries = [
-        '("Motilal Oswal" OR "ICICI Direct" OR "Kotak Securities" OR "Angel One") ("target" OR "stop loss" OR "Buy" OR "Sell") (Nifty OR "Bank Nifty" OR Sensex OR Rs) when:10d',
-        '("HDFC Securities" OR "Axis Securities" OR "Sharekhan" OR "5paisa" OR "StockBox" OR "Mangal Keshav" OR "FinKuber" OR "ABJ Finstocks") ("target" OR "stop loss" OR "Buy" OR "Sell") (Nifty OR "Bank Nifty" OR Sensex OR Rs) when:14d'
+        '("Motilal Oswal" OR "ICICI Direct" OR "Kotak Securities" OR "Angel One") ("target" OR "stop loss" OR "Buy" OR "Sell") (Nifty OR "Bank Nifty" OR Sensex OR Gold OR Silver OR Rs) when:10d',
+        '("HDFC Securities" OR "Axis Securities" OR "Sharekhan" OR "5paisa" OR "StockBox" OR "Mangal Keshav" OR "FinKuber" OR "ABJ Finstocks") ("target" OR "stop loss" OR "Buy" OR "Sell") (Nifty OR "Bank Nifty" OR Sensex OR Gold OR Silver OR Rs) when:14d'
     ];
     const rssUrls = [
         'https://economictimes.indiatimes.com/markets/stocks/recos/rssfeeds/3053611.cms',
@@ -472,7 +489,6 @@ async function refreshBrokerFeedCache(force = false) {
             }
         }
 
-        // Resolve Yahoo symbols in parallel (bounded)
         await Promise.allSettled(
             combined.slice(0, 35).map(async (item) => {
                 item.yahooSymbol = await resolveYahooSymbol(item.chartSymbolHint || item.scriptName);
@@ -484,7 +500,6 @@ async function refreshBrokerFeedCache(force = false) {
     })();
 
     brokerFeedCache.inFlight = work;
-    // Wait on cold start; return stale while refreshing on subsequent 1s ticks
     if (brokerFeedCache.tips.length === 0) {
         return await work;
     }
@@ -526,14 +541,14 @@ function computeRsi(vals, period = 14) {
     return 100 - (100 / (1 + rs));
 }
 
-async function fetchIndexTechnicalBias(yahooSymbol) {
+async function fetchTechnicalBias5m(yahooSymbol) {
     const cached = spotTechCache.get(yahooSymbol);
     if (cached && (Date.now() - cached.ts) < SPOT_CANDLES_TTL_MS) {
         return cached.data;
     }
     try {
         const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?interval=5m&range=2d`;
-        const res = await fetchWithTimeout(url, { headers: { 'User-Agent': UA, Accept: 'application/json' } }, 3500);
+        const res = await fetchWithTimeout(url, { headers: { 'User-Agent': UA, Accept: 'application/json' } }, 3000);
         if (!res.ok) return cached ? cached.data : null;
         const json = await res.json();
         const result = json?.chart?.result?.[0];
@@ -564,7 +579,6 @@ async function fetchIndexTechnicalBias(yahooSymbol) {
         }
         const atr = atrCnt > 0 ? atrSum / atrCnt : lastClose * 0.004;
 
-        // Session VWAP estimate across trailing 25 bars
         let pv = 0;
         let vv = 0;
         for (let i = Math.max(0, closes.length - 25); i < closes.length; i++) {
@@ -589,14 +603,14 @@ async function fetchIndexTechnicalBias(yahooSymbol) {
     }
 }
 
-function getLockedAnchor(key, currentPrice) {
+function getLockedAnchor(key, currentPrice, decimals = 2) {
     const now = Date.now();
     const hit = optionAnchorCache.get(key);
     if (hit && (now - hit.ts) < ANCHOR_TTL_MS && hit.entry > 0) {
         return hit.entry;
     }
-    const anchored = roundOptionTick(currentPrice);
-    if (optionAnchorCache.size > 300) optionAnchorCache.clear();
+    const anchored = decimals === 3 ? roundTick(currentPrice, 3) : roundOptionTick(currentPrice);
+    if (optionAnchorCache.size > 600) optionAnchorCache.clear();
     optionAnchorCache.set(key, { entry: anchored, ts: now });
     return anchored;
 }
@@ -610,9 +624,9 @@ async function fetchIndexOptionTips(cfg) {
 
     const headers = { 'User-Agent': UA, Accept: 'application/json' };
     const [ocRes, spotRes, techRes] = await Promise.allSettled([
-        fetchWithTimeout(ocUrl, { headers }, 3500),
-        fetchWithTimeout(spotUrl, { headers }, 3500),
-        fetchIndexTechnicalBias(cfg.spotYahoo)
+        fetchWithTimeout(ocUrl, { headers }, 3000),
+        fetchWithTimeout(spotUrl, { headers }, 3000),
+        fetchTechnicalBias5m(cfg.spotYahoo)
     ]);
 
     let spotPrice = NaN;
@@ -651,12 +665,11 @@ async function fetchIndexOptionTips(cfg) {
         ocRows = Array.from(strikeMap.values()).sort((a, b) => a.strike - b.strike);
     }
 
-    // Fallback to BSE Sensex option chain if Groww returned empty for SENSEX
     if (cfg.symbol === 'SENSEX' && ocRows.length === 0) {
         try {
             const bseRes = await fetchWithTimeout('https://api.bseindia.com/BseIndiaAPI/api/DerivOptionChain_New/w?Expiry=&scrip_cd=1&strprice=0', {
                 headers: { 'User-Agent': UA, Accept: 'application/json', Referer: 'https://www.bseindia.com/' }
-            }, 3500);
+            }, 3000);
             if (bseRes.ok) {
                 const bj = await bseRes.json();
                 const tbl = Array.isArray(bj?.Table) ? bj.Table : [];
@@ -688,7 +701,6 @@ async function fetchIndexOptionTips(cfg) {
         }
     }
 
-    // Determine live trend bias from Spot EMA9/EMA21/VWAP + Option Chain Volume/OI
     let bullScore = 0;
     if (tech && Number.isFinite(spotPrice)) {
         if (spotPrice >= tech.ema9) bullScore += 1;
@@ -726,37 +738,31 @@ async function fetchIndexOptionTips(cfg) {
         const nextBullRow = ocRows[Math.min(ocRows.length - 1, atmIdx + 1)] || atmRow;
         const nextBearRow = ocRows[Math.max(0, atmIdx - 1)] || atmRow;
 
-        // Tip 1: Primary ATM Direction Option Call/Put (BUY)
         const optType = isBullish ? 'CE' : 'PE';
         const cmpOpt = isBullish ? atmRow.ceLtp : atmRow.peLtp;
         if (cmpOpt > 0) {
             const anchorKey = `${cfg.symbol}:${atmRow.strike}:${optType}:BUY`;
             const entry = getLockedAnchor(anchorKey, cmpOpt);
-            const target = roundOptionTick(entry * 1.22);
-            const stoploss = roundOptionTick(entry * 0.88);
             tips.push({
                 id: `opt-${cfg.symbol.toLowerCase()}-${atmRow.strike}-${optType.toLowerCase()}`,
                 scriptName: `${cfg.display} ${atmRow.strike} ${optType}`,
                 segment: 'OPTION',
+                currency: 'INR',
                 optionType: optType,
                 action: 'BUY',
                 entry,
                 cmp: roundTick(cmpOpt),
-                target,
-                stoploss,
+                target: roundOptionTick(entry * 1.22),
+                stoploss: roundOptionTick(entry * 0.88),
                 stoplossEstimated: false,
                 brokerId: 'live-option-chain',
-                broker: 'Live Option Chain (PCR ' + pcr.toFixed(2) + ')',
+                broker: `Live Option Chain (PCR ${pcr.toFixed(2)})`,
                 sourceUrl: '',
                 publishedAt: expiry || '1s Live',
-                chartSymbol: cfg.chartSymbol,
-                underlyingSpot: roundTick(spotPrice),
-                oi: isBullish ? atmRow.ceOi : atmRow.peOi,
-                volume: isBullish ? atmRow.ceVol : atmRow.peVol
+                chartSymbol: cfg.chartSymbol
             });
         }
 
-        // Tip 2: Secondary OTM Breakout Call/Put (BUY)
         const secRow = isBullish ? nextBullRow : nextBearRow;
         const secType = isBullish ? 'CE' : 'PE';
         const secCmp = isBullish ? secRow.ceLtp : secRow.peLtp;
@@ -767,6 +773,7 @@ async function fetchIndexOptionTips(cfg) {
                 id: `opt-otm-${cfg.symbol.toLowerCase()}-${secRow.strike}-${secType.toLowerCase()}`,
                 scriptName: `${cfg.display} ${secRow.strike} ${secType}`,
                 segment: 'OPTION',
+                currency: 'INR',
                 optionType: secType,
                 action: 'BUY',
                 entry,
@@ -778,15 +785,11 @@ async function fetchIndexOptionTips(cfg) {
                 broker: `Live Option Chain (${totalCeVol >= totalPeVol ? 'CE Vol High' : 'PE Vol High'})`,
                 sourceUrl: '',
                 publishedAt: expiry || '1s Live',
-                chartSymbol: cfg.chartSymbol,
-                underlyingSpot: roundTick(spotPrice),
-                oi: isBullish ? secRow.ceOi : secRow.peOi,
-                volume: isBullish ? secRow.ceVol : secRow.peVol
+                chartSymbol: cfg.chartSymbol
             });
         }
     }
 
-    // Tip 3: Index Spot Technical Level (NIFTY 50 / BANK NIFTY / SENSEX)
     if (Number.isFinite(spotPrice) && spotPrice > 0) {
         const isBullish = bullScore >= 0;
         const rawEma9 = tech?.ema9;
@@ -796,17 +799,16 @@ async function fetchIndexOptionTips(cfg) {
         const atr = (Number.isFinite(rawAtr) && rawAtr > 0 && rawAtr < spotPrice * 0.03)
             ? rawAtr
             : spotPrice * 0.004;
-        const target = roundTick(isBullish ? entry + atr * 1.6 : entry - atr * 1.6);
-        const stoploss = roundTick(isBullish ? entry - atr * 0.95 : entry + atr * 0.95);
         tips.push({
             id: `idx-${cfg.symbol.toLowerCase()}`,
             scriptName: cfg.symbol === 'NIFTY' ? 'NIFTY 50' : (cfg.symbol === 'BANKNIFTY' ? 'BANK NIFTY' : cfg.display),
             segment: 'INDEX',
+            currency: 'INR',
             action: isBullish ? 'BUY' : 'SELL',
             entry,
             cmp: roundTick(spotPrice),
-            target,
-            stoploss,
+            target: roundTick(isBullish ? entry + atr * 1.6 : entry - atr * 1.6),
+            stoploss: roundTick(isBullish ? entry - atr * 0.95 : entry + atr * 0.95),
             stoplossEstimated: false,
             brokerId: 'live-option-chain',
             broker: `Index Tech (RSI ${tech?.rsi ?? '--'})`,
@@ -817,6 +819,288 @@ async function fetchIndexOptionTips(cfg) {
     }
 
     return tips;
+}
+
+// =========================================================================
+// Layer C: Live GOLD & SILVER Tips (INR MCX /10g & /1kg + USD Spot /oz)
+// =========================================================================
+async function fetchMcxSpotQuote(symbol) {
+    const exp = mcxExpiryCache[symbol]?.expiry || '2026-12-04';
+    try {
+        const res = await fetchWithTimeout(`https://priceapi.moneycontrol.com/pricefeed/mcx/commodityfutures/${symbol}?expiry=${encodeURIComponent(exp)}`, {
+            headers: { 'User-Agent': UA, Accept: 'application/json', 'Cache-Control': 'no-cache' }
+        }, 1600);
+        if (!res.ok) return null;
+        const j = await res.json();
+        const price = toNum(j?.data?.lastPrice);
+        if (!Number.isFinite(price) || price <= 0) return null;
+        return {
+            price,
+            lastUpd: String(j?.data?.lastupd || j?.data?.lastupdEpoch || ''),
+            expiry: j?.data?.EXPIRY || exp
+        };
+    } catch {
+        return null;
+    }
+}
+
+async function fetchCommodityGoldSilverTips() {
+    const tips = [];
+    const [tvCfdRes, tvFxRes, mcxGoldRes, mcxSilverRes, goldTechRes, silverTechRes] = await Promise.allSettled([
+        fetchWithTimeout('https://scanner.tradingview.com/cfd/scan', {
+            method: 'POST',
+            headers: { 'User-Agent': UA, 'Content-Type': 'application/json', Accept: 'application/json' },
+            body: JSON.stringify({ symbols: { tickers: ['TVC:GOLD', 'TVC:SILVER', 'OANDA:XAUUSD', 'OANDA:XAGUSD'], query: { types: [] } }, columns: ['close', 'change', 'change_abs'] })
+        }, 1500),
+        fetchWithTimeout('https://scanner.tradingview.com/forex/scan', {
+            method: 'POST',
+            headers: { 'User-Agent': UA, 'Content-Type': 'application/json', Accept: 'application/json' },
+            body: JSON.stringify({ symbols: { tickers: ['PEPPERSTONE:USDINR'], query: { types: [] } }, columns: ['close', 'Bid', 'Ask'] })
+        }, 1500),
+        fetchMcxSpotQuote('GOLD'),
+        fetchMcxSpotQuote('SILVER'),
+        fetchTechnicalBias5m('GC=F'),
+        fetchTechnicalBias5m('SI=F')
+    ]);
+
+    const cfdMap = new Map();
+    if (tvCfdRes.status === 'fulfilled' && tvCfdRes.value.ok) {
+        const j = await tvCfdRes.value.json();
+        for (const r of (j?.data || [])) {
+            const c = Number(r?.d?.[0]);
+            if (Number.isFinite(c) && c > 0) cfdMap.set(r.s, c);
+        }
+    }
+    let usdInr = NaN;
+    if (tvFxRes.status === 'fulfilled' && tvFxRes.value.ok) {
+        const j = await tvFxRes.value.json();
+        usdInr = Number(j?.data?.[0]?.d?.[0]);
+    }
+
+    const goldTech = goldTechRes.status === 'fulfilled' ? goldTechRes.value : null;
+    const silverTech = silverTechRes.status === 'fulfilled' ? silverTechRes.value : null;
+
+    const spotGoldUsd = cfdMap.get('TVC:GOLD') || cfdMap.get('OANDA:XAUUSD') || goldTech?.price;
+    const spotSilverUsd = cfdMap.get('TVC:SILVER') || cfdMap.get('OANDA:XAGUSD') || silverTech?.price;
+
+    const buildMetalPair = (symKey, labelInr, labelUsd, mcxRaw, spotUsd, tech, chartInr, chartUsd, decUsd) => {
+        if (!Number.isFinite(spotUsd) || spotUsd <= 0) return;
+
+        let score = 0;
+        if (tech) {
+            if (spotUsd >= tech.ema9) score += 1; else score -= 1;
+            if (tech.ema9 >= tech.ema21) score += 1; else score -= 1;
+            if (spotUsd >= tech.vwap) score += 1; else score -= 1;
+            if (tech.rsi >= 50) score += 1; else score -= 1;
+        }
+        const action = score >= 0 ? 'BUY' : 'SELL';
+        const atrPct = (tech?.atr > 0 && tech?.price > 0) ? Math.min(0.015, Math.max(0.0025, tech.atr / tech.price)) : 0.0045;
+
+        // 1. USD Tip
+        const usdEntry = getLockedAnchor(`COM:${symKey}:USD:${action}`, spotUsd, decUsd);
+        tips.push({
+            id: `com-${symKey.toLowerCase()}-usd`,
+            scriptName: labelUsd,
+            segment: 'COMMODITY',
+            currency: 'USD',
+            action,
+            entry: usdEntry,
+            cmp: roundTick(spotUsd, decUsd),
+            target: roundTick(action === 'BUY' ? usdEntry * (1 + atrPct * 1.8) : usdEntry * (1 - atrPct * 1.8), decUsd),
+            stoploss: roundTick(action === 'BUY' ? usdEntry * (1 - atrPct * 1.0) : usdEntry * (1 + atrPct * 1.0), decUsd),
+            stoplossEstimated: false,
+            brokerId: 'live-commodity',
+            broker: `Spot Tech (RSI ${tech?.rsi ?? '--'})`,
+            sourceUrl: '',
+            publishedAt: '1s Live USD',
+            chartSymbol: chartUsd
+        });
+
+        // 2. INR MCX Tip (with FX*Spot continuity between MCX edge ticks)
+        let inrPrice = mcxRaw?.price || NaN;
+        const factor = (Number.isFinite(usdInr) && usdInr > 0) ? (spotUsd * usdInr) : null;
+        const pState = mcxParityState[symKey];
+
+        if (mcxRaw?.price > 0) {
+            const changed = !pState.basePrice || Math.abs(mcxRaw.price - pState.basePrice) >= 0.01 || (mcxRaw.lastUpd && mcxRaw.lastUpd !== pState.lastUpd);
+            if (changed) {
+                pState.basePrice = mcxRaw.price;
+                pState.lastUpd = mcxRaw.lastUpd || '';
+                pState.baseFactor = factor;
+            } else if (factor && pState.baseFactor) {
+                const ratio = factor / pState.baseFactor;
+                if (Number.isFinite(ratio) && Math.abs(ratio - 1) < 0.05) {
+                    inrPrice = roundTick(pState.basePrice * ratio, 2);
+                }
+            }
+        } else if (factor) {
+            const gramsRatio = symKey === 'GOLD' ? (10 / 31.1034768) : (1000 / 31.1034768);
+            inrPrice = roundTick(factor * gramsRatio, 2);
+        }
+
+        if (Number.isFinite(inrPrice) && inrPrice > 0) {
+            const inrEntry = getLockedAnchor(`COM:${symKey}:INR:${action}`, inrPrice, 2);
+            tips.push({
+                id: `com-${symKey.toLowerCase()}-inr`,
+                scriptName: labelInr,
+                segment: 'COMMODITY',
+                currency: 'INR',
+                action,
+                entry: inrEntry,
+                cmp: roundTick(inrPrice, 2),
+                target: roundTick(action === 'BUY' ? inrEntry * (1 + atrPct * 1.8) : inrEntry * (1 - atrPct * 1.8), 2),
+                stoploss: roundTick(action === 'BUY' ? inrEntry * (1 - atrPct * 1.0) : inrEntry * (1 + atrPct * 1.0), 2),
+                stoplossEstimated: false,
+                brokerId: 'live-commodity',
+                broker: `MCX Live + Spot FX (RSI ${tech?.rsi ?? '--'})`,
+                sourceUrl: '',
+                publishedAt: mcxRaw?.expiry ? `MCX ${mcxRaw.expiry}` : '1s Live INR',
+                chartSymbol: chartInr
+            });
+        }
+    };
+
+    buildMetalPair(
+        'GOLD',
+        'GOLD /10g (MCX ₹)',
+        'GOLD ($ USD)',
+        mcxGoldRes.status === 'fulfilled' ? mcxGoldRes.value : null,
+        spotGoldUsd,
+        goldTech,
+        'GOLD_INR',
+        'GC=F',
+        2
+    );
+
+    buildMetalPair(
+        'SILVER',
+        'SILVER /1kg (MCX ₹)',
+        'SILVER ($ USD)',
+        mcxSilverRes.status === 'fulfilled' ? mcxSilverRes.value : null,
+        spotSilverUsd,
+        silverTech,
+        'SILVER_INR',
+        'SI=F',
+        3
+    );
+
+    return tips;
+}
+
+// =========================================================================
+// Layer D: ALL NSE Listed Scripts Live Technical Tips (3,000+ NSE Equities)
+// =========================================================================
+async function fetchNseAllScanSlice(start, end) {
+    const res = await fetchWithTimeout('https://scanner.tradingview.com/india/scan', {
+        method: 'POST',
+        headers: { 'User-Agent': UA, 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({
+            filter: [
+                { left: 'exchange', operation: 'equal', right: 'NSE' },
+                { left: 'type', operation: 'equal', right: 'stock' },
+                { left: 'close', operation: 'greater', right: 0 }
+            ],
+            columns: ['name', 'close', 'change', 'change_abs', 'EMA9', 'EMA20', 'RSI', 'MACD.macd', 'MACD.signal', 'VWAP', 'ATR', 'volume'],
+            sort: { sortBy: 'Value.Traded', sortOrder: 'desc' },
+            range: [start, end]
+        })
+    }, 3500);
+    if (!res.ok) throw new Error(`TV India scan ${res.status}`);
+    const j = await res.json();
+    return Array.isArray(j?.data) ? j.data : [];
+}
+
+async function fetchAllNseScriptsTips(force = false) {
+    const now = Date.now();
+    if (!force && nseAllCache.tips.length > 0 && (now - nseAllCache.ts) < NSE_ALL_TTL_MS) {
+        return nseAllCache.tips;
+    }
+    if (nseAllCache.inFlight) {
+        return nseAllCache.tips.length > 0 ? nseAllCache.tips : nseAllCache.inFlight;
+    }
+
+    const work = (async () => {
+        try {
+            const [s1, s2] = await Promise.allSettled([
+                fetchNseAllScanSlice(0, 1750),
+                fetchNseAllScanSlice(1750, 3500)
+            ]);
+            const rows = [
+                ...(s1.status === 'fulfilled' ? s1.value : []),
+                ...(s2.status === 'fulfilled' ? s2.value : [])
+            ];
+
+            const seen = new Set();
+            const parsed = [];
+            for (const row of rows) {
+                const d = row?.d;
+                if (!Array.isArray(d)) continue;
+                const sym = String(d[0] || '').trim().toUpperCase();
+                if (!sym || seen.has(sym)) continue;
+                const close = Number(d[1]);
+                if (!Number.isFinite(close) || close <= 0) continue;
+                seen.add(sym);
+
+                const ema9 = Number(d[4]);
+                const ema20 = Number(d[5]);
+                const rsi = Number(d[6]);
+                const macd = Number(d[7]);
+                const macdSig = Number(d[8]);
+                const vwap = Number(d[9]);
+                const atrRaw = Number(d[10]);
+
+                let score = 0;
+                if (Number.isFinite(ema9)) score += close >= ema9 ? 1 : -1;
+                if (Number.isFinite(ema9) && Number.isFinite(ema20)) score += ema9 >= ema20 ? 1 : -1;
+                if (Number.isFinite(vwap)) score += close >= vwap ? 1 : -1;
+                if (Number.isFinite(macd) && Number.isFinite(macdSig)) score += macd >= macdSig ? 1 : -1;
+                if (Number.isFinite(rsi)) score += rsi >= 50 ? 1 : -1;
+
+                const action = score >= 0 ? 'BUY' : 'SELL';
+                const entryBase = (Number.isFinite(ema9) && Math.abs(ema9 - close) / close <= 0.025) ? ema9 : close;
+                const entry = roundNseTick(entryBase);
+                const atr = (Number.isFinite(atrRaw) && atrRaw > 0 && atrRaw < close * 0.12) ? atrRaw : close * 0.015;
+                const target = roundNseTick(action === 'BUY' ? entry + atr * 1.7 : Math.max(0.05, entry - atr * 1.7));
+                const stoploss = roundNseTick(action === 'BUY' ? Math.max(0.05, entry - atr * 0.95) : entry + atr * 0.95);
+                const rsiStr = Number.isFinite(rsi) ? rsi.toFixed(1) : '--';
+
+                parsed.push({
+                    id: `nse-${sym.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+                    scriptName: sym,
+                    segment: 'NSE_ALL',
+                    currency: 'INR',
+                    action,
+                    entry,
+                    cmp: roundTick(close, 2),
+                    target,
+                    stoploss,
+                    stoplossEstimated: false,
+                    brokerId: 'nse-all-live',
+                    broker: `NSE Live Tech (RSI ${rsiStr})`,
+                    sourceUrl: '',
+                    publishedAt: 'NSE Live',
+                    chartSymbol: `${sym}.NS`
+                });
+            }
+
+            if (parsed.length > 0) {
+                nseAllCache = { ts: Date.now(), tips: parsed, inFlight: null };
+                return parsed;
+            }
+        } catch (err) {
+            console.warn('[OptionTips] NSE all scan warning:', err.message);
+        } finally {
+            nseAllCache.inFlight = null;
+        }
+        return nseAllCache.tips;
+    })();
+
+    nseAllCache.inFlight = work;
+    if (nseAllCache.tips.length === 0) {
+        return await work;
+    }
+    work.catch(() => { nseAllCache.inFlight = null; });
+    return nseAllCache.tips;
 }
 
 export default async function handler(req, res) {
@@ -830,76 +1114,128 @@ export default async function handler(req, res) {
     }
 
     const forceRefresh = String(req.query?.force || '') === '1';
+    const segFilter = String(req.query?.seg || 'all').trim();
+    const brokerFilter = String(req.query?.broker || 'all').trim();
+    const searchQuery = String(req.query?.q || '').trim().toLowerCase();
+    const reqLimit = Math.min(1200, Math.max(20, parseInt(req.query?.limit, 10) || 120));
+
     const now = Date.now();
 
-    if (!forceRefresh && livePayloadCache.data && (now - livePayloadCache.ts) < LIVE_TIPS_TTL_MS) {
-        return res.status(200).json(livePayloadCache.data);
-    }
-
     try {
-        const [brokerTipsRaw, ...indexGroups] = await Promise.all([
-            refreshBrokerFeedCache(forceRefresh),
-            ...INDEX_OPT_CONFIG.map(cfg => fetchIndexOptionTips(cfg).catch(() => []))
-        ]);
+        let optionTips = coreCache.optionTips;
+        let commodityTips = coreCache.commodityTips;
+        let brokerTips = coreCache.brokerTips;
+        let nseAllTips = coreCache.nseAllTips;
 
-        // Enrich up to 20 brokerage tips with real-time Yahoo Finance CMP
-        const brokerTips = (brokerTipsRaw || []).map(t => ({ ...t }));
-        const symbolsToQuote = Array.from(new Set(brokerTips.map(t => t.yahooSymbol).filter(Boolean))).slice(0, 20);
-        const quotePairs = await Promise.allSettled(
-            symbolsToQuote.map(async sym => [sym, await fetchLiveYahooQuote(sym)])
-        );
-        const quoteMap = new Map();
-        for (const q of quotePairs) {
-            if (q.status === 'fulfilled' && q.value[1]) {
-                quoteMap.set(q.value[0], q.value[1]);
+        if (forceRefresh || coreCache.ts === 0 || (now - coreCache.ts) >= CORE_LIVE_TTL_MS) {
+            const [brokerTipsRaw, commodityRes, nseAllRes, ...indexGroups] = await Promise.all([
+                refreshBrokerFeedCache(forceRefresh),
+                fetchCommodityGoldSilverTips().catch(() => []),
+                fetchAllNseScriptsTips(forceRefresh).catch(() => []),
+                ...INDEX_OPT_CONFIG.map(cfg => fetchIndexOptionTips(cfg).catch(() => []))
+            ]);
+
+            // Build quick CMP lookup from live NSE scanner so brokerage tips also get instant live CMP without extra Yahoo latency
+            const nseCmpMap = new Map();
+            for (const item of nseAllRes) {
+                nseCmpMap.set(item.scriptName, item.cmp);
             }
-        }
 
-        for (const t of brokerTips) {
-            const q = t.yahooSymbol ? quoteMap.get(t.yahooSymbol) : null;
-            if (q && Number.isFinite(q.price)) {
-                t.cmp = q.price;
-                if (!Number.isFinite(t.entry)) {
-                    t.entry = q.price;
+            const enrichedBrokerTips = (brokerTipsRaw || []).map(t => ({ ...t }));
+            const missingQuoteSymbols = [];
+            for (const t of enrichedBrokerTips) {
+                const baseSym = String(t.yahooSymbol || t.chartSymbolHint || '').replace(/\.(NS|BO)$/i, '').toUpperCase();
+                const fastCmp = nseCmpMap.get(baseSym);
+                if (Number.isFinite(fastCmp) && fastCmp > 0) {
+                    t.cmp = fastCmp;
+                    if (!Number.isFinite(t.entry)) t.entry = fastCmp;
+                } else if (t.yahooSymbol) {
+                    missingQuoteSymbols.push(t.yahooSymbol);
                 }
             }
-            if (Number.isFinite(t.entry) && !Number.isFinite(t.stoploss) && Number.isFinite(t.target)) {
-                // Provide transparent 4% technical reference SL when headline omitted SL
-                t.stoploss = t.action === 'SELL' ? roundTick(t.entry * 1.04) : roundTick(t.entry * 0.96);
-                t.stoplossEstimated = true;
+
+            const uniqueMissing = Array.from(new Set(missingQuoteSymbols)).slice(0, 12);
+            if (uniqueMissing.length > 0) {
+                const quotePairs = await Promise.allSettled(
+                    uniqueMissing.map(async sym => [sym, await fetchLiveYahooQuote(sym)])
+                );
+                const qMap = new Map();
+                for (const q of quotePairs) {
+                    if (q.status === 'fulfilled' && q.value[1]) {
+                        qMap.set(q.value[0], q.value[1]);
+                    }
+                }
+                for (const t of enrichedBrokerTips) {
+                    if (!Number.isFinite(t.cmp) && t.yahooSymbol) {
+                        const q = qMap.get(t.yahooSymbol);
+                        if (q && Number.isFinite(q.price)) {
+                            t.cmp = q.price;
+                            if (!Number.isFinite(t.entry)) t.entry = q.price;
+                        }
+                    }
+                }
             }
-            t.chartSymbol = t.yahooSymbol || t.scriptName;
+
+            for (const t of enrichedBrokerTips) {
+                if (Number.isFinite(t.entry) && !Number.isFinite(t.stoploss) && Number.isFinite(t.target)) {
+                    t.stoploss = t.action === 'SELL' ? roundTick(t.entry * 1.04) : roundTick(t.entry * 0.96);
+                    t.stoplossEstimated = true;
+                }
+                t.chartSymbol = t.yahooSymbol || t.scriptName;
+            }
+
+            optionTips = indexGroups.flat();
+            commodityTips = commodityRes;
+            brokerTips = enrichedBrokerTips;
+            nseAllTips = nseAllRes;
+            coreCache = { ts: Date.now(), optionTips, commodityTips, brokerTips, nseAllTips };
         }
 
-        const optionAndIndexTips = indexGroups.flat();
-        const allTips = [...optionAndIndexTips, ...brokerTips];
+        const allTips = [...optionTips, ...commodityTips, ...brokerTips, ...nseAllTips];
 
-        // Compute broker counts across all 12 firms
+        // Server-side filter so even 3,200+ NSE scripts load & search at 500ms with tiny payload
+        const filtered = allTips.filter(t => {
+            if (segFilter !== 'all') {
+                if (segFilter === 'EQUITY') {
+                    if (t.brokerId === 'live-option-chain' || t.brokerId === 'live-commodity' || t.brokerId === 'nse-all-live') {
+                        return false;
+                    }
+                } else if (t.segment !== segFilter) {
+                    return false;
+                }
+            }
+            if (brokerFilter !== 'all' && t.brokerId !== brokerFilter) return false;
+            if (searchQuery) {
+                const hay = `${t.scriptName || ''} ${t.broker || ''} ${t.segment || ''} ${t.action || ''}`.toLowerCase();
+                if (!hay.includes(searchQuery)) return false;
+            }
+            return true;
+        });
+
+        const limitedTips = filtered.slice(0, reqLimit);
         const brokerStats = BROKER_DIRECTORY.map(b => ({
             id: b.id,
             name: b.name,
             shortName: b.shortName,
             sebiReg: b.sebiReg,
             researchUrl: b.researchUrl,
-            count: allTips.filter(t => t.brokerId === b.id).length
+            count: brokerTips.filter(t => t.brokerId === b.id).length
         }));
 
-        const payload = {
+        return res.status(200).json({
             updatedAt: new Date().toISOString(),
             totalTips: allTips.length,
-            optionTipsCount: optionAndIndexTips.length,
+            optionTipsCount: optionTips.length,
+            commodityTipsCount: commodityTips.length,
             brokerTipsCount: brokerTips.length,
+            nseAllCount: nseAllTips.length,
+            matchedCount: filtered.length,
+            hasMore: filtered.length > limitedTips.length,
             brokers: brokerStats,
-            tips: allTips
-        };
-
-        livePayloadCache = { ts: Date.now(), data: payload };
-        return res.status(200).json(payload);
+            tips: limitedTips
+        });
     } catch (err) {
         console.warn('[API /option-tips] Error:', err.message);
-        if (livePayloadCache.data) {
-            return res.status(200).json({ ...livePayloadCache.data, stale: true });
-        }
         return res.status(502).json({ error: err.message || 'Option tips unavailable' });
     }
 }

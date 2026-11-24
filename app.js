@@ -320,14 +320,14 @@ function startDashboardAfterLogin() {
         }, 500);
     }
 
-    // 1-second live updater for OPTION TIPS (Options CE/PE + 12 Brokerages)
+    // 2x/sec (500ms) live updater for OPTION TIPS (Options CE/PE + Gold/Silver + All NSE + 12 Brokerages)
     if (!optionTipsTimer) {
         optionTipsTimer = setInterval(() => {
             if (!isTabActive('tab-option-tips')) return;
             if (typeof window.fetchOptionTipsData === 'function') {
                 window.fetchOptionTipsData(false);
             }
-        }, 700);
+        }, 500);
     }
 
     // Live 2x/sec (~500ms) candle updater for active Candle Chart tab or open Research/Price modals
@@ -7480,8 +7480,8 @@ window.fetchLiveMarket1s = async function() {
         // 1. Update global header cards every ~500ms (NIFTY 50, SENSEX, GOLD/10g INR, SILVER/kg INR, GOLD $, SILVER $, USD/INR)
         updateTickerPair('nifty-val', 'nifty-chg', d.nifty, { decimals: 2 });
         updateTickerPair('sensex-val', 'sensex-chg', d.sensex, { decimals: 2 });
-        updateTickerPair('gold-val', 'gold-chg', d.gold, { decimals: 0, prefix: '\u20b9' });
-        updateTickerPair('silver-val', 'silver-chg', d.silver, { decimals: 0, prefix: '\u20b9' });
+        updateTickerPair('gold-val', 'gold-chg', d.gold, { decimals: 2, prefix: '\u20b9' });
+        updateTickerPair('silver-val', 'silver-chg', d.silver, { decimals: 2, prefix: '\u20b9' });
         updateTickerPair('gold-usd-val', 'gold-usd-chg', gUsd, { decimals: 2, prefix: '$' });
         updateTickerPair('silver-usd-val', 'silver-usd-chg', sUsd, { decimals: 3, prefix: '$' });
         updateTickerPair('usdinr-val', 'usdinr-chg', d.usdInr, { decimals: 3, prefix: '\u20b9' });
@@ -7489,12 +7489,36 @@ window.fetchLiveMarket1s = async function() {
         // 2. Update Call Put tab live strip (including separate INR & USD Gold/Silver cards, NASDAQ & HANG SENG)
         updateTickerPair('cp-live-nifty-val', 'cp-live-nifty-chg', d.nifty, { decimals: 2 });
         updateTickerPair('cp-live-sensex-val', 'cp-live-sensex-chg', d.sensex, { decimals: 2 });
-        updateTickerPair('cp-live-gold-val', 'cp-live-gold-chg', d.gold, { decimals: 0, prefix: '\u20b9' });
-        updateTickerPair('cp-live-silver-val', 'cp-live-silver-chg', d.silver, { decimals: 0, prefix: '\u20b9' });
+        updateTickerPair('cp-live-gold-val', 'cp-live-gold-chg', d.gold, { decimals: 2, prefix: '\u20b9' });
+        updateTickerPair('cp-live-silver-val', 'cp-live-silver-chg', d.silver, { decimals: 2, prefix: '\u20b9' });
         updateTickerPair('cp-live-gold-usd-val', 'cp-live-gold-usd-chg', gUsd, { decimals: 2, prefix: '$' });
         updateTickerPair('cp-live-silver-usd-val', 'cp-live-silver-usd-chg', sUsd, { decimals: 3, prefix: '$' });
         updateTickerPair('cp-live-nasdaq-val', 'cp-live-nasdaq-chg', d.nasdaq, { decimals: 2 });
         updateTickerPair('cp-live-hangseng-val', 'cp-live-hangseng-chg', d.hangseng, { decimals: 2 });
+
+        // 2B. If Global Indices tab is active and TradingView globalIndices arrived, stream live 500ms updates into Global Indices rows
+        if (d.globalIndices && isTabActive('tab-global-indices') && typeof globalIndicesConfig !== 'undefined' && typeof renderGlobalIndicesRows === 'function') {
+            const giTbody = document.getElementById('global-indices-tbody');
+            if (giTbody) {
+                const liveRows = [];
+                globalIndicesConfig.forEach(cfg => {
+                    const liveItem = d.globalIndices[cfg.ticker];
+                    if (liveItem && Number.isFinite(Number(liveItem.price))) {
+                        liveRows.push({
+                            name: cfg.name,
+                            ticker: cfg.ticker,
+                            price: Number(liveItem.price),
+                            change: Number(liveItem.change || 0),
+                            changePct: Number(liveItem.changePercent || 0),
+                            isOpen: true
+                        });
+                    }
+                });
+                if (liveRows.length >= 6) {
+                    renderGlobalIndicesRows(giTbody, liveRows, false, null);
+                }
+            }
+        }
 
         const setElText = (id, text) => {
             const el = document.getElementById(id);
@@ -10704,7 +10728,7 @@ window.initSamcoWebTab = function() {
 };
 
 // =========================================================================
-// OPTION TIPS TAB — 1-Second Live Option Chain (CE/PE) & 12 Broker Calls
+// OPTION TIPS TAB — 1s Live Options, Gold/Silver (₹/$), All NSE & 12 Brokers
 // =========================================================================
 const optionTipsState = {
     tips: [],
@@ -10712,8 +10736,12 @@ const optionTipsState = {
     segment: 'all',
     brokerId: 'all',
     search: '',
+    limit: 120,
+    matchedCount: 0,
+    hasMore: false,
     prevCmpMap: new Map(),
-    lastUpdated: null
+    lastUpdated: null,
+    searchDebounce: null
 };
 
 function escapeOtHtml(str) {
@@ -10737,10 +10765,13 @@ function sanitizeOtUrl(rawUrl) {
     return '';
 }
 
-function formatOtPrice(val) {
+function formatOtPrice(val, currency = 'INR') {
     const n = Number(val);
     if (!Number.isFinite(n) || n <= 0) return '--';
-    return '₹' + n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const isUsd = String(currency).toUpperCase() === 'USD';
+    const dec = isUsd && n < 150 ? 3 : 2;
+    const prefix = isUsd ? '$' : '₹';
+    return prefix + n.toLocaleString('en-IN', { minimumFractionDigits: dec, maximumFractionDigits: dec });
 }
 
 function computeOtStatus(tip) {
@@ -10782,6 +10813,7 @@ function initOptionTipsControls() {
     const brokerSelect = document.getElementById('ot-broker-select');
     const searchInput = document.getElementById('ot-search-input');
     const refreshBtn = document.getElementById('ot-refresh-btn');
+    const loadMoreBtn = document.getElementById('ot-load-more-btn');
     const tbody = document.getElementById('option-tips-tbody');
     const dirGrid = document.getElementById('ot-broker-directory');
 
@@ -10792,27 +10824,40 @@ function initOptionTipsControls() {
             segGroup.querySelectorAll('.ot-seg-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             optionTipsState.segment = btn.dataset.seg || 'all';
-            renderOptionTipsTable();
+            optionTipsState.limit = 120;
+            window.fetchOptionTipsData(true);
         });
     }
 
     if (brokerSelect) {
         brokerSelect.addEventListener('change', () => {
             optionTipsState.brokerId = brokerSelect.value || 'all';
-            renderOptionTipsTable();
+            optionTipsState.limit = 120;
             renderOptionTipsBrokerDirectory();
+            window.fetchOptionTipsData(true);
         });
     }
 
     if (searchInput) {
         searchInput.addEventListener('input', () => {
             optionTipsState.search = searchInput.value.trim().toLowerCase();
-            renderOptionTipsTable();
+            optionTipsState.limit = 150;
+            clearTimeout(optionTipsState.searchDebounce);
+            optionTipsState.searchDebounce = setTimeout(() => {
+                window.fetchOptionTipsData(true);
+            }, 150);
         });
     }
 
     if (refreshBtn) {
         refreshBtn.addEventListener('click', () => {
+            window.fetchOptionTipsData(true);
+        });
+    }
+
+    if (loadMoreBtn) {
+        loadMoreBtn.addEventListener('click', () => {
+            optionTipsState.limit = Math.min(1200, optionTipsState.limit + 150);
             window.fetchOptionTipsData(true);
         });
     }
@@ -10845,11 +10890,12 @@ function initOptionTipsControls() {
             if (!card) return;
             const bId = card.dataset.brokerId || 'all';
             optionTipsState.brokerId = (optionTipsState.brokerId === bId) ? 'all' : bId;
+            optionTipsState.limit = 120;
             if (brokerSelect) {
                 brokerSelect.value = optionTipsState.brokerId;
             }
-            renderOptionTipsTable();
             renderOptionTipsBrokerDirectory();
+            window.fetchOptionTipsData(true);
         });
     }
 }
@@ -10864,14 +10910,23 @@ window.fetchOptionTipsData = async function(force = false) {
     }
 
     try {
-        const url = force ? '/api/option-tips?force=1' : '/api/option-tips';
-        const res = await fetch(url, { cache: 'no-store' });
+        const params = new URLSearchParams({
+            seg: optionTipsState.segment || 'all',
+            broker: optionTipsState.brokerId || 'all',
+            q: optionTipsState.search || '',
+            limit: String(optionTipsState.limit || 120)
+        });
+        if (force) params.set('force', '1');
+
+        const res = await fetch(`/api/option-tips?${params.toString()}`, { cache: 'no-store' });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
 
         const nextTips = Array.isArray(data.tips) ? data.tips : [];
         optionTipsState.tips = nextTips;
         optionTipsState.brokers = Array.isArray(data.brokers) ? data.brokers : [];
+        optionTipsState.matchedCount = Number(data.matchedCount ?? nextTips.length);
+        optionTipsState.hasMore = Boolean(data.hasMore);
         optionTipsState.lastUpdated = data.updatedAt || new Date().toISOString();
 
         const timeEl = document.getElementById('ot-live-time');
@@ -10882,14 +10937,14 @@ window.fetchOptionTipsData = async function(force = false) {
                 second: '2-digit',
                 hour12: false
             });
-            timeEl.textContent = `1s Live · ${nowStr}`;
+            timeEl.textContent = `2x/s Live · ${nowStr}`;
         }
 
         renderOptionTipsSummary(data);
         renderOptionTipsTable();
+        renderOptionTipsPagination();
         renderOptionTipsBrokerDirectory();
 
-        // Update prevCmpMap after rendering so tick delta colors show on current render
         nextTips.forEach(t => {
             const c = Number(t.cmp);
             if (Number.isFinite(c) && c > 0) {
@@ -10918,45 +10973,44 @@ function renderOptionTipsSummary(data) {
     const brkEl = document.getElementById('ot-stat-brokers');
     const hitEl = document.getElementById('ot-stat-hits');
 
-    if (totalEl) totalEl.textContent = String(data?.totalTips ?? tips.length);
-    if (optEl) optEl.textContent = String(data?.optionTipsCount ?? tips.filter(t => t.segment === 'OPTION' || t.segment === 'INDEX').length);
-    if (brkEl) brkEl.textContent = String(data?.brokerTipsCount ?? tips.filter(t => t.brokerId !== 'live-option-chain').length);
-    if (hitEl) {
-        const hitCount = tips.filter(t => {
-            const st = computeOtStatus(t);
-            return st.label === 'TARGET HIT' || t.action === 'BUY';
-        }).length;
-        hitEl.textContent = String(hitCount);
+    if (totalEl) totalEl.textContent = Number(data?.totalTips ?? tips.length).toLocaleString('en-IN');
+    if (optEl) {
+        const optCom = Number(data?.optionTipsCount ?? 0) + Number(data?.commodityTipsCount ?? 0);
+        optEl.textContent = optCom.toLocaleString('en-IN');
     }
+    if (brkEl) brkEl.textContent = Number(data?.brokerTipsCount ?? 0).toLocaleString('en-IN');
+    if (hitEl) {
+        hitEl.textContent = Number(data?.nseAllCount ?? 0).toLocaleString('en-IN');
+    }
+}
+
+function renderOptionTipsPagination() {
+    const bar = document.getElementById('ot-pagination-bar');
+    const info = document.getElementById('ot-showing-info');
+    const btn = document.getElementById('ot-load-more-btn');
+    if (!bar || !info || !btn) return;
+
+    const shown = optionTipsState.tips.length;
+    const total = optionTipsState.matchedCount || shown;
+    if (total <= 0) {
+        bar.classList.add('hidden');
+        return;
+    }
+
+    bar.classList.remove('hidden');
+    info.textContent = `Showing ${shown.toLocaleString('en-IN')} of ${total.toLocaleString('en-IN')} live tips`;
+    btn.style.display = optionTipsState.hasMore ? 'inline-flex' : 'none';
 }
 
 function renderOptionTipsTable() {
     const tbody = document.getElementById('option-tips-tbody');
     if (!tbody) return;
 
-    const seg = optionTipsState.segment;
-    const brk = optionTipsState.brokerId;
-    const q = optionTipsState.search;
-
-    const filtered = optionTipsState.tips.filter(t => {
-        if (seg !== 'all') {
-            if (seg === 'EQUITY') {
-                if (t.brokerId === 'live-option-chain') return false;
-            } else if (t.segment !== seg) {
-                return false;
-            }
-        }
-        if (brk !== 'all' && t.brokerId !== brk) return false;
-        if (q) {
-            const hay = `${t.scriptName || ''} ${t.broker || ''} ${t.segment || ''} ${t.action || ''}`.toLowerCase();
-            if (!hay.includes(q)) return false;
-        }
-        return true;
-    });
+    const filtered = optionTipsState.tips;
 
     if (filtered.length === 0) {
-        const msg = optionTipsState.tips.length === 0
-            ? 'Loading 1-second live Option & Brokerage Tips...'
+        const msg = optionTipsState.lastUpdated === null
+            ? 'Loading 1-second live Option, Gold/Silver & All NSE Tips...'
             : 'No active calls matched this filter. Select "All Sources" or clear search.';
         tbody.innerHTML = `<tr><td colspan="8" class="ot-loading-cell">${escapeOtHtml(msg)}</td></tr>`;
         return;
@@ -10968,6 +11022,7 @@ function renderOptionTipsTable() {
         const action = tip.action === 'SELL' ? 'SELL' : 'BUY';
         const actionCls = action === 'SELL' ? 'ot-action-sell' : 'ot-action-buy';
         const chartSym = escapeOtHtml(tip.chartSymbol || tip.scriptName || '');
+        const curr = tip.currency || 'INR';
 
         const cmpNum = Number(tip.cmp);
         const prevCmp = optionTipsState.prevCmpMap.get(tip.id);
@@ -10999,10 +11054,10 @@ function renderOptionTipsTable() {
                     </div>
                 </td>
                 <td class="ot-th-center"><span class="ot-action-badge ${actionCls}">${action}</span></td>
-                <td class="ot-num">${escapeOtHtml(formatOtPrice(tip.entry))}</td>
-                <td class="ot-num ${tickCls}">${escapeOtHtml(formatOtPrice(tip.cmp))}</td>
-                <td class="ot-num ot-target-val">${escapeOtHtml(formatOtPrice(tip.target))}</td>
-                <td class="ot-num ot-sl-val">${escapeOtHtml(formatOtPrice(tip.stoploss))}${slEstNote}</td>
+                <td class="ot-num">${escapeOtHtml(formatOtPrice(tip.entry, curr))}</td>
+                <td class="ot-num ${tickCls}">${escapeOtHtml(formatOtPrice(tip.cmp, curr))}</td>
+                <td class="ot-num ot-target-val">${escapeOtHtml(formatOtPrice(tip.target, curr))}</td>
+                <td class="ot-num ot-sl-val">${escapeOtHtml(formatOtPrice(tip.stoploss, curr))}${slEstNote}</td>
                 <td>
                     <div class="ot-broker-cell">
                         <span class="ot-broker-name">${escapeOtHtml(tip.broker || '--')}</span>

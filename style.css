@@ -4349,6 +4349,30 @@ body.samco-fullscreen-mode .samco-iframe-wrap {
     }
 }
 
+.ot-pagination-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.65rem;
+    margin-top: 0.75rem;
+    padding-top: 0.65rem;
+    border-top: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.ot-showing-info {
+    font-size: 0.76rem;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+}
+
+.ot-page-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+
 
 
 
