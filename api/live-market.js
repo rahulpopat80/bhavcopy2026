@@ -119,6 +119,51 @@ async function fetchYahooChart(symbol) {
     return { price, prevClose: validPrev, change, changePercent };
 }
 
+async function fetchLiveUsdInr() {
+    try {
+        const tvRes = await fetchWithTimeout('https://scanner.tradingview.com/forex/scan', {
+            method: 'POST',
+            headers: { 'User-Agent': UA, 'Content-Type': 'application/json', Accept: 'application/json' },
+            body: JSON.stringify({
+                symbols: { tickers: ['PEPPERSTONE:USDINR'], query: { types: [] } },
+                columns: ['close', 'change', 'change_abs', 'Bid', 'Ask']
+            })
+        }, 1200);
+        if (tvRes.ok) {
+            const j = await tvRes.json();
+            const row = j?.data?.[0]?.d;
+            if (Array.isArray(row) && Number.isFinite(Number(row[0])) && Number(row[0]) > 0) {
+                const close = Number(row[0]);
+                const bid = Number(row[3]);
+                const ask = Number(row[4]);
+                const price = (Number.isFinite(bid) && Number.isFinite(ask) && bid > 0 && ask > 0) ? (bid + ask) / 2 : close;
+                const chgAbs = Number.isFinite(Number(row[2])) ? Number(row[2]) : 0;
+                const prevClose = Number.isFinite(close - chgAbs) && (close - chgAbs) > 0 ? (close - chgAbs) : price;
+                const change = price - prevClose;
+                const changePercent = prevClose > 0 ? (change / prevClose) * 100 : 0;
+                return { price, prevClose, change, changePercent, source: 'FX Live' };
+            }
+        }
+    } catch (_) {}
+
+    const r = await fetchWithTimeout('https://query1.finance.yahoo.com/v8/finance/chart/INR%3DX?interval=1m&range=2d', {
+        headers: { 'User-Agent': UA, Accept: 'application/json' }
+    }, 2200);
+    if (!r.ok) return null;
+    const j = await r.json();
+    const meta = j?.chart?.result?.[0]?.meta;
+    if (!meta || !Number.isFinite(Number(meta.regularMarketPrice))) return null;
+    const price = Number(meta.regularMarketPrice);
+    let prev = Number(meta.previousClose);
+    if (!Number.isFinite(prev) || prev <= 0 || prev === price) {
+        prev = Number(meta.chartPreviousClose);
+    }
+    const validPrev = Number.isFinite(prev) && prev > 0 ? prev : price;
+    const change = price - validPrev;
+    const changePercent = validPrev > 0 ? (change / validPrev) * 100 : 0;
+    return { price, prevClose: validPrev, change, changePercent, source: 'Yahoo FX' };
+}
+
 async function fetchSwissquoteMetal(instrument, yahooSym) {
     const [sqRes, prevRes] = await Promise.allSettled([
         fetchWithTimeout(`https://forex-data-feed.swissquote.com/public-quotes/bboquotes/instrument/${instrument}`, {
@@ -273,7 +318,7 @@ export default async function handler(req, res) {
         return res.status(200).end();
     }
 
-    if (cachedPayload && (Date.now() - cachedAt) < 200) {
+    if (cachedPayload && (Date.now() - cachedAt) < 150) {
         return res.status(200).json(cachedPayload);
     }
 
@@ -287,7 +332,7 @@ export default async function handler(req, res) {
         fetchMcxCommodity('SILVER'),
         fetchSwissquoteMetal('XAU/USD', 'GC=F').catch(() => null),
         fetchSwissquoteMetal('XAG/USD', 'SI=F').catch(() => null),
-        fetchYahooChart('INR=X').catch(() => null)
+        fetchLiveUsdInr().catch(() => null)
     ];
 
     const secondaryPromises = needSecondary

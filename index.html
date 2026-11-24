@@ -1328,15 +1328,19 @@
                             </button>
                         </div>
                         <div class="cc-timeframe-group" id="cc-timeframe-group">
-                            <button type="button" class="cc-tf-btn" data-tf="1m">1 મિનિટ</button>
-                            <button type="button" class="cc-tf-btn" data-tf="3m">3 મિનિટ</button>
-                            <button type="button" class="cc-tf-btn" data-tf="5m">5 મિનિટ</button>
-                            <button type="button" class="cc-tf-btn active" data-tf="10m">10 મિનિટ</button>
-                            <button type="button" class="cc-tf-btn" data-tf="1d">1 દિવસ</button>
-                            <button type="button" class="cc-tf-btn" data-tf="5d">5 દિવસ</button>
-                            <button type="button" class="cc-tf-btn" data-tf="1w">1 અઠવાડિયું</button>
-                            <button type="button" class="cc-tf-btn" data-tf="1mo">1 મહિનો</button>
-                            <button type="button" class="cc-tf-btn" data-tf="1y">1 વર્ષ</button>
+                            <button type="button" class="cc-tf-btn" data-tf="1m" title="1 Minute">1 M</button>
+                            <button type="button" class="cc-tf-btn" data-tf="3m" title="3 Minutes">3 M</button>
+                            <button type="button" class="cc-tf-btn" data-tf="5m" title="5 Minutes">5 M</button>
+                            <button type="button" class="cc-tf-btn active" data-tf="10m" title="10 Minutes">10 M</button>
+                            <button type="button" class="cc-tf-btn" data-tf="15m" title="15 Minutes">15 M</button>
+                            <button type="button" class="cc-tf-btn" data-tf="1h" title="1 Hour">1 H</button>
+                            <button type="button" class="cc-tf-btn" data-tf="4h" title="4 Hours">4 H</button>
+                            <button type="button" class="cc-tf-btn" data-tf="1d" title="1 Day">1 D</button>
+                            <button type="button" class="cc-tf-btn" data-tf="5d" title="5 Days">5 D</button>
+                            <button type="button" class="cc-tf-btn" data-tf="1w" title="1 Week">1 W</button>
+                            <button type="button" class="cc-tf-btn" data-tf="1mo" title="1 Month">1 M</button>
+                            <button type="button" class="cc-tf-btn" data-tf="1y" title="1 Year">1 Y</button>
+                            <button type="button" class="cc-tf-btn" data-tf="5y" title="5 Years">5 Y</button>
                         </div>
                         <span class="cp-live-pill" id="cc-live-badge"><span class="live-dot-green"></span> <span id="cc-live-time">Live 3x/s</span></span>
                     </div>
@@ -1423,6 +1427,23 @@
                             <small id="cc-signal-atr">ATR(14): --</small>
                         </div>
                     </div>
+                </div>
+
+                <!-- Standalone 10-Minute Last 3 Completed Candles Technical Signal Card -->
+                <div class="cc-ten-min-3c-card" id="cc-ten-min-3c-card">
+                    <div class="cc-3c-header">
+                        <div class="cc-3c-title-wrap">
+                            <span class="cp-kicker" style="color:#38bdf8;">૧૦ મિનિટ ટાઇમફ્રેમ — છેલ્લી ૩ પૂર્ણ થયેલી કેન્ડલ્સનું અલગ ટેકનિકલ પરિણામ (10M LAST 3 CANDLES INDICATOR)</span>
+                            <div class="cc-3c-headline">
+                                <span id="cc-3c-action-badge" class="cc-signal-action-badge cc-sig-wait">વિશ્લેષણ ચાલુ...</span>
+                                <strong id="cc-3c-pattern-title" class="cc-3c-pattern-title">૧૦ મિનિટની છેલ્લી ૩ કેન્ડલ તપાસી રહ્યા છીએ...</strong>
+                            </div>
+                        </div>
+                        <span id="cc-3c-status-pill" class="cc-3c-status-pill">10M Live Sync</span>
+                    </div>
+                    <p id="cc-3c-summary" class="cc-3c-summary">છેલ્લી ૩ પૂર્ણ થયેલી ૧૦-મિનિટની કેન્ડલ્સ (C1 → C2 → C3), વોલ્યુમ અને EMA/RSI/MACD/VWAP આધારે ખરીદી (BUY), વેચાણ (SELL) કે રાહ જોવી (WAIT) નો સ્પષ્ટ નિર્ણય અહીં દેખાશે.</p>
+                    <div id="cc-3c-candles-row" class="cc-3c-candles-row"></div>
+                    <div id="cc-3c-indicators-strip" class="cc-3c-indicators-strip"></div>
                 </div>
 
                 <!-- Future Price Direction Verdict (Bullish / Bearish + Volume + BB) -->
@@ -1598,16 +1619,23 @@
             <div class="card samco-web-card" id="samco-web-card">
                 <div class="samco-toolbar">
                     <div class="samco-title-wrap">
-                        <h2 style="color:#34d399; margin:0; font-size:1.15rem;">
+                        <h2 style="color:#34d399; margin:0; font-size:1.05rem; display:flex; align-items:center; gap:0.45rem;">
                             <i class="fa-solid fa-arrow-up-right-dots"></i> SAMCO Web (web.samco.in)
+                            <span id="samco-mode-badge" class="samco-mode-pill">Server Proxy: ON</span>
                         </h2>
                         <p class="samco-subtitle">
-                            આ જ ટેબમાં SAMCO વેબ પોર્ટલ ખુલશે — <strong>Web Login</strong> (Samco App કોડ / QR) અથવા Client ID &amp; Password વડે લોગીન કરો.
+                            <strong>Full Screen Fit</strong> &bull; <strong>Minimize</strong> દબાવી લોગીન ચાલુ રાખી અમારું સોફ્ટવેર વાપરી શકો છો.
                         </p>
                     </div>
                     <div class="samco-actions">
-                        <button type="button" id="samco-proxy-btn" class="btn btn-secondary samco-btn" title="જો કોમ્પ્યુટરમાં web.samco.in બ્લોક હોય તો સર્વર Proxy દ્વારા ખોલો">
-                            <i class="fa-solid fa-shield-halved"></i> Server Proxy Mode (Blocked Network Bypass)
+                        <button type="button" id="samco-minimize-btn" class="btn samco-minimize-btn" title="SAMCO ને Minimize કરી સોફ્ટવેરના અન્ય ટેબ વાપરો (લૉગિન ચાલુ રહેશે)">
+                            <i class="fa-solid fa-window-minimize"></i> Minimize (સોફ્ટવેર વાપરો)
+                        </button>
+                        <button type="button" id="samco-back-app-btn" class="btn samco-back-btn" title="Rahul Finance ના ટેબ મેનૂ પર પાછા જાઓ">
+                            <i class="fa-solid fa-arrow-left"></i> Rahul Finance (Tabs)
+                        </button>
+                        <button type="button" id="samco-open-cc-btn" class="btn btn-secondary samco-btn" title="સીધું Candle Chart ટેબ ખોલો">
+                            <i class="fa-solid fa-chart-column"></i> Candle Chart
                         </button>
                         <button type="button" id="samco-home-btn" class="btn btn-secondary samco-btn" title="Login / Home Page પર જાઓ">
                             <i class="fa-solid fa-right-to-bracket"></i> Web Login / Home
@@ -1615,19 +1643,21 @@
                         <button type="button" id="samco-reload-btn" class="btn btn-secondary samco-btn" title="SAMCO પેજ રિલોડ કરો">
                             <i class="fa-solid fa-rotate"></i> Reload
                         </button>
-                        <button type="button" id="samco-expand-btn" class="btn btn-secondary samco-btn" title="ચાર્ટ/ટ્રેડિંગ માટે વધારે ઊંચાઈ">
-                            <i class="fa-solid fa-up-right-and-down-left-from-center"></i> Full Height
+                        <button type="button" id="samco-proxy-btn" class="btn btn-secondary samco-btn" title="જો કોમ્પ્યુટરમાં web.samco.in બ્લોક હોય તો સર્વર Proxy દ્વારા ખોલો">
+                            <i class="fa-solid fa-shield-halved"></i> Server Proxy: ON
+                        </button>
+                        <button type="button" id="samco-expand-btn" class="btn btn-secondary samco-btn" title="Full Screen / Normal View બદલો">
+                            <i class="fa-solid fa-compress"></i> Exit Full Screen
                         </button>
                         <a href="https://web.samco.in/" target="_blank" rel="noopener noreferrer" class="samco-ext-link" title="નવી ટેબમાં web.samco.in ખોલો">
                             <i class="fa-solid fa-arrow-up-right-from-square"></i> New Tab
                         </a>
                     </div>
                 </div>
-                <div class="samco-login-tip">
+                <div class="samco-login-tip" id="samco-login-tip">
                     <i class="fa-solid fa-circle-info" style="color:#38bdf8;"></i>
                     <span>
-                        <strong id="samco-mode-badge" style="color:#fbbf24;">Mode: Server Proxy Active (/api/samco-proxy)</strong> &bull;
-                        <strong>Banned/Blocked PC ઉપાય:</strong> હવે ડિફોલ્ટ રીતે <strong>Server Proxy Mode</strong> ચાલુ છે જેથી તમારા કોમ્પ્યુટર/ઓફિસ નેટવર્ક પર <code>web.samco.in</code> બ્લોક હોય તો પણ સર્વર દ્વારા જ લોગીન અને ટ્રેડિંગ થઈ શકે (સાઇટ અનબ્લોક કર્યા વગર). <strong>Web Login</strong> દ્વારા QR/કોડ અથવા Client ID + Password થી લોગીન કરી શકાશે.
+                        <strong>Banned/Blocked PC ઉપાય:</strong> ડિફોલ્ટ <strong>Server Proxy Mode (/api/samco-proxy)</strong> દ્વારા તમારા કોમ્પ્યુટર/ઓફિસ નેટવર્ક પર <code>web.samco.in</code> બ્લોક હોય તો પણ લોગીન અને ટ્રેડિંગ ચાલુ રહે છે.
                     </span>
                 </div>
                 <div class="samco-iframe-wrap" id="samco-iframe-wrap">
@@ -1706,18 +1736,25 @@
                     <div style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:0.5rem; margin-bottom: 0.55rem;">
                         <h3 style="color: var(--accent-color); margin:0; display: flex; align-items: center; gap: 0.5rem; font-size: 0.92rem;">
                             <i class="fa-solid fa-chart-column"></i> કેન્ડલસ્ટિક + Bollinger Bands ચાર્ટ
+                            <button type="button" id="rm-open-candle-tab-btn" class="cc-modal-launch-btn" title="Candle Chart ટેબમાં સંપૂર્ણ ઇન્ડિકેટર્સ સાથે ખોલો">
+                                <i class="fa-solid fa-up-right-from-square"></i> Candle Chart ટેબમાં ખોલો
+                            </button>
                         </h3>
                         <div style="display:flex; flex-wrap:wrap; align-items:center; gap:0.35rem;">
                             <div class="cc-timeframe-group cc-modal-tf-group" id="rm-tf-group">
-                                <button type="button" class="cc-tf-btn" data-tf="1m">1m</button>
-                                <button type="button" class="cc-tf-btn" data-tf="3m">3m</button>
-                                <button type="button" class="cc-tf-btn active" data-tf="5m">5m</button>
-                                <button type="button" class="cc-tf-btn" data-tf="10m">10m</button>
-                                <button type="button" class="cc-tf-btn" data-tf="1d">1D</button>
-                                <button type="button" class="cc-tf-btn" data-tf="5d">5D</button>
-                                <button type="button" class="cc-tf-btn" data-tf="1w">1W</button>
-                                <button type="button" class="cc-tf-btn" data-tf="1mo">1M</button>
-                                <button type="button" class="cc-tf-btn" data-tf="1y">1Y</button>
+                                <button type="button" class="cc-tf-btn" data-tf="1m" title="1 Minute">1 M</button>
+                                <button type="button" class="cc-tf-btn" data-tf="3m" title="3 Minutes">3 M</button>
+                                <button type="button" class="cc-tf-btn active" data-tf="5m" title="5 Minutes">5 M</button>
+                                <button type="button" class="cc-tf-btn" data-tf="10m" title="10 Minutes">10 M</button>
+                                <button type="button" class="cc-tf-btn" data-tf="15m" title="15 Minutes">15 M</button>
+                                <button type="button" class="cc-tf-btn" data-tf="1h" title="1 Hour">1 H</button>
+                                <button type="button" class="cc-tf-btn" data-tf="4h" title="4 Hours">4 H</button>
+                                <button type="button" class="cc-tf-btn" data-tf="1d" title="1 Day">1 D</button>
+                                <button type="button" class="cc-tf-btn" data-tf="5d" title="5 Days">5 D</button>
+                                <button type="button" class="cc-tf-btn" data-tf="1w" title="1 Week">1 W</button>
+                                <button type="button" class="cc-tf-btn" data-tf="1mo" title="1 Month">1 M</button>
+                                <button type="button" class="cc-tf-btn" data-tf="1y" title="1 Year">1 Y</button>
+                                <button type="button" class="cc-tf-btn" data-tf="5y" title="5 Years">5 Y</button>
                             </div>
                             <label class="cc-bb-label cc-bb-mini">
                                 <input type="checkbox" id="rm-bb-toggle" checked>
@@ -1732,9 +1769,12 @@
                             </div>
                         </div>
                     </div>
-                    <div id="rm-hover-readout" style="font-size:0.72rem; color:#94a3b8; margin-bottom:0.35rem;">Candlestick + Bollinger Bands (20,2) + Volume</div>
+                    <div style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:0.4rem; margin-bottom:0.35rem;">
+                        <div id="rm-hover-readout" style="font-size:0.72rem; color:#94a3b8;">Candlestick + Bollinger Bands (20,2) + Volume</div>
+                        <span style="font-size:0.7rem; color:#fbbf24; font-weight:600;"><i class="fa-solid fa-computer-mouse"></i> ચાર્ટ પર ડબલ-ક્લિક કરતા Candle Chart ટેબમાં ખૂલશે</span>
+                    </div>
                     <div class="chart-container" style="height: 220px; position: relative;">
-                        <canvas id="research-price-chart"></canvas>
+                        <canvas id="research-price-chart" title="ડબલ-ક્લિક કરવાથી આ શેર Candle Chart ટેબમાં સંપૂર્ણ માહિતી સાથે ખૂલશે"></canvas>
                     </div>
                     <!-- Live Price / Data High / Data Low stats strip -->
                     <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin-top: 0.65rem;">
@@ -1829,18 +1869,28 @@
             </div>
             <div class="modal-body">
                 <div style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:0.5rem; margin-bottom:0.5rem;">
-                    <span id="cm-hover-readout" style="font-size:0.74rem; color:#94a3b8;">Candlestick + Bollinger Bands (20,2) + Volume</span>
+                    <div style="display:flex; flex-wrap:wrap; align-items:center; gap:0.45rem;">
+                        <span id="cm-hover-readout" style="font-size:0.74rem; color:#94a3b8;">Candlestick + Bollinger Bands (20,2) + Volume</span>
+                        <button type="button" id="cm-open-candle-tab-btn" class="cc-modal-launch-btn" title="Candle Chart ટેબમાં સંપૂર્ણ ઇન્ડિકેટર્સ સાથે ખોલો">
+                            <i class="fa-solid fa-up-right-from-square"></i> Candle Chart ટેબમાં ખોલો
+                        </button>
+                        <span style="font-size:0.7rem; color:#fbbf24; font-weight:600;">(ચાર્ટ પર ડબલ-ક્લિક = Candle Chart ટેબ)</span>
+                    </div>
                     <div style="display:flex; flex-wrap:wrap; align-items:center; gap:0.35rem;">
                         <div class="cc-timeframe-group cc-modal-tf-group" id="cm-tf-group">
-                            <button type="button" class="cc-tf-btn" data-tf="1m">1m</button>
-                            <button type="button" class="cc-tf-btn" data-tf="3m">3m</button>
-                            <button type="button" class="cc-tf-btn active" data-tf="5m">5m</button>
-                            <button type="button" class="cc-tf-btn" data-tf="10m">10m</button>
-                            <button type="button" class="cc-tf-btn" data-tf="1d">1D</button>
-                            <button type="button" class="cc-tf-btn" data-tf="5d">5D</button>
-                            <button type="button" class="cc-tf-btn" data-tf="1w">1W</button>
-                            <button type="button" class="cc-tf-btn" data-tf="1mo">1M</button>
-                            <button type="button" class="cc-tf-btn" data-tf="1y">1Y</button>
+                            <button type="button" class="cc-tf-btn" data-tf="1m" title="1 Minute">1 M</button>
+                            <button type="button" class="cc-tf-btn" data-tf="3m" title="3 Minutes">3 M</button>
+                            <button type="button" class="cc-tf-btn active" data-tf="5m" title="5 Minutes">5 M</button>
+                            <button type="button" class="cc-tf-btn" data-tf="10m" title="10 Minutes">10 M</button>
+                            <button type="button" class="cc-tf-btn" data-tf="15m" title="15 Minutes">15 M</button>
+                            <button type="button" class="cc-tf-btn" data-tf="1h" title="1 Hour">1 H</button>
+                            <button type="button" class="cc-tf-btn" data-tf="4h" title="4 Hours">4 H</button>
+                            <button type="button" class="cc-tf-btn" data-tf="1d" title="1 Day">1 D</button>
+                            <button type="button" class="cc-tf-btn" data-tf="5d" title="5 Days">5 D</button>
+                            <button type="button" class="cc-tf-btn" data-tf="1w" title="1 Week">1 W</button>
+                            <button type="button" class="cc-tf-btn" data-tf="1mo" title="1 Month">1 M</button>
+                            <button type="button" class="cc-tf-btn" data-tf="1y" title="1 Year">1 Y</button>
+                            <button type="button" class="cc-tf-btn" data-tf="5y" title="5 Years">5 Y</button>
                         </div>
                         <label class="cc-bb-label cc-bb-mini">
                             <input type="checkbox" id="cm-bb-toggle" checked>
@@ -1856,7 +1906,7 @@
                     </div>
                 </div>
                 <div class="chart-container" style="height: 280px; position: relative;">
-                    <canvas id="price-chart"></canvas>
+                    <canvas id="price-chart" title="ડબલ-ક્લિક કરવાથી આ શેર Candle Chart ટેબમાં સંપૂર્ણ માહિતી સાથે ખૂલશે"></canvas>
                 </div>
                 <div class="modal-stats-grid">
                     <div class="modal-stat-box">
@@ -2002,6 +2052,25 @@
             <div class="login-footer">
                 Created By : Rahul Popat
             </div>
+        </div>
+    </div>
+
+    <!-- Floating Minimized SAMCO Dock (keeps SAMCO Web session active while using other tabs) -->
+    <div id="samco-minimized-dock" class="samco-minimized-dock hidden">
+        <div class="samco-dock-info">
+            <span class="live-dot-green"></span>
+            <div>
+                <strong>SAMCO Web (Minimized)</strong>
+                <small>લૉગિન સેશન ચાલુ છે</small>
+            </div>
+        </div>
+        <div class="samco-dock-actions">
+            <button type="button" id="samco-dock-maximize-btn" class="samco-dock-btn samco-dock-max" title="SAMCO ફરી Full Screen માં ખોલો">
+                <i class="fa-solid fa-window-maximize"></i> Maximize
+            </button>
+            <button type="button" id="samco-dock-close-btn" class="samco-dock-btn samco-dock-close" title="Dock છુપાવો">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
         </div>
     </div>
 

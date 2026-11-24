@@ -6,6 +6,7 @@
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 const tickMicroCache = new Map();
+const prevCloseMetaCache = new Map();
 const mcxExpiryCache = {
     GOLD: { expiry: '2026-12-04', ts: 0 },
     SILVER: { expiry: '2026-12-04', ts: 0 }
@@ -89,7 +90,7 @@ function extractCleanCandles(yahooResult, requestedInterval, nsSymbol = '') {
     const lows = quote.low || [];
     const closes = quote.close || [];
     const vols = quote.volume || [];
-    const indianIntraday = isIndianMarketSymbol(nsSymbol) && requestedInterval !== '1y';
+    const indianIntraday = isIndianMarketSymbol(nsSymbol) && requestedInterval !== '1y' && requestedInterval !== '5y';
 
     const raw = [];
     for (let i = 0; i < ts.length; i++) {
@@ -123,6 +124,7 @@ function extractCleanCandles(yahooResult, requestedInterval, nsSymbol = '') {
 
     if (requestedInterval === '3m') return aggregateCandles(raw, 3, indianIntraday);
     if (requestedInterval === '10m') return aggregateCandles(raw, 10, indianIntraday);
+    if (requestedInterval === '4h') return aggregateCandles(raw, 240, indianIntraday);
     return raw;
 }
 
@@ -165,6 +167,9 @@ function computeVisibleStartTime(candles, tf) {
     }
     if (tf === '1y') {
         return lastTime - 365 * 86400;
+    }
+    if (tf === '5y') {
+        return lastTime - 5 * 365 * 86400;
     }
     return null;
 }
@@ -246,6 +251,61 @@ async function fetchMcxCommodityPrice(commodity) {
     return null;
 }
 
+async function fetchYahooPrevCloseMeta(sym) {
+    const cached = prevCloseMetaCache.get(sym);
+    if (cached && (Date.now() - cached.ts) < 300000) {
+        return cached.prevClose;
+    }
+    try {
+        const r = await fetchYahooFromHosts(sym, '2d', '1d', 2200);
+        if (!r.ok) return cached ? cached.prevClose : null;
+        const j = await r.json();
+        const result = j?.chart?.result?.[0];
+        const meta = result?.meta || {};
+        let prev = Number(meta.previousClose !== undefined ? meta.previousClose : meta.chartPreviousClose);
+        const cur = Number(meta.regularMarketPrice);
+        if ((!Number.isFinite(prev) || prev <= 0 || (Number.isFinite(cur) && prev === cur)) && Number.isFinite(Number(meta.chartPreviousClose))) {
+            prev = Number(meta.chartPreviousClose);
+        }
+        const closes = result?.indicators?.quote?.[0]?.close || [];
+        if ((!Number.isFinite(prev) || prev <= 0) && closes.length >= 2) {
+            const pBar = Number(closes[closes.length - 2]);
+            if (Number.isFinite(pBar) && pBar > 0) prev = pBar;
+        }
+        if (Number.isFinite(prev) && prev > 0) {
+            prevCloseMetaCache.set(sym, { prevClose: prev, ts: Date.now() });
+            return prev;
+        }
+    } catch (_) {}
+    return cached ? cached.prevClose : null;
+}
+
+async function fetchTradingViewUsdInr() {
+    try {
+        const r = await fetchWithTimeout('https://scanner.tradingview.com/forex/scan', {
+            method: 'POST',
+            headers: { 'User-Agent': UA, 'Content-Type': 'application/json', Accept: 'application/json' },
+            body: JSON.stringify({
+                symbols: { tickers: ['PEPPERSTONE:USDINR'], query: { types: [] } },
+                columns: ['close', 'change', 'change_abs', 'Bid', 'Ask']
+            })
+        }, 1200);
+        if (!r.ok) return null;
+        const j = await r.json();
+        const row = j?.data?.[0]?.d;
+        if (Array.isArray(row) && Number.isFinite(Number(row[0])) && Number(row[0]) > 0) {
+            const close = Number(row[0]);
+            const bid = Number(row[3]);
+            const ask = Number(row[4]);
+            const price = (Number.isFinite(bid) && Number.isFinite(ask) && bid > 0 && ask > 0) ? (bid + ask) / 2 : close;
+            const chgAbs = Number.isFinite(Number(row[2])) ? Number(row[2]) : 0;
+            const prevClose = Number.isFinite(close - chgAbs) && (close - chgAbs) > 0 ? (close - chgAbs) : price;
+            return { price, prevClose };
+        }
+    } catch (_) {}
+    return null;
+}
+
 async function fetchSwissquoteSpot(instrument) {
     try {
         const r = await fetchWithTimeout(
@@ -293,7 +353,7 @@ function buildTickResponse(nsSymbol, companyName, livePrice, prevClose, liveTime
 
 async function fetchFastTickForSymbol(nsSymbol) {
     const cachedTick = tickMicroCache.get(nsSymbol);
-    if (cachedTick && (Date.now() - cachedTick.ts) < 200) {
+    if (cachedTick && (Date.now() - cachedTick.ts) < 150) {
         return cachedTick.payload;
     }
 
@@ -317,18 +377,43 @@ async function fetchFastTickForSymbol(nsSymbol) {
         }
     }
 
-    // 2. Swissquote sub-second USD Gold & Silver spot fast path (with Yahoo prevClose fallback)
-    if (nsSymbol === 'GC=F' || nsSymbol === 'SI=F') {
-        const inst = nsSymbol === 'GC=F' ? 'XAU/USD' : 'XAG/USD';
-        const spotPrice = await fetchSwissquoteSpot(inst);
-        if (spotPrice && spotPrice > 0) {
-            const prevCached = cachedTick?.payload?.prevClose || null;
+    // 1b. USD/INR Live Interbank FX fast path
+    if (nsSymbol === 'INR=X') {
+        const fx = await fetchTradingViewUsdInr().catch(() => null);
+        if (fx && fx.price > 0) {
             const nowSec = Math.floor(Date.now() / 1000);
             const payload = buildTickResponse(
                 nsSymbol,
-                nsSymbol === 'GC=F' ? 'GOLD COMEX (USD/oz)' : 'SILVER COMEX (USD/oz)',
+                'USD / INR ($ - ₹)',
+                fx.price,
+                fx.prevClose,
+                nowSec,
+                0,
+                { time: nowSec, open: fx.price, high: fx.price, low: fx.price, close: fx.price, volume: 0 }
+            );
+            tickMicroCache.set(nsSymbol, { ts: Date.now(), payload });
+            return payload;
+        }
+    }
+
+    // 2. Swissquote sub-second USD Gold & Silver spot fast path (with Yahoo prevClose meta cache)
+    if (nsSymbol === 'GC=F' || nsSymbol === 'SI=F') {
+        const inst = nsSymbol === 'GC=F' ? 'XAU/USD' : 'XAG/USD';
+        const [spotPrice, metaPrev] = await Promise.all([
+            fetchSwissquoteSpot(inst),
+            fetchYahooPrevCloseMeta(nsSymbol)
+        ]);
+        if (spotPrice && spotPrice > 0) {
+            const prevCached = (cachedTick?.payload?.prevClose && cachedTick.payload.prevClose !== cachedTick.payload.livePrice)
+                ? cachedTick.payload.prevClose
+                : null;
+            const prevClose = metaPrev || prevCached || spotPrice;
+            const nowSec = Math.floor(Date.now() / 1000);
+            const payload = buildTickResponse(
+                nsSymbol,
+                nsSymbol === 'GC=F' ? 'GOLD ($ USD)' : 'SILVER ($ USD)',
                 spotPrice,
-                prevCached || spotPrice,
+                prevClose,
                 nowSec,
                 0,
                 { time: nowSec, open: spotPrice, high: spotPrice, low: spotPrice, close: spotPrice, volume: 0 }
@@ -411,7 +496,7 @@ async function fetchFastTickForSymbol(nsSymbol) {
 
     // 5. Yahoo Finance 1m fallback (with 5d/1d daily retry on 404/422)
     const upstreamTarget = nsSymbol === 'GOLD_INR' ? 'GC=F' : (nsSymbol === 'SILVER_INR' ? 'SI=F' : nsSymbol);
-    let response = await fetchYahooFromHosts(upstreamTarget, '1d', '1m', 2800);
+    let response = await fetchYahooFromHosts(upstreamTarget, '2d', '1m', 2800);
     if (!response.ok && (response.status === 404 || response.status === 422)) {
         response = await fetchYahooFromHosts(upstreamTarget, '5d', '1d', 2800);
     }
@@ -425,7 +510,10 @@ async function fetchFastTickForSymbol(nsSymbol) {
     const meta = firstResult?.meta || {};
     const cleanBars = firstResult ? extractCleanCandles(firstResult, '1m', upstreamTarget) : [];
     const livePrice = Number(meta.regularMarketPrice);
-    const prevClose = Number(meta.previousClose !== undefined ? meta.previousClose : meta.chartPreviousClose);
+    let prevClose = Number(meta.previousClose !== undefined ? meta.previousClose : meta.chartPreviousClose);
+    if (nsSymbol === 'INR=X' && (!Number.isFinite(prevClose) || prevClose === livePrice) && Number.isFinite(Number(meta.chartPreviousClose))) {
+        prevClose = Number(meta.chartPreviousClose);
+    }
     const liveTime = Number(meta.regularMarketTime) || (cleanBars.length > 0 ? cleanBars[cleanBars.length - 1].time : Math.floor(Date.now() / 1000));
     const liveVolume = Number(meta.regularMarketVolume || 0);
     const finalPrice = Number.isFinite(livePrice) && livePrice > 0 ? livePrice : (cleanBars.length > 0 ? cleanBars[cleanBars.length - 1].close : null);
@@ -481,7 +569,7 @@ export default async function handler(req, res) {
     }
 
     const nsSymbol = normalizeUpstreamSymbol(symbol);
-    const validTimeframes = ['1m', '3m', '5m', '10m', '15m', '1d', '5d', '1w', '1mo', '1y'];
+    const validTimeframes = ['1m', '3m', '5m', '10m', '15m', '1h', '4h', '1d', '5d', '1w', '1mo', '1y', '5y'];
     const requestedInterval = validTimeframes.includes(String(rawInterval || '').toLowerCase())
         ? String(rawInterval).toLowerCase()
         : '5m';
@@ -502,11 +590,14 @@ export default async function handler(req, res) {
             case '5m': upstreamInterval = '5m'; defaultRange = '5d'; break;
             case '10m': upstreamInterval = '1m'; defaultRange = '5d'; break;
             case '15m': upstreamInterval = '15m'; defaultRange = '5d'; break;
+            case '1h': upstreamInterval = '1h'; defaultRange = '1mo'; break;
+            case '4h': upstreamInterval = '1h'; defaultRange = '3mo'; break;
             case '1d': upstreamInterval = '5m'; defaultRange = '5d'; break;
             case '5d': upstreamInterval = '15m'; defaultRange = '1mo'; break;
             case '1w': upstreamInterval = '30m'; defaultRange = '1mo'; break;
             case '1mo': upstreamInterval = '1h'; defaultRange = '3mo'; break;
             case '1y': upstreamInterval = '1d'; defaultRange = '2y'; break;
+            case '5y': upstreamInterval = '1wk'; defaultRange = '5y'; break;
             default: upstreamInterval = '5m'; defaultRange = '5d';
         }
 
@@ -555,7 +646,7 @@ export default async function handler(req, res) {
             data.resolvedSymbol = nsSymbol;
             data.companyName = isInrMetal
                 ? (nsSymbol === 'GOLD_INR' ? 'GOLD MCX / 10g (INR ₹)' : 'SILVER MCX / 1kg (INR ₹)')
-                : String(meta.longName || meta.shortName || '').trim();
+                : (nsSymbol === 'INR=X' ? 'USD / INR ($ - ₹)' : String(meta.longName || meta.shortName || '').trim());
             data.visibleStartTime = computeVisibleStartTime(candles, requestedInterval);
             data.livePrice = livePrice;
             data.liveTime = Number(meta.regularMarketTime) || (candles.length > 0 ? candles[candles.length - 1].time : null);

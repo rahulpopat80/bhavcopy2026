@@ -589,15 +589,29 @@ function initEvents() {
     const candleChartTabContent   = document.getElementById('candle-chart-tab-content');
     const samcoWebTabContent      = document.getElementById('samco-web-tab-content');
 
-    const hideAllTabs = () => {
+    let lastNonSamcoTabBtn = tabResearch;
+    const hideAllTabs = (keepSamcoFullscreen = false) => {
+        if (!keepSamcoFullscreen) {
+            document.body.classList.remove('samco-fullscreen-mode');
+        }
         [researchTabContent, portfolioTabContent, resultsTabContent, watchlistTabContent, morningPicksTabContent, adviceTabContent, volPromoterTabContent, circuitsTabContent, globalIndicesTabContent, intradayTabContent, masterPieceTabContent, callPutTabContent, candleChartTabContent, samcoWebTabContent]
             .forEach(el => el && el.classList.add('hidden'));
         [tabResearch, tabPortfolio, tabResults, tabWatchlist, tabMorning, tabAdvice, tabVolPromoter, tabCircuits, tabGlobalIndices, tabIntraday, tabMasterPiece, tabCallPut, tabCandleChart, tabSamcoWeb]
             .forEach(el => el && el.classList.remove('active'));
+        const dock = document.getElementById('samco-minimized-dock');
+        const samcoIframe = document.getElementById('samco-web-iframe');
+        if (dock && !keepSamcoFullscreen && samcoIframe && samcoIframe.getAttribute('src')) {
+            dock.classList.remove('hidden');
+        }
+    };
+    window.__rfActivateLastTabFromSamco = () => {
+        const targetBtn = lastNonSamcoTabBtn || tabResearch;
+        if (targetBtn) targetBtn.click();
     };
 
     if (tabResearch && researchTabContent) {
         tabResearch.addEventListener('click', () => {
+            lastNonSamcoTabBtn = tabResearch;
             hideAllTabs();
             tabResearch.classList.add('active');
             researchTabContent.classList.remove('hidden');
@@ -606,6 +620,7 @@ function initEvents() {
 
     if (tabPortfolio && portfolioTabContent) {
         tabPortfolio.addEventListener('click', () => {
+            lastNonSamcoTabBtn = tabPortfolio;
             hideAllTabs();
             tabPortfolio.classList.add('active');
             portfolioTabContent.classList.remove('hidden');
@@ -615,6 +630,7 @@ function initEvents() {
 
     if (tabWatchlist && watchlistTabContent) {
         tabWatchlist.addEventListener('click', () => {
+            lastNonSamcoTabBtn = tabWatchlist;
             hideAllTabs();
             tabWatchlist.classList.add('active');
             watchlistTabContent.classList.remove('hidden');
@@ -624,6 +640,7 @@ function initEvents() {
 
     if (tabMorning && morningPicksTabContent) {
         tabMorning.addEventListener('click', () => {
+            lastNonSamcoTabBtn = tabMorning;
             hideAllTabs();
             tabMorning.classList.add('active');
             morningPicksTabContent.classList.remove('hidden');
@@ -633,6 +650,7 @@ function initEvents() {
 
     if (tabAdvice && adviceTabContent) {
         tabAdvice.addEventListener('click', () => {
+            lastNonSamcoTabBtn = tabAdvice;
             hideAllTabs();
             tabAdvice.classList.add('active');
             adviceTabContent.classList.remove('hidden');
@@ -642,6 +660,7 @@ function initEvents() {
 
     if (tabResults && resultsTabContent) {
         tabResults.addEventListener('click', () => {
+            lastNonSamcoTabBtn = tabResults;
             hideAllTabs();
             tabResults.classList.add('active');
             resultsTabContent.classList.remove('hidden');
@@ -656,6 +675,7 @@ function initEvents() {
 
     if (tabVolPromoter && volPromoterTabContent) {
         tabVolPromoter.addEventListener('click', () => {
+            lastNonSamcoTabBtn = tabVolPromoter;
             hideAllTabs();
             tabVolPromoter.classList.add('active');
             volPromoterTabContent.classList.remove('hidden');
@@ -665,6 +685,7 @@ function initEvents() {
 
     if (tabCircuits && circuitsTabContent) {
         tabCircuits.addEventListener('click', () => {
+            lastNonSamcoTabBtn = tabCircuits;
             hideAllTabs();
             tabCircuits.classList.add('active');
             circuitsTabContent.classList.remove('hidden');
@@ -674,6 +695,7 @@ function initEvents() {
 
     if (tabGlobalIndices && globalIndicesTabContent) {
         tabGlobalIndices.addEventListener('click', () => {
+            lastNonSamcoTabBtn = tabGlobalIndices;
             hideAllTabs();
             tabGlobalIndices.classList.add('active');
             globalIndicesTabContent.classList.remove('hidden');
@@ -683,6 +705,7 @@ function initEvents() {
 
     if (tabIntraday && intradayTabContent) {
         tabIntraday.addEventListener('click', () => {
+            lastNonSamcoTabBtn = tabIntraday;
             hideAllTabs();
             tabIntraday.classList.add('active');
             intradayTabContent.classList.remove('hidden');
@@ -692,6 +715,7 @@ function initEvents() {
 
     if (tabMasterPiece && masterPieceTabContent) {
         tabMasterPiece.addEventListener('click', () => {
+            lastNonSamcoTabBtn = tabMasterPiece;
             hideAllTabs();
             tabMasterPiece.classList.add('active');
             masterPieceTabContent.classList.remove('hidden');
@@ -701,6 +725,7 @@ function initEvents() {
 
     if (tabCallPut && callPutTabContent) {
         tabCallPut.addEventListener('click', () => {
+            lastNonSamcoTabBtn = tabCallPut;
             hideAllTabs();
             tabCallPut.classList.add('active');
             callPutTabContent.classList.remove('hidden');
@@ -716,6 +741,7 @@ function initEvents() {
 
     if (tabCandleChart && candleChartTabContent) {
         tabCandleChart.addEventListener('click', () => {
+            lastNonSamcoTabBtn = tabCandleChart;
             hideAllTabs();
             tabCandleChart.classList.add('active');
             candleChartTabContent.classList.remove('hidden');
@@ -730,7 +756,7 @@ function initEvents() {
 
     if (tabSamcoWeb && samcoWebTabContent) {
         tabSamcoWeb.addEventListener('click', () => {
-            hideAllTabs();
+            hideAllTabs(true);
             tabSamcoWeb.classList.add('active');
             samcoWebTabContent.classList.remove('hidden');
             if (typeof initSamcoWebTab === 'function') {
@@ -7545,8 +7571,9 @@ window.fetchCallPutAndMmiData = async function(isManual = false) {
 // ==========================================
 // CANDLE CHART ENGINE: CANDLESTICK + BOLLINGER BANDS (20,2) + VOLUME + 1m/3m/5m/10m/1D/5D/1W/1M/1Y + 1s LIVE UPDATES
 // ==========================================
-const VALID_CANDLE_TFS = ['1m', '3m', '5m', '10m', '1d', '5d', '1w', '1mo', '1y'];
+const VALID_CANDLE_TFS = ['1m', '3m', '5m', '10m', '15m', '1h', '4h', '1d', '5d', '1w', '1mo', '1y', '5y'];
 const candleSeriesCache = new Map();
+const tenMinSeriesCache = new Map();
 const COMPANY_NAME_DEFAULTS = {
     RELIANCE: 'Reliance Industries Limited',
     TCS: 'Tata Consultancy Services Limited',
@@ -7631,6 +7658,19 @@ window.openSymbolInCandleChart = function(symbol) {
     candleTabState.symbol = clean;
     candleTabState.companyName = resolveCandleCompanyName(clean);
     if (!candleTabState.interval) candleTabState.interval = '10m';
+
+    // Close any open research/chart modals & exit SAMCO fullscreen cleanly
+    const rmModal = document.getElementById('research-modal');
+    const cmModal = document.getElementById('chart-modal');
+    if (rmModal) rmModal.classList.add('hidden');
+    if (cmModal) cmModal.classList.add('hidden');
+    document.body.classList.remove('samco-fullscreen-mode');
+
+    const samcoDock = document.getElementById('samco-minimized-dock');
+    const samcoIframe = document.getElementById('samco-web-iframe');
+    if (samcoDock && samcoIframe && samcoIframe.getAttribute('src')) {
+        samcoDock.classList.remove('hidden');
+    }
 
     if (document.body.classList.contains('cc-fullscreen-mode')) {
         if (typeof initCandleChartTab === 'function') initCandleChartTab();
@@ -7722,10 +7762,10 @@ function openCandleChartFullscreenTab(symbol, interval, indicators) {
 
 function formatCandleLabel(unixSec, tf) {
     const dt = new Date(unixSec * 1000);
-    if (tf === '1y') {
+    if (tf === '1y' || tf === '5y') {
         return dt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' });
     }
-    if (tf === '5d' || tf === '1w' || tf === '1mo') {
+    if (tf === '1h' || tf === '4h' || tf === '5d' || tf === '1w' || tf === '1mo') {
         const dPart = dt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
         const tPart = dt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false });
         return `${dPart} ${tPart}`;
@@ -7739,11 +7779,15 @@ function getBucketSecondsForTf(tf) {
         case '3m': return 180;
         case '5m': return 300;
         case '10m': return 600;
+        case '15m': return 900;
+        case '1h': return 3600;
+        case '4h': return 14400;
         case '1d': return 300;
         case '5d': return 900;
         case '1w': return 1800;
         case '1mo': return 3600;
         case '1y': return 86400;
+        case '5y': return 604800;
         default: return 300;
     }
 }
@@ -7751,11 +7795,15 @@ function getBucketSecondsForTf(tf) {
 function getDefaultMaxBarsForTf(tf, isModal = false) {
     switch (tf) {
         case '10m': return isModal ? 60 : 78;
+        case '15m': return isModal ? 65 : 85;
+        case '1h': return isModal ? 75 : 100;
+        case '4h': return isModal ? 80 : 105;
         case '1d': return 90;
         case '5d': return isModal ? 125 : 135;
         case '1w': return isModal ? 95 : 110;
         case '1mo': return isModal ? 140 : 165;
         case '1y': return isModal ? 160 : 255;
+        case '5y': return isModal ? 160 : 260;
         default: return isModal ? 65 : 85;
     }
 }
@@ -9618,6 +9666,35 @@ window.initModalChartControls = function() {
 
     setupModal('rm', 'rm-tf-group', 'rm-bb-toggle', 'research-price-chart');
     setupModal('cm', 'cm-tf-group', 'cm-bb-toggle', 'price-chart');
+
+    const wireModalOpenInCandleTab = (canvasId, btnId, modalKey) => {
+        const canvasEl = document.getElementById(canvasId);
+        const btnEl = document.getElementById(btnId);
+        const openFn = () => {
+            const sym = modalChartState[modalKey]?.symbol;
+            if (sym) {
+                window.openSymbolInCandleChart(sym);
+            }
+        };
+        if (canvasEl && !canvasEl.dataset.dblCandleWired) {
+            canvasEl.dataset.dblCandleWired = '1';
+            canvasEl.addEventListener('dblclick', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                openFn();
+            });
+        }
+        if (btnEl && !btnEl.dataset.wired) {
+            btnEl.dataset.wired = '1';
+            btnEl.addEventListener('click', (e) => {
+                e.preventDefault();
+                openFn();
+            });
+        }
+    };
+
+    wireModalOpenInCandleTab('research-price-chart', 'rm-open-candle-tab-btn', 'rm');
+    wireModalOpenInCandleTab('price-chart', 'cm-open-candle-tab-btn', 'cm');
 };
 
 function mergeLiveTickIntoCandles(candles, interval, tickData) {
@@ -9638,20 +9715,22 @@ function mergeLiveTickIntoCandles(candles, interval, tickData) {
         const istOffset = 19800;
         const dayKey = Math.floor((liveTime + istOffset) / 86400);
         targetBucket = dayKey * 86400 - istOffset;
+    } else if (interval === '5y') {
+        targetBucket = Math.floor(liveTime / 604800) * 604800;
     } else {
         targetBucket = Math.floor(liveTime / bucketSec) * bucketSec;
     }
 
     const last = candles[candles.length - 1];
-    // For 1y daily bars, check if last bar is already the same IST calendar date
     const isSameDayFor1y = interval === '1y' &&
         Math.floor((last.time + 19800) / 86400) === Math.floor((liveTime + 19800) / 86400);
+    const isSameWeekFor5y = interval === '5y' && Math.abs(liveTime - last.time) < 604800;
 
-    if (isSameDayFor1y || last.time === targetBucket || liveTime < last.time + bucketSec) {
+    if (isSameDayFor1y || isSameWeekFor5y || last.time === targetBucket || liveTime < last.time + bucketSec) {
         last.high = Math.max(last.high, effectivePrice, latestBar ? Number(latestBar.high || effectivePrice) : effectivePrice);
         last.low = Math.min(last.low, effectivePrice, latestBar ? Number(latestBar.low || effectivePrice) : effectivePrice);
         last.close = effectivePrice;
-        if (tickData.liveVolume && interval === '1y') {
+        if (tickData.liveVolume && (interval === '1y' || interval === '5y')) {
             last.volume = Math.max(last.volume || 0, Number(tickData.liveVolume));
         } else if (latestBar && Number.isFinite(Number(latestBar.volume)) && latestBar.volume > 0 && interval === '1m') {
             last.volume = Number(latestBar.volume);
@@ -9752,6 +9831,9 @@ window.refreshVisibleCandles1s = async function() {
                 if (analysis) {
                     applyCandleChartAnalysisUI(job.state.symbol, job.state.interval, job.state.candles, analysis);
                 }
+                if (typeof refreshTenMinThreeCandleIndicator === 'function') {
+                    refreshTenMinThreeCandleIndicator(job.state.symbol, tickData, false);
+                }
                 const readoutEl = document.getElementById('cc-hover-readout');
                 if (readoutEl && (!canvas || !canvas.__ccIsHovering || !canvas.__ccIsHovering())) {
                     const last = job.state.candles[job.state.candles.length - 1];
@@ -9775,7 +9857,7 @@ window.refreshVisibleCandles1s = async function() {
                     const pct = prev > 0 ? (diff / prev) * 100 : 0;
                     const sign = diff >= 0 ? '+' : '';
                     const col = diff >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
-                    liveEl.innerHTML = `₹${Number(tickData.livePrice).toFixed(2)} <span style="font-size:0.75rem;font-weight:600;color:${col};margin-left:0.35rem;">(${sign}${pct.toFixed(2)}%)</span>`;
+                    liveEl.innerHTML = `${fmtCandlePrice(tickData.livePrice, symKey)} <span style="font-size:0.75rem;font-weight:600;color:${col};margin-left:0.35rem;">(${sign}${pct.toFixed(2)}%)</span>`;
                 }
             }
         }
@@ -9937,6 +10019,304 @@ function populateCandleSymbolDatalist() {
     }
     dl.innerHTML = Array.from(set).map(s => `<option value="${s}"></option>`).join('');
 }
+
+function analyzeTenMinLastThreeCandles(candles10m, symbol) {
+    if (!Array.isArray(candles10m) || candles10m.length < 4) {
+        return null;
+    }
+    const nowSec = Math.floor(Date.now() / 1000);
+    const lastBar = candles10m[candles10m.length - 1];
+    const isLastForming = lastBar && nowSec >= lastBar.time && nowSec < (lastBar.time + 600);
+
+    const endIdx = isLastForming ? candles10m.length - 1 : candles10m.length;
+    const completed = candles10m.slice(0, endIdx);
+    if (completed.length < 3) return null;
+
+    const c1 = completed[completed.length - 3];
+    const c2 = completed[completed.length - 2];
+    const c3 = completed[completed.length - 1];
+    const trio = [c1, c2, c3];
+
+    const closesAll = completed.map(c => c.close);
+    const ema9Arr = computeEMAValues(closesAll, 9);
+    const ema21Arr = computeEMAValues(closesAll, 21);
+    const rsiArr = computeRSIValues(completed, 14);
+    const macdObj = computeMACDValues(completed, 12, 26, 9);
+    const vwapArr = computeSessionVWAP(completed);
+    const bbObj = computeBollingerBands(completed, 20, 2);
+    const volAvg = computeVolumeSma(completed, 20);
+
+    const idx = completed.length - 1;
+    const ema9 = ema9Arr[idx];
+    const ema21 = ema21Arr[idx];
+    const rsi = rsiArr[idx];
+    const macd = macdObj.macd[idx];
+    const macdSig = macdObj.signal[idx];
+    const vwap = vwapArr[idx];
+    const bbMid = bbObj.middle[idx];
+    const avgVol = volAvg[idx] || 0;
+
+    const describeCandle = (c, barIdx) => {
+        const isBull = c.close >= c.open;
+        const body = Math.abs(c.close - c.open);
+        const range = Math.max(0.0001, c.high - c.low);
+        const pct = c.open > 0 ? ((c.close - c.open) / c.open) * 100 : 0;
+        const av = volAvg[barIdx] || avgVol;
+        const volRatio = av > 0 && c.volume > 0 ? (c.volume / av) : 1;
+        const tStr = c.label || formatCandleLabel(c.time, '10m');
+        return {
+            ...c,
+            isBull,
+            bodyRatio: body / range,
+            pct,
+            volRatio,
+            hasVol: av > 0 && c.volume > 0,
+            timeStr: tStr
+        };
+    };
+
+    const d1 = describeCandle(c1, idx - 2);
+    const d2 = describeCandle(c2, idx - 1);
+    const d3 = describeCandle(c3, idx);
+
+    let score = 0;
+    const signals = [];
+    let patternGu = '૩-કેન્ડલ પ્રાઇસ એક્શન (10M Structure)';
+
+    const bullCount = [d1, d2, d3].filter(x => x.isBull).length;
+    const bearCount = 3 - bullCount;
+    const higherHighs = c3.high > c2.high && c2.high > c1.high;
+    const higherLows = c3.low >= c2.low && c2.low >= c1.low;
+    const lowerLows = c3.low < c2.low && c2.low < c1.low;
+    const lowerHighs = c3.high <= c2.high && c2.high <= c1.high;
+
+    // 1. Classic 3-Candle Pattern Recognition
+    if (d1.isBull && d2.isBull && d3.isBull && c3.close > c2.close && c2.close > c1.close) {
+        score += 2.6;
+        patternGu = 'Three White Soldiers (સતત ૩ મજબૂત ગ્રીન કેન્ડલ્સ)';
+        signals.push({ type: 'bull', text: 'સતત ૩ ગ્રીન કેન્ડલ + ઊંચા બંધ' });
+    } else if (!d1.isBull && !d2.isBull && !d3.isBull && c3.close < c2.close && c2.close < c1.close) {
+        score -= 2.6;
+        patternGu = 'Three Black Crows (સતત ૩ મજબૂત લાલ કેન્ડલ્સ)';
+        signals.push({ type: 'bear', text: 'સતત ૩ લાલ કેન્ડલ + નીચા બંધ' });
+    } else if (!d1.isBull && d2.bodyRatio < 0.4 && d3.isBull && c3.close > (c1.open + c1.close) / 2) {
+        score += 2.3;
+        patternGu = 'Morning Star (ઘટાડા પછી મજબૂત બુલિશ રિવર્સલ)';
+        signals.push({ type: 'bull', text: 'Morning Star (3-Candle Reversal)' });
+    } else if (d1.isBull && d2.bodyRatio < 0.4 && !d3.isBull && c3.close < (c1.open + c1.close) / 2) {
+        score -= 2.3;
+        patternGu = 'Evening Star (તેજીની ટોચ પરથી મંદીનું રિવર્સલ)';
+        signals.push({ type: 'bear', text: 'Evening Star (3-Candle Top Reversal)' });
+    } else if (!d2.isBull && d3.isBull && c3.close > c2.open && c3.open <= c2.close) {
+        score += 1.8;
+        patternGu = 'Bullish Engulfing (છેલ્લી ગ્રીન કેન્ડલે પાછલી લાલ કેન્ડલ ગળી)';
+        signals.push({ type: 'bull', text: 'C3 Bullish Engulfing' });
+    } else if (d2.isBull && !d3.isBull && c3.close < c2.open && c3.open >= c2.close) {
+        score -= 1.8;
+        patternGu = 'Bearish Engulfing (છેલ્લી લાલ કેન્ડલે પાછલી ગ્રીન કેન્ડલ ગળી)';
+        signals.push({ type: 'bear', text: 'C3 Bearish Engulfing' });
+    } else if (higherHighs && higherLows && bullCount >= 2) {
+        score += 1.6;
+        patternGu = 'Higher-High / Higher-Low અપટ્રેન્ડ (10M)';
+        signals.push({ type: 'bull', text: 'HH / HL સ્ટ્રક્ચર' });
+    } else if (lowerLows && lowerHighs && bearCount >= 2) {
+        score -= 1.6;
+        patternGu = 'Lower-High / Lower-Low ડાઉનટ્રેન્ડ (10M)';
+        signals.push({ type: 'bear', text: 'LH / LL સ્ટ્રક્ચર' });
+    } else {
+        patternGu = 'મિશ્ર / સાઇડવેઝ રેન્જ (Indecision in Last 3 Candles)';
+        signals.push({ type: 'neutral', text: `ગ્રીન: ${bullCount} | લાલ: ${bearCount} (કોન્સોલિડેશન)` });
+    }
+
+    // 2. Momentum net change across the 3 candles + Volume confirmation
+    const netPct3 = c1.open > 0 ? ((c3.close - c1.open) / c1.open) * 100 : 0;
+    if (netPct3 >= 0.25) {
+        score += 0.6;
+    } else if (netPct3 <= -0.25) {
+        score -= 0.6;
+    }
+
+    if (d3.hasVol && d3.volRatio >= 1.25) {
+        if (d3.isBull) {
+            score += 0.8;
+            signals.push({ type: 'bull', text: `C3 વોલ્યુમ ${d3.volRatio.toFixed(2)}x (ખરીદી તાકાત)` });
+        } else {
+            score -= 0.8;
+            signals.push({ type: 'bear', text: `C3 વોલ્યુમ ${d3.volRatio.toFixed(2)}x (વેચવાલી દબાણ)` });
+        }
+    }
+
+    // 3. Indicator confirmation on 10M series
+    if (ema9 !== null && ema21 !== null) {
+        if (c3.close > ema9 && ema9 > ema21) {
+            score += 1.0;
+            signals.push({ type: 'bull', text: '10M EMA9 > EMA21 (Up)' });
+        } else if (c3.close < ema9 && ema9 < ema21) {
+            score -= 1.0;
+            signals.push({ type: 'bear', text: '10M EMA9 < EMA21 (Down)' });
+        }
+    }
+    if (rsi !== null && rsi !== undefined) {
+        if (rsi >= 55 && rsi <= 72) {
+            score += 0.7;
+            signals.push({ type: 'bull', text: `10M RSI ${rsi.toFixed(1)} (Bullish Momentum)` });
+        } else if (rsi <= 45 && rsi >= 28) {
+            score -= 0.7;
+            signals.push({ type: 'bear', text: `10M RSI ${rsi.toFixed(1)} (Bearish Momentum)` });
+        } else if (rsi > 75) {
+            score -= 0.5;
+            signals.push({ type: 'neutral', text: `10M RSI ${rsi.toFixed(1)} Overbought` });
+        } else if (rsi < 25) {
+            score += 0.5;
+            signals.push({ type: 'neutral', text: `10M RSI ${rsi.toFixed(1)} Oversold` });
+        }
+    }
+    if (macd !== null && macdSig !== null) {
+        if (macd > macdSig) {
+            score += 0.7;
+            signals.push({ type: 'bull', text: '10M MACD Bullish' });
+        } else {
+            score -= 0.7;
+            signals.push({ type: 'bear', text: '10M MACD Bearish' });
+        }
+    }
+    if (vwap) {
+        if (c3.close >= vwap) {
+            score += 0.6;
+            signals.push({ type: 'bull', text: 'VWAP ઉપર' });
+        } else {
+            score -= 0.6;
+            signals.push({ type: 'bear', text: 'VWAP નીચે' });
+        }
+    }
+    if (bbMid) {
+        if (c3.close >= bbMid) score += 0.35;
+        else score -= 0.35;
+    }
+
+    // 4. Final Action Verdict: BUY / SELL / WAIT
+    let action = 'WAIT';
+    let actionGu = 'રાહ જોવી (WAIT)';
+    let badgeClass = 'cc-sig-wait';
+    let summaryGu = '';
+
+    if (score >= 1.8) {
+        action = 'BUY';
+        actionGu = 'ખરીદી કરી શકાય (BUY)';
+        badgeClass = 'cc-sig-buy';
+        const breakoutAbove = Math.max(c1.high, c2.high, c3.high);
+        summaryGu = `૧૦ મિનિટની છેલ્લી ૩ પૂર્ણ કેન્ડલમાં તેજીનું માળખું (${patternGu}) અને મજબૂત ઇન્ડિકેટર સપોર્ટ (Score +${score.toFixed(1)}) દેખાય છે. C3 ક્લોઝ (${fmtCandlePrice(c3.close, symbol)}) પાસે અથવા ${fmtCandlePrice(breakoutAbove, symbol)} ઉપર ખરીદીનો વિચાર કરી શકાય; C1/C2 નીચું (${fmtCandlePrice(Math.min(c2.low, c3.low), symbol)}) સ્ટોપ-લોસ ગણી શકાય.`;
+    } else if (score <= -1.8) {
+        action = 'SELL';
+        actionGu = 'વેચાણ કરી શકાય (SELL)';
+        badgeClass = 'cc-sig-sell';
+        const breakdownBelow = Math.min(c1.low, c2.low, c3.low);
+        summaryGu = `૧૦ મિનિટની છેલ્લી ૩ પૂર્ણ કેન્ડલમાં નબળાઈ/વેચવાલીનું દબાણ (${patternGu}) અને મંદીના ઇન્ડિકેટર્સ (Score ${score.toFixed(1)}) છે. C3 ક્લોઝ (${fmtCandlePrice(c3.close, symbol)}) પાસે અથવા ${fmtCandlePrice(breakdownBelow, symbol)} નીચે વેચાણ/નફો બુક કરી શકાય; ઊંચું (${fmtCandlePrice(Math.max(c2.high, c3.high), symbol)}) સ્ટોપ-લોસ ગણી શકાય.`;
+    } else {
+        summaryGu = `૧૦ મિનિટની છેલ્લી ૩ પૂર્ણ કેન્ડલમાં હાલ સ્પષ્ટ એકતરફી બ્રેકઆઉટ નથી (${patternGu}, Score ${score >= 0 ? '+' : ''}${score.toFixed(1)}). નવી એન્ટ્રી લેતા પહેલા હાલની ૩-કેન્ડલ રેન્જ (${fmtCandlePrice(Math.min(c1.low, c2.low, c3.low), symbol)} – ${fmtCandlePrice(Math.max(c1.high, c2.high, c3.high), symbol)}) માંથી સ્પષ્ટ બ્રેકઆઉટ/બ્રેકડાઉનની રાહ જોવી હિતાવહ છે.`;
+    }
+
+    return {
+        symbol,
+        action,
+        actionGu,
+        badgeClass,
+        patternGu,
+        summaryGu,
+        score,
+        isLastForming,
+        formingTime: isLastForming ? (lastBar.label || formatCandleLabel(lastBar.time, '10m')) : null,
+        candles: [d1, d2, d3],
+        signals,
+        metrics: { ema9, ema21, rsi, macd, macdSig, vwap, bbMid, netPct3 }
+    };
+}
+
+function renderTenMinThreeCandleCard(res) {
+    const badgeEl = document.getElementById('cc-3c-action-badge');
+    const titleEl = document.getElementById('cc-3c-pattern-title');
+    const statusEl = document.getElementById('cc-3c-status-pill');
+    const summaryEl = document.getElementById('cc-3c-summary');
+    const rowEl = document.getElementById('cc-3c-candles-row');
+    const stripEl = document.getElementById('cc-3c-indicators-strip');
+
+    if (!badgeEl || !rowEl) return;
+    if (!res) {
+        badgeEl.textContent = 'ડેટા જરૂરી';
+        badgeEl.className = 'cc-signal-action-badge cc-sig-wait';
+        if (titleEl) titleEl.textContent = '૧૦ મિનિટની ઓછામાં ઓછી ૩ પૂર્ણ કેન્ડલ ઉપલબ્ધ નથી';
+        return;
+    }
+
+    badgeEl.textContent = res.actionGu;
+    badgeEl.className = `cc-signal-action-badge ${res.badgeClass}`;
+    if (titleEl) titleEl.textContent = `${res.patternGu} • (Score: ${res.score >= 0 ? '+' : ''}${res.score.toFixed(1)})`;
+    if (statusEl) {
+        statusEl.textContent = res.isLastForming
+            ? `પૂર્ણ: C1–C3 (Live ચાલુ: ${res.formingTime})`
+            : `છેલ્લી ૩ પૂર્ણ 10M કેન્ડલ્સ`;
+    }
+    if (summaryEl) summaryEl.textContent = res.summaryGu;
+
+    rowEl.innerHTML = res.candles.map((c, idx) => {
+        const cls = c.isBull ? 'cc-3c-bull' : 'cc-3c-bear';
+        const dirCls = c.isBull ? 'cc-3c-dir-bull' : 'cc-3c-dir-bear';
+        const dirText = c.isBull ? '▲ ગ્રીન (Bull)' : '▼ લાલ (Bear)';
+        const pctSign = c.pct >= 0 ? '+' : '';
+        return `
+            <div class="cc-3c-candle-box ${cls}">
+                <div class="cc-3c-candle-top">
+                    <strong style="color:#f8fafc;">કેન્ડલ ${idx + 1} (${c.timeStr})</strong>
+                    <span class="cc-3c-dir-pill ${dirCls}">${dirText}</span>
+                </div>
+                <div class="cc-3c-ohlc">
+                    <div><span>O:</span> ${fmtCandlePrice(c.open, res.symbol)}</div>
+                    <div><span>C:</span> <strong>${fmtCandlePrice(c.close, res.symbol)}</strong></div>
+                    <div><span>H:</span> ${fmtCandlePrice(c.high, res.symbol)}</div>
+                    <div><span>L:</span> ${fmtCandlePrice(c.low, res.symbol)}</div>
+                </div>
+                <div class="cc-3c-foot">
+                    <span>ફેરફાર: <strong style="color:${c.pct >= 0 ? '#4ade80' : '#f87171'};">${pctSign}${c.pct.toFixed(2)}%</strong></span>
+                    <span>${c.hasVol ? `Vol: ${c.volRatio.toFixed(2)}x` : '10M Bar'}</span>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    if (stripEl) {
+        stripEl.innerHTML = (res.signals || []).map(s => {
+            const cls = s.type === 'bull' ? 'cc-reason-bull' : (s.type === 'bear' ? 'cc-reason-bear' : '');
+            return `<span class="cc-reason-chip ${cls}">${s.text}</span>`;
+        }).join('');
+    }
+}
+
+window.refreshTenMinThreeCandleIndicator = async function(symbol, tickData = null, forceFetch = false) {
+    const cleanSym = normalizeCandleSymbolInput(symbol || candleTabState.symbol || '^NSEI');
+    try {
+        let series10m = null;
+        if (candleTabState.symbol === cleanSym && candleTabState.interval === '10m' && Array.isArray(candleTabState.candles) && candleTabState.candles.length >= 4) {
+            series10m = candleTabState.candles;
+        } else {
+            const cached = tenMinSeriesCache.get(cleanSym);
+            if (!forceFetch && cached && Array.isArray(cached.candles) && cached.candles.length >= 4 && (Date.now() - cached.ts) < 20000) {
+                if (tickData) {
+                    mergeLiveTickIntoCandles(cached.candles, '10m', tickData);
+                }
+                series10m = cached.candles;
+            } else {
+                const fetched = await fetchCandleSeries(cleanSym, '10m', forceFetch);
+                const cloned = (fetched.candles || []).map(c => ({ ...c }));
+                tenMinSeriesCache.set(cleanSym, { candles: cloned, ts: Date.now() });
+                series10m = cloned;
+            }
+        }
+        const result = analyzeTenMinLastThreeCandles(series10m, cleanSym);
+        renderTenMinThreeCandleCard(result);
+    } catch (_) {
+        // Leave prior state intact on transient fetch error
+    }
+};
 
 function syncCandleControlsFromState() {
     const symInput = document.getElementById('cc-symbol-input');
@@ -10137,6 +10517,7 @@ window.loadCandleChartTab = async function(forceRefresh = false) {
         });
 
         applyCandleChartAnalysisUI(symbol, interval, series.candles, analysis);
+        refreshTenMinThreeCandleIndicator(symbol, null, forceRefresh);
         const liveBadgeTime = document.getElementById('cc-live-time');
         if (liveBadgeTime) {
             liveBadgeTime.textContent = `Live 3x/s • ${new Date().toLocaleTimeString('en-IN', { hour12: false })}`;
@@ -10152,7 +10533,7 @@ window.loadCandleChartTab = async function(forceRefresh = false) {
 };
 
 // ==========================================
-// SAMCO WEB EMBEDDED PORTAL TAB (https://web.samco.in/)
+// SAMCO WEB EMBEDDED PORTAL TAB (https://web.samco.in/) + FULLSCREEN + MINIMIZE
 // ==========================================
 window.initSamcoWebTab = function() {
     const iframe = document.getElementById('samco-web-iframe');
@@ -10160,8 +10541,15 @@ window.initSamcoWebTab = function() {
     const homeBtn = document.getElementById('samco-home-btn');
     const reloadBtn = document.getElementById('samco-reload-btn');
     const expandBtn = document.getElementById('samco-expand-btn');
+    const minimizeBtn = document.getElementById('samco-minimize-btn');
+    const backAppBtn = document.getElementById('samco-back-app-btn');
+    const openCcBtn = document.getElementById('samco-open-cc-btn');
     const modeBadge = document.getElementById('samco-mode-badge');
     const wrap = document.getElementById('samco-iframe-wrap');
+    const dock = document.getElementById('samco-minimized-dock');
+    const dockMaxBtn = document.getElementById('samco-dock-maximize-btn');
+    const dockCloseBtn = document.getElementById('samco-dock-close-btn');
+
     const directUrl = (iframe && iframe.dataset.src) ? iframe.dataset.src : 'https://web.samco.in/';
     const proxyUrl = `/api/samco-proxy?url=${encodeURIComponent(directUrl)}`;
 
@@ -10176,17 +10564,27 @@ window.initSamcoWebTab = function() {
         if (proxyBtn) {
             proxyBtn.classList.toggle('active', useProxy);
             proxyBtn.innerHTML = useProxy
-                ? '<i class="fa-solid fa-shield-halved"></i> Server Proxy: ON (Bypass Active)'
-                : '<i class="fa-solid fa-shield-halved"></i> Server Proxy Mode (Blocked Network Bypass)';
+                ? '<i class="fa-solid fa-shield-halved"></i> Server Proxy: ON'
+                : '<i class="fa-solid fa-shield-halved"></i> Direct Mode';
         }
         if (modeBadge) {
-            modeBadge.textContent = useProxy
-                ? 'Mode: Server Proxy Active (/api/samco-proxy)'
-                : 'Mode: Direct Connection';
+            modeBadge.textContent = useProxy ? 'Server Proxy: ON' : 'Direct Mode';
             modeBadge.style.color = useProxy ? '#fbbf24' : '#34d399';
         }
     };
 
+    const syncFullscreenUi = (isFull) => {
+        document.body.classList.toggle('samco-fullscreen-mode', isFull);
+        if (expandBtn) {
+            expandBtn.innerHTML = isFull
+                ? '<i class="fa-solid fa-compress"></i> Exit Full Screen'
+                : '<i class="fa-solid fa-expand"></i> Full Screen';
+        }
+    };
+
+    // Enter Full Screen Fit immediately when SAMCO Web tab is opened
+    syncFullscreenUi(true);
+    if (dock) dock.classList.add('hidden');
     syncProxyUi();
     if (iframe && !iframe.getAttribute('src')) {
         iframe.src = getActiveUrl();
@@ -10194,6 +10592,44 @@ window.initSamcoWebTab = function() {
 
     if (!document.body.dataset.samcoTabWired) {
         document.body.dataset.samcoTabWired = '1';
+
+        const minimizeSamcoPortal = () => {
+            syncFullscreenUi(false);
+            if (typeof window.__rfActivateLastTabFromSamco === 'function') {
+                window.__rfActivateLastTabFromSamco();
+            } else {
+                const tabRes = document.getElementById('tab-research');
+                if (tabRes) tabRes.click();
+            }
+            if (dock && iframe && iframe.getAttribute('src')) {
+                dock.classList.remove('hidden');
+            }
+        };
+
+        if (minimizeBtn) {
+            minimizeBtn.addEventListener('click', minimizeSamcoPortal);
+        }
+        if (backAppBtn) {
+            backAppBtn.addEventListener('click', minimizeSamcoPortal);
+        }
+        if (openCcBtn) {
+            openCcBtn.addEventListener('click', () => {
+                syncFullscreenUi(false);
+                const tabCC = document.getElementById('tab-candle-chart');
+                if (tabCC) tabCC.click();
+            });
+        }
+        if (dockMaxBtn) {
+            dockMaxBtn.addEventListener('click', () => {
+                const tabSamco = document.getElementById('tab-samco-web');
+                if (tabSamco) tabSamco.click();
+            });
+        }
+        if (dockCloseBtn && dock) {
+            dockCloseBtn.addEventListener('click', () => {
+                dock.classList.add('hidden');
+            });
+        }
 
         if (proxyBtn && iframe) {
             proxyBtn.addEventListener('click', () => {
@@ -10224,12 +10660,16 @@ window.initSamcoWebTab = function() {
         }
         if (expandBtn && wrap) {
             expandBtn.addEventListener('click', () => {
-                const expanded = wrap.classList.toggle('samco-frame-expanded');
-                expandBtn.innerHTML = expanded
-                    ? '<i class="fa-solid fa-down-left-and-up-right-to-center"></i> Normal Height'
-                    : '<i class="fa-solid fa-up-right-and-down-left-from-center"></i> Full Height';
+                const nextFull = !document.body.classList.contains('samco-fullscreen-mode');
+                syncFullscreenUi(nextFull);
+                wrap.classList.toggle('samco-frame-expanded', nextFull);
             });
         }
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && document.body.classList.contains('samco-fullscreen-mode')) {
+                syncFullscreenUi(false);
+            }
+        });
     }
 };
 

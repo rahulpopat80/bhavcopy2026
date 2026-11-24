@@ -3323,6 +3323,162 @@ body.cc-fullscreen-mode .cc-canvas-wrap {
     color: #f87171;
 }
 
+.cc-modal-tf-group .cc-tf-btn {
+    padding: 0.22rem 0.42rem;
+    font-size: 0.7rem;
+}
+
+.cc-modal-launch-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.22rem 0.55rem;
+    font-size: 0.7rem;
+    font-weight: 700;
+    border-radius: 6px;
+    border: 1px solid rgba(251, 191, 36, 0.45);
+    background: rgba(251, 191, 36, 0.14);
+    color: #fbbf24;
+    cursor: pointer;
+    font-family: var(--font-family);
+    transition: background 0.15s, color 0.15s;
+}
+
+.cc-modal-launch-btn:hover {
+    background: rgba(251, 191, 36, 0.28);
+    color: #ffffff;
+}
+
+/* Standalone 10-Minute Last 3 Completed Candles Technical Signal Card */
+.cc-ten-min-3c-card {
+    background: linear-gradient(135deg, rgba(13, 21, 38, 0.96), rgba(15, 23, 42, 0.92));
+    border: 1px solid rgba(56, 189, 248, 0.38);
+    border-radius: 12px;
+    padding: 0.95rem 1.15rem;
+    margin-bottom: 0.9rem;
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.25);
+}
+
+.cc-3c-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.65rem;
+}
+
+.cc-3c-headline {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.65rem;
+    margin-top: 0.4rem;
+}
+
+.cc-3c-pattern-title {
+    font-size: 0.9rem;
+    color: #f8fafc;
+}
+
+.cc-3c-status-pill {
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 0.22rem 0.6rem;
+    border-radius: 6px;
+    background: rgba(56, 189, 248, 0.14);
+    border: 1px solid rgba(56, 189, 248, 0.35);
+    color: #7dd3fc;
+    white-space: nowrap;
+}
+
+.cc-3c-summary {
+    margin: 0.48rem 0 0.75rem;
+    font-size: 0.8rem;
+    color: #cbd5e1;
+    line-height: 1.45;
+}
+
+.cc-3c-candles-row {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.65rem;
+}
+
+.cc-3c-candle-box {
+    background: rgba(15, 23, 42, 0.85);
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    border-left-width: 3px;
+    border-radius: 9px;
+    padding: 0.6rem 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.cc-3c-candle-box.cc-3c-bull {
+    border-left-color: #22c55e;
+    background: rgba(16, 185, 129, 0.07);
+}
+
+.cc-3c-candle-box.cc-3c-bear {
+    border-left-color: #ef4444;
+    background: rgba(239, 68, 68, 0.07);
+}
+
+.cc-3c-candle-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.4rem;
+    font-size: 0.74rem;
+}
+
+.cc-3c-dir-pill {
+    font-size: 0.67rem;
+    font-weight: 700;
+    padding: 0.12rem 0.42rem;
+    border-radius: 4px;
+}
+
+.cc-3c-dir-bull {
+    background: rgba(34, 197, 94, 0.2);
+    color: #4ade80;
+}
+
+.cc-3c-dir-bear {
+    background: rgba(239, 68, 68, 0.2);
+    color: #f87171;
+}
+
+.cc-3c-ohlc {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.2rem 0.5rem;
+    font-size: 0.72rem;
+    color: #cbd5e1;
+}
+
+.cc-3c-ohlc span {
+    color: #94a3b8;
+}
+
+.cc-3c-foot {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.69rem;
+    color: #94a3b8;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    padding-top: 0.25rem;
+}
+
+.cc-3c-indicators-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-top: 0.65rem;
+}
+
 @media (max-width: 1100px) {
     .cc-trade-signal-card,
     .cc-verdict-card,
@@ -3334,6 +3490,7 @@ body.cc-fullscreen-mode .cc-canvas-wrap {
 
 @media (max-width: 768px) {
     .cc-trade-signal-card,
+    .cc-3c-candles-row,
     .cc-verdict-card,
     .cc-detected-grid,
     .cc-guide-grid {
@@ -3358,10 +3515,12 @@ body.cc-fullscreen-mode .cc-canvas-wrap {
     }
 }
 
-/* SAMCO Web Embedded Tab (https://web.samco.in/) */
+/* SAMCO Web Embedded Tab & Fullscreen + Minimize (https://web.samco.in/) */
 .samco-web-card {
-    padding: 1rem 1.15rem;
+    padding: 0.85rem 1.05rem;
     border-color: rgba(16, 185, 129, 0.32);
+    display: flex;
+    flex-direction: column;
 }
 
 .samco-toolbar {
@@ -3369,26 +3528,36 @@ body.cc-fullscreen-mode .cc-canvas-wrap {
     flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
-    gap: 0.75rem;
-    margin-bottom: 0.65rem;
+    gap: 0.65rem;
+    margin-bottom: 0.55rem;
 }
 
 .samco-subtitle {
-    margin: 0.25rem 0 0;
-    font-size: 0.8rem;
+    margin: 0.18rem 0 0;
+    font-size: 0.76rem;
     color: var(--text-secondary);
+}
+
+.samco-mode-pill {
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 0.15rem 0.5rem;
+    border-radius: 5px;
+    background: rgba(251, 191, 36, 0.15);
+    border: 1px solid rgba(251, 191, 36, 0.4);
+    color: #fbbf24;
 }
 
 .samco-actions {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.4rem;
 }
 
 .samco-btn {
-    padding: 0.42rem 0.78rem;
-    font-size: 0.78rem;
+    padding: 0.36rem 0.68rem;
+    font-size: 0.75rem;
     font-weight: 600;
     border-radius: 7px;
     border: 1px solid rgba(16, 185, 129, 0.35);
@@ -3412,9 +3581,47 @@ body.cc-fullscreen-mode .cc-canvas-wrap {
     box-shadow: 0 0 12px rgba(16, 185, 129, 0.35);
 }
 
+.samco-minimize-btn {
+    padding: 0.36rem 0.75rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    border-radius: 7px;
+    border: 1px solid rgba(251, 191, 36, 0.55);
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.25), rgba(217, 119, 6, 0.22));
+    color: #fde68a;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    cursor: pointer;
+}
+
+.samco-minimize-btn:hover {
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+    color: #0f172a;
+}
+
+.samco-back-btn {
+    padding: 0.36rem 0.72rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    border-radius: 7px;
+    border: 1px solid rgba(56, 189, 248, 0.45);
+    background: rgba(56, 189, 248, 0.14);
+    color: #bae6fd;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    cursor: pointer;
+}
+
+.samco-back-btn:hover {
+    background: rgba(56, 189, 248, 0.28);
+    color: #ffffff;
+}
+
 .samco-ext-link {
-    padding: 0.42rem 0.78rem;
-    font-size: 0.78rem;
+    padding: 0.36rem 0.68rem;
+    font-size: 0.75rem;
     font-weight: 700;
     border-radius: 7px;
     border: 1px solid rgba(56, 189, 248, 0.45);
@@ -3434,28 +3641,29 @@ body.cc-fullscreen-mode .cc-canvas-wrap {
 .samco-login-tip {
     display: flex;
     align-items: center;
-    gap: 0.55rem;
-    padding: 0.5rem 0.8rem;
-    margin-bottom: 0.75rem;
+    gap: 0.5rem;
+    padding: 0.42rem 0.75rem;
+    margin-bottom: 0.55rem;
     border-radius: 8px;
     background: rgba(15, 23, 42, 0.75);
     border: 1px solid rgba(56, 189, 248, 0.25);
-    font-size: 0.78rem;
+    font-size: 0.75rem;
     color: #cbd5e1;
 }
 
 .samco-iframe-wrap {
     width: 100%;
-    height: 760px;
-    min-height: 620px;
+    height: calc(100vh - 205px);
+    min-height: 580px;
     border-radius: 10px;
     overflow: hidden;
     border: 1px solid rgba(148, 163, 184, 0.28);
     background: #0b1120;
+    flex: 1 1 auto;
 }
 
 .samco-iframe-wrap.samco-frame-expanded {
-    height: calc(100vh - 115px);
+    height: calc(100vh - 76px);
 }
 
 #samco-web-iframe {
@@ -3466,16 +3674,144 @@ body.cc-fullscreen-mode .cc-canvas-wrap {
     background: #ffffff;
 }
 
+/* Fullscreen fit when SAMCO Web tab is active */
+body.samco-fullscreen-mode {
+    overflow: hidden;
+}
+
+body.samco-fullscreen-mode #samco-web-tab-content:not(.hidden) {
+    position: fixed;
+    inset: 0;
+    z-index: 9000;
+    background: #070b14;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+body.samco-fullscreen-mode #samco-web-card {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    border-radius: 0;
+    border: none;
+    padding: 0.45rem 0.85rem;
+    background: #0b1120;
+    display: flex;
+    flex-direction: column;
+}
+
+body.samco-fullscreen-mode .samco-toolbar {
+    margin-bottom: 0.4rem;
+    flex-shrink: 0;
+}
+
+body.samco-fullscreen-mode .samco-subtitle,
+body.samco-fullscreen-mode #samco-login-tip {
+    display: none;
+}
+
+body.samco-fullscreen-mode .samco-iframe-wrap {
+    height: auto !important;
+    min-height: 0 !important;
+    flex: 1 1 auto;
+    border-radius: 8px;
+}
+
+/* Floating Minimized SAMCO Dock */
+.samco-minimized-dock {
+    position: fixed;
+    right: 18px;
+    bottom: 18px;
+    z-index: 9500;
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    padding: 0.6rem 0.85rem;
+    background: linear-gradient(135deg, rgba(15, 23, 42, 0.96), rgba(6, 78, 59, 0.92));
+    border: 1px solid rgba(52, 211, 153, 0.65);
+    border-radius: 12px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(10px);
+}
+
+.samco-dock-info {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+}
+
+.samco-dock-info strong {
+    display: block;
+    font-size: 0.82rem;
+    color: #ecfdf5;
+    line-height: 1.15;
+}
+
+.samco-dock-info small {
+    display: block;
+    font-size: 0.69rem;
+    color: #6ee7b7;
+}
+
+.samco-dock-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.samco-dock-btn {
+    border: none;
+    border-radius: 7px;
+    padding: 0.36rem 0.65rem;
+    font-size: 0.74rem;
+    font-weight: 700;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-family: var(--font-family);
+}
+
+.samco-dock-max {
+    background: linear-gradient(135deg, #10b981, #059669);
+    color: #ffffff;
+}
+
+.samco-dock-max:hover {
+    filter: brightness(1.1);
+}
+
+.samco-dock-close {
+    background: rgba(148, 163, 184, 0.16);
+    color: #cbd5e1;
+    padding: 0.36rem 0.5rem;
+}
+
+.samco-dock-close:hover {
+    background: rgba(239, 68, 68, 0.25);
+    color: #fca5a5;
+}
+
 @media (max-width: 768px) {
     .samco-web-card {
-        padding: 0.75rem;
+        padding: 0.65rem;
     }
 
     .samco-iframe-wrap {
-        height: 640px;
-        min-height: 520px;
+        height: 600px;
+        min-height: 480px;
+    }
+
+    .samco-minimized-dock {
+        left: 12px;
+        right: 12px;
+        bottom: 12px;
+        justify-content: space-between;
     }
 }
+
 
 
 
