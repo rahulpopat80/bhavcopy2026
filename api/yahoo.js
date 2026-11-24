@@ -4,6 +4,16 @@
 // Plus ?tick=1 fast quote/tail endpoint for 1-second live candle updates.
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+const tickMicroCache = new Map();
+
+function normalizeUpstreamSymbol(rawSym) {
+    const s = String(rawSym || '').toUpperCase().trim();
+    if (s === 'NIFTY' || s === 'NIFTY 50' || s === 'NIFTY50') return '^NSEI';
+    if (s === 'SENSEX' || s === 'BSE SENSEX' || s === 'BSESN') return '^BSESN';
+    if (s === 'BANKNIFTY' || s === 'BANK NIFTY' || s === 'NIFTY BANK') return '^NSEBANK';
+    const needsSuffix = !s.includes('.') && !s.includes('=') && !s.includes('^');
+    return needsSuffix ? `${s}.NS` : s;
+}
 
 function getIstDayAndMin(unixSec) {
     const istSec = unixSec + 19800;
@@ -160,12 +170,7 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'Missing symbol parameter' });
     }
 
-    const uppercaseSymbol = String(symbol).toUpperCase().trim();
-    const needsSuffix = !uppercaseSymbol.includes('.') &&
-                        !uppercaseSymbol.includes('=') &&
-                        !uppercaseSymbol.includes('^');
-
-    const nsSymbol = needsSuffix ? `${uppercaseSymbol}.NS` : uppercaseSymbol;
+    const nsSymbol = normalizeUpstreamSymbol(symbol);
 
     const validTimeframes = ['1m', '3m', '5m', '10m', '15m', '1d', '5d', '1w', '1mo', '1y'];
     const requestedInterval = validTimeframes.includes(String(rawInterval || '').toLowerCase())
@@ -209,9 +214,52 @@ export default async function handler(req, res) {
     };
 
     try {
-        // Fast 1-second live tick mode: tiny 1-day 1m payload + regularMarketPrice
+        // Fast sub-second live tick mode (250ms cache + Groww live index acceleration for NIFTY/SENSEX/BANKNIFTY)
         if (tick === '1') {
-            const response = await fetchYahooFromHosts('1d', '1m', 3500);
+            const cachedTick = tickMicroCache.get(nsSymbol);
+            if (cachedTick && (Date.now() - cachedTick.ts) < 250) {
+                return res.status(200).json(cachedTick.payload);
+            }
+
+            const growwMap = {
+                '^NSEI': { ex: 'NSE', seg: 'CASH', sym: 'NIFTY', name: 'NIFTY 50' },
+                '^BSESN': { ex: 'BSE', seg: 'CASH', sym: '1', name: 'SENSEX' },
+                '^NSEBANK': { ex: 'NSE', seg: 'CASH', sym: 'BANKNIFTY', name: 'BANK NIFTY' }
+            };
+
+            const growwCfg = growwMap[nsSymbol];
+            if (growwCfg) {
+                try {
+                    const gRes = await fetchWithTimeout(
+                        `https://groww.in/v1/api/stocks_data/v1/tr_live_indices/exchange/${growwCfg.ex}/segment/${growwCfg.seg}/${encodeURIComponent(growwCfg.sym)}/latest`,
+                        { headers: { 'User-Agent': UA, Accept: 'application/json' } },
+                        1800
+                    );
+                    if (gRes.ok) {
+                        const gd = await gRes.json();
+                        const gp = Number(gd.value ?? gd.indexIndicativePrice);
+                        if (Number.isFinite(gp) && gp > 0) {
+                            const gPrev = Number(gd.close);
+                            const gTs = gd.tsInMillis ? Math.floor(Number(gd.tsInMillis) > 1e12 ? Number(gd.tsInMillis) / 1000 : Number(gd.tsInMillis)) : Math.floor(Date.now() / 1000);
+                            const fastPayload = {
+                                tick: true,
+                                resolvedSymbol: nsSymbol,
+                                companyName: growwCfg.name,
+                                livePrice: gp,
+                                prevClose: Number.isFinite(gPrev) && gPrev > 0 ? gPrev : null,
+                                liveTime: gTs,
+                                liveVolume: 0,
+                                latestBar: { time: gTs, open: gp, high: gp, low: gp, close: gp, volume: 0 },
+                                recentBars: []
+                            };
+                            tickMicroCache.set(nsSymbol, { ts: Date.now(), payload: fastPayload });
+                            return res.status(200).json(fastPayload);
+                        }
+                    }
+                } catch (_) {}
+            }
+
+            const response = await fetchYahooFromHosts('1d', '1m', 3000);
             if (!response.ok) {
                 return res.status(response.status).json({ error: `Yahoo tick HTTP ${response.status}` });
             }
@@ -224,7 +272,7 @@ export default async function handler(req, res) {
             const liveTime = Number(meta.regularMarketTime) || (cleanBars.length > 0 ? cleanBars[cleanBars.length - 1].time : Math.floor(Date.now() / 1000));
             const liveVolume = Number(meta.regularMarketVolume || 0);
 
-            return res.status(200).json({
+            const tickPayload = {
                 tick: true,
                 resolvedSymbol: nsSymbol,
                 companyName: String(meta.longName || meta.shortName || '').trim(),
@@ -234,7 +282,9 @@ export default async function handler(req, res) {
                 liveVolume,
                 latestBar: cleanBars.length > 0 ? cleanBars[cleanBars.length - 1] : null,
                 recentBars: cleanBars.slice(-15)
-            });
+            };
+            tickMicroCache.set(nsSymbol, { ts: Date.now(), payload: tickPayload });
+            return res.status(200).json(tickPayload);
         }
 
         // Full timeframe chart mode

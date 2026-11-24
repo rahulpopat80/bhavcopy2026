@@ -9,6 +9,7 @@ const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
 
 let cachedPayload = null;
 let cachedAt = 0;
+let cachedSecondary = { nasdaq: null, hangseng: null, nseMarket: null, nifty50Breadth: null, nifty50Index: null, ts: 0 };
 
 // Cache discovered active MCX Gold/Silver expiries for 6 hours
 const mcxExpiryCache = {
@@ -234,39 +235,57 @@ export default async function handler(req, res) {
         return res.status(200).end();
     }
 
-    if (cachedPayload && (Date.now() - cachedAt) < 800) {
+    if (cachedPayload && (Date.now() - cachedAt) < 250) {
         return res.status(200).json(cachedPayload);
     }
+
+    const needSecondary = !cachedSecondary.ts || (Date.now() - cachedSecondary.ts) >= 900;
+
+    const corePromises = [
+        fetchGrowwIndex('NSE', 'CASH', 'NIFTY'),
+        fetchGrowwIndex('BSE', 'CASH', '1'),
+        fetchMcSensex(),
+        fetchMcxCommodity('GOLD'),
+        fetchMcxCommodity('SILVER')
+    ];
+
+    const secondaryPromises = needSecondary
+        ? [
+            fetchNseDeclineAndIndices(),
+            fetchYahooChart('^IXIC'),
+            fetchYahooChart('^HSI')
+        ]
+        : [];
 
     const [
         growwNiftyRes,
         growwSensexRes,
         mcSensexRes,
-        nseRes,
         mcxGoldRes,
-        mcxSilverRes,
-        nasdaqRes,
-        hangsengRes
-    ] = await Promise.allSettled([
-        fetchGrowwIndex('NSE', 'CASH', 'NIFTY'),
-        fetchGrowwIndex('BSE', 'CASH', '1'),
-        fetchMcSensex(),
-        fetchNseDeclineAndIndices(),
-        fetchMcxCommodity('GOLD'),
-        fetchMcxCommodity('SILVER'),
-        fetchYahooChart('^IXIC'),
-        fetchYahooChart('^HSI')
-    ]);
+        mcxSilverRes
+    ] = await Promise.allSettled(corePromises);
 
-    const nseData = nseRes.status === 'fulfilled' ? nseRes.value : {};
+    if (needSecondary) {
+        const [nseRes, nasdaqRes, hangsengRes] = await Promise.allSettled(secondaryPromises);
+        const nseData = nseRes.status === 'fulfilled' ? nseRes.value : {};
+        cachedSecondary = {
+            nseMarket: nseData.nseMarket || cachedSecondary.nseMarket,
+            nifty50Breadth: nseData.nifty50Breadth || cachedSecondary.nifty50Breadth,
+            nifty50Index: nseData.nifty50Index || cachedSecondary.nifty50Index,
+            nasdaq: nasdaqRes.status === 'fulfilled' ? { ...nasdaqRes.value, source: 'Yahoo Finance' } : cachedSecondary.nasdaq,
+            hangseng: hangsengRes.status === 'fulfilled' ? { ...hangsengRes.value, source: 'Yahoo Finance' } : cachedSecondary.hangseng,
+            ts: Date.now()
+        };
+    }
+
     const mcSensexData = mcSensexRes.status === 'fulfilled' ? mcSensexRes.value : {};
 
-    let nifty = growwNiftyRes.status === 'fulfilled' ? growwNiftyRes.value : (nseData.nifty50Index || null);
+    let nifty = growwNiftyRes.status === 'fulfilled' ? growwNiftyRes.value : (cachedSecondary.nifty50Index || null);
     let sensex = growwSensexRes.status === 'fulfilled' ? growwSensexRes.value : (mcSensexData.index || null);
     let gold = mcxGoldRes.status === 'fulfilled' ? mcxGoldRes.value : null;
     let silver = mcxSilverRes.status === 'fulfilled' ? mcxSilverRes.value : null;
-    let nasdaq = nasdaqRes.status === 'fulfilled' ? { ...nasdaqRes.value, source: 'Yahoo Finance' } : null;
-    let hangseng = hangsengRes.status === 'fulfilled' ? { ...hangsengRes.value, source: 'Yahoo Finance' } : null;
+    const nasdaq = cachedSecondary.nasdaq;
+    const hangseng = cachedSecondary.hangseng;
 
     // Last-resort Yahoo fallbacks only for any missing feed
     const fallbacks = [];
@@ -312,9 +331,9 @@ export default async function handler(req, res) {
         nasdaq,
         hangseng,
         breadth: {
-            nseMarket: nseData.nseMarket || null,
+            nseMarket: cachedSecondary.nseMarket || null,
             sensex30: mcSensexData.breadth || null,
-            nifty50: nseData.nifty50Breadth || null
+            nifty50: cachedSecondary.nifty50Breadth || null
         },
         updatedAt: new Date().toISOString()
     };

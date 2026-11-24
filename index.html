@@ -1288,12 +1288,12 @@
                             <i class="fa-solid fa-chart-column"></i> Candle Chart – કેન્ડલસ્ટિક, બોલિંગર બેન્ડ &amp; વોલ્યુમ પેટર્ન ગાઇડ
                         </h2>
                         <p class="card-desc" style="margin-bottom: 0; margin-top: 0.25rem;">
-                            1/3/5/10 મિનિટ તથા 1 દિવસ, 5 દિવસ, 1 અઠવાડિયું, 1 મહિનો, 1 વર્ષ કેન્ડલસ્ટિક (દર 1 સેકન્ડે Live અપડેટ) + Bollinger Bands + Volume માર્ગદર્શન.
+                            ડિફોલ્ટ NIFTY 50 (10 મિનિટ) + 1/3/5/10 મિનિટ, 1D/5D/1W/1M/1Y કેન્ડલસ્ટિક (સેકન્ડે 2-3 વખત Live અપડેટ) + Bollinger Bands, MA, RSI, MACD, Volume, VWAP. ચાર્ટ પર ડબલ-ક્લિક કરી નવી ટેબમાં ફુલ સ્ક્રીન જુઓ.
                         </p>
                     </div>
                     <div class="cc-controls">
                         <div class="cc-search-wrap">
-                            <input type="text" id="cc-symbol-input" list="cc-symbol-datalist" value="RELIANCE" placeholder="Symbol (e.g. RELIANCE, TCS, ^NSEI)" aria-label="Stock Symbol">
+                            <input type="text" id="cc-symbol-input" list="cc-symbol-datalist" value="NIFTY 50" placeholder="Symbol (e.g. NIFTY 50, SENSEX, BANK NIFTY, RELIANCE)" aria-label="Stock Symbol">
                             <datalist id="cc-symbol-datalist"></datalist>
                             <button type="button" id="cc-load-btn" class="btn btn-primary cc-load-btn">
                                 <i class="fa-solid fa-magnifying-glass-chart"></i> Chart જુઓ
@@ -1302,33 +1302,59 @@
                         <div class="cc-timeframe-group" id="cc-timeframe-group">
                             <button type="button" class="cc-tf-btn" data-tf="1m">1 મિનિટ</button>
                             <button type="button" class="cc-tf-btn" data-tf="3m">3 મિનિટ</button>
-                            <button type="button" class="cc-tf-btn active" data-tf="5m">5 મિનિટ</button>
-                            <button type="button" class="cc-tf-btn" data-tf="10m">10 મિનિટ</button>
+                            <button type="button" class="cc-tf-btn" data-tf="5m">5 મિનિટ</button>
+                            <button type="button" class="cc-tf-btn active" data-tf="10m">10 મિનિટ</button>
                             <button type="button" class="cc-tf-btn" data-tf="1d">1 દિવસ</button>
                             <button type="button" class="cc-tf-btn" data-tf="5d">5 દિવસ</button>
                             <button type="button" class="cc-tf-btn" data-tf="1w">1 અઠવાડિયું</button>
                             <button type="button" class="cc-tf-btn" data-tf="1mo">1 મહિનો</button>
                             <button type="button" class="cc-tf-btn" data-tf="1y">1 વર્ષ</button>
                         </div>
-                        <label class="cc-bb-label">
-                            <input type="checkbox" id="cc-bb-toggle" checked>
-                            <span>Bollinger Bands (20, 2)</span>
-                        </label>
-                        <span class="cp-live-pill" id="cc-live-badge"><span class="live-dot-green"></span> <span id="cc-live-time">1s Live</span></span>
+                        <span class="cp-live-pill" id="cc-live-badge"><span class="live-dot-green"></span> <span id="cc-live-time">Live 3x/s</span></span>
                     </div>
+                </div>
+
+                <!-- Indicator Toggles Bar (All 6 Indicators) -->
+                <div class="cc-indicator-bar" id="cc-indicator-bar">
+                    <span class="cc-ind-bar-label"><i class="fa-solid fa-sliders"></i> ઇન્ડિકેટર્સ:</span>
+                    <label class="cc-bb-label cc-ind-chk" style="color:#f472b6; border-color:rgba(244,114,182,0.35); background:rgba(244,114,182,0.08);">
+                        <input type="checkbox" id="cc-ind-ma" checked>
+                        <span>Moving Averages (EMA 9/21 &amp; SMA 50)</span>
+                    </label>
+                    <label class="cc-bb-label cc-ind-chk" style="color:#c084fc; border-color:rgba(192,132,252,0.35); background:rgba(192,132,252,0.08);">
+                        <input type="checkbox" id="cc-ind-rsi" checked>
+                        <span>RSI (14)</span>
+                    </label>
+                    <label class="cc-bb-label cc-ind-chk" style="color:#2dd4bf; border-color:rgba(45,212,191,0.35); background:rgba(45,212,191,0.08);">
+                        <input type="checkbox" id="cc-ind-macd" checked>
+                        <span>MACD (12,26,9)</span>
+                    </label>
+                    <label class="cc-bb-label cc-ind-chk">
+                        <input type="checkbox" id="cc-bb-toggle" checked>
+                        <span>Bollinger Bands (20,2)</span>
+                    </label>
+                    <label class="cc-bb-label cc-ind-chk" style="color:#a855f7; border-color:rgba(168,85,247,0.35); background:rgba(168,85,247,0.08);">
+                        <input type="checkbox" id="cc-ind-vol" checked>
+                        <span>Volume (વોલ્યુમ)</span>
+                    </label>
+                    <label class="cc-bb-label cc-ind-chk" style="color:#facc15; border-color:rgba(250,204,21,0.35); background:rgba(250,204,21,0.08);">
+                        <input type="checkbox" id="cc-ind-vwap" checked>
+                        <span>VWAP</span>
+                    </label>
                 </div>
 
                 <!-- Quick Stock / Index Picks -->
                 <div class="cc-quick-picks" id="cc-quick-picks">
                     <span class="cc-quick-label">ઝડપી પસંદગી:</span>
+                    <button type="button" class="cc-quick-btn active" data-sym="^NSEI">NIFTY 50</button>
+                    <button type="button" class="cc-quick-btn" data-sym="^BSESN">SENSEX</button>
+                    <button type="button" class="cc-quick-btn" data-sym="^NSEBANK">BANK NIFTY</button>
                     <button type="button" class="cc-quick-btn" data-sym="RELIANCE">RELIANCE</button>
                     <button type="button" class="cc-quick-btn" data-sym="TCS">TCS</button>
                     <button type="button" class="cc-quick-btn" data-sym="HDFCBANK">HDFCBANK</button>
                     <button type="button" class="cc-quick-btn" data-sym="SBIN">SBIN</button>
                     <button type="button" class="cc-quick-btn" data-sym="INFY">INFY</button>
                     <button type="button" class="cc-quick-btn" data-sym="ICICIBANK">ICICIBANK</button>
-                    <button type="button" class="cc-quick-btn" data-sym="^NSEI">NIFTY 50</button>
-                    <button type="button" class="cc-quick-btn" data-sym="^BSESN">SENSEX</button>
                 </div>
 
                 <!-- Future Price Direction Verdict (Bullish / Bearish + Volume + BB) -->
@@ -1347,7 +1373,7 @@
                             <strong id="cc-stat-close">--</strong>
                         </div>
                         <div class="cc-metric-box">
-                            <span>વોલ્યુમ vs સરેરાશ</span>
+                            <span>RSI (14) / MACD</span>
                             <strong id="cc-stat-vol">--</strong>
                         </div>
                         <div class="cc-metric-box">
@@ -1356,26 +1382,35 @@
                         </div>
                         <div class="cc-metric-box">
                             <span>ટાઇમફ્રેમ / સ્રોત</span>
-                            <strong id="cc-stat-meta">5m</strong>
+                            <strong id="cc-stat-meta">10m</strong>
                         </div>
                     </div>
                 </div>
 
-                <!-- Main Interactive Candlestick + Bollinger Bands + Volume Canvas -->
+                <!-- Main Interactive Candlestick + Indicators Canvas -->
                 <div class="cc-chart-shell">
                     <div class="cc-chart-company-bar" id="cc-company-banner">
                         <div class="cc-company-title-group">
-                            <span class="cc-company-symbol-pill" id="cc-banner-symbol">RELIANCE</span>
-                            <strong class="cc-company-full-name" id="cc-banner-name">Reliance Industries Ltd.</strong>
+                            <span class="cc-company-symbol-pill" id="cc-banner-symbol">^NSEI</span>
+                            <strong class="cc-company-full-name" id="cc-banner-name">NIFTY 50</strong>
                         </div>
-                        <span class="cc-company-tf-note" id="cc-banner-tf">5M • 1s Live</span>
+                        <div class="cc-banner-actions">
+                            <span class="cc-company-tf-note" id="cc-banner-tf">10M • Live 3x/s</span>
+                            <span class="cc-dblclick-hint" title="ચાર્ટ પર ડબલ-ક્લિક કરો"><i class="fa-solid fa-up-right-from-square"></i> Double-Click: Full Screen</span>
+                            <a id="cc-open-fullscreen-link" href="?fullscreenChart=1&symbol=%5ENSEI&interval=10m" target="_blank" rel="noopener noreferrer" class="cc-fullscreen-btn" title="નવી ટેબમાં ફુલ સ્ક્રીન ચાર્ટ ખોલો">
+                                <i class="fa-solid fa-expand"></i> Full Screen Tab
+                            </a>
+                        </div>
                     </div>
                     <div class="cc-legend-bar">
-                        <span><i class="fa-solid fa-square" style="color:#22c55e;"></i> Bullish Candle</span>
-                        <span><i class="fa-solid fa-square" style="color:#ef4444;"></i> Bearish Candle</span>
-                        <span><i class="fa-solid fa-minus" style="color:#38bdf8;"></i> BB Upper / Lower (20,2)</span>
-                        <span><i class="fa-solid fa-minus" style="color:#f59e0b;"></i> BB Middle (20 SMA)</span>
-                        <span><i class="fa-solid fa-chart-simple" style="color:#a855f7;"></i> Volume + 20-Avg</span>
+                        <span><i class="fa-solid fa-square" style="color:#22c55e;"></i> Bullish</span>
+                        <span><i class="fa-solid fa-square" style="color:#ef4444;"></i> Bearish</span>
+                        <span><i class="fa-solid fa-minus" style="color:#38bdf8;"></i> Bollinger Bands (20,2)</span>
+                        <span><i class="fa-solid fa-minus" style="color:#f472b6;"></i> EMA 9 / <span style="color:#2dd4bf;">EMA 21</span> / <span style="color:#a78bfa;">SMA 50</span></span>
+                        <span><i class="fa-solid fa-minus" style="color:#facc15;"></i> VWAP</span>
+                        <span><i class="fa-solid fa-chart-simple" style="color:#a855f7;"></i> Volume</span>
+                        <span><i class="fa-solid fa-wave-square" style="color:#c084fc;"></i> RSI(14)</span>
+                        <span><i class="fa-solid fa-chart-line" style="color:#38bdf8;"></i> MACD(12,26,9)</span>
                         <div class="cc-zoom-controls" data-target-canvas="candle-main-canvas">
                             <button type="button" class="cc-zoom-btn" data-action="pan-left" title="Scroll Left (પાછળ જુઓ)"><i class="fa-solid fa-chevron-left"></i></button>
                             <button type="button" class="cc-zoom-btn" data-action="pan-right" title="Scroll Right (આગળ જુઓ)"><i class="fa-solid fa-chevron-right"></i></button>
@@ -1383,10 +1418,67 @@
                             <button type="button" class="cc-zoom-btn" data-action="zoom-out" title="Zoom Out"><i class="fa-solid fa-minus"></i></button>
                             <button type="button" class="cc-zoom-btn" data-action="reset" title="Reset Zoom & Scroll">Reset</button>
                         </div>
-                        <span id="cc-hover-readout" class="cc-hover-readout">માઉસ/ટચ દ્વારા કેન્ડલ જુઓ (Scroll / Drag &amp; Zoom)</span>
+                        <span id="cc-hover-readout" class="cc-hover-readout">માઉસ/ટચ દ્વારા કેન્ડલ જુઓ (ડબલ-ક્લિક = નવી ટેબમાં ફુલ સ્ક્રીન)</span>
                     </div>
                     <div class="cc-canvas-wrap">
-                        <canvas id="candle-main-canvas"></canvas>
+                        <canvas id="candle-main-canvas" title="ડબલ-ક્લિક કરવાથી ચાર્ટ નવી ટેબમાં ફુલ સ્ક્રીનમાં ખૂલશે"></canvas>
+                    </div>
+                </div>
+
+                <!-- Indicator Explanation & Live Reading Table -->
+                <div class="cc-indicators-table-section" id="cc-indicators-guide-section">
+                    <h3 style="color:#fbbf24; margin-bottom:0.65rem; font-size:1rem;">
+                        <i class="fa-solid fa-sliders"></i> ચાર્ટ ઇન્ડિકેટર્સની સંપૂર્ણ માહિતી અને હાલની લાઇવ સ્થિતિ
+                    </h3>
+                    <div class="table-wrapper">
+                        <table class="cc-ind-info-table">
+                            <thead>
+                                <tr>
+                                    <th>ઇન્ડિકેટરનું નામ</th>
+                                    <th>મુખ્ય પ્રકાર</th>
+                                    <th>તે શું દર્શાવે છે? (કામગીરી)</th>
+                                    <th>હાલની લાઇવ સ્થિતિ</th>
+                                </tr>
+                            </thead>
+                            <tbody id="cc-ind-info-tbody">
+                                <tr>
+                                    <td><strong style="color:#f472b6;">Moving Averages (SMA / EMA)</strong><div style="font-size:0.72rem;color:#94a3b8;">EMA 9, EMA 21, SMA 50</div></td>
+                                    <td><span class="cc-ind-type-pill">ટ્રેન્ડ (Trend)</span></td>
+                                    <td>બજારની મુખ્ય દિશા (Up-trend કે Down-trend) અને ડાયનેમિક સપોર્ટ/રેઝિસ્ટન્સ.</td>
+                                    <td id="cc-ind-live-ma">--</td>
+                                </tr>
+                                <tr>
+                                    <td><strong style="color:#c084fc;">RSI (Relative Strength Index)</strong><div style="font-size:0.72rem;color:#94a3b8;">RSI (14 Period)</div></td>
+                                    <td><span class="cc-ind-type-pill">મોમેન્ટમ (Momentum)</span></td>
+                                    <td>શેર 'Overbought' (વધુ પડતી ખરીદી) છે કે 'Oversold' (વધુ પડતી વેચવાલી).</td>
+                                    <td id="cc-ind-live-rsi">--</td>
+                                </tr>
+                                <tr>
+                                    <td><strong style="color:#38bdf8;">MACD</strong><div style="font-size:0.72rem;color:#94a3b8;">MACD (12, 26, 9)</div></td>
+                                    <td><span class="cc-ind-type-pill">ટ્રેન્ડ અને મોમેન્ટમ</span></td>
+                                    <td>ટ્રેન્ડમાં થતા ફેરફાર અને ખરીદી/વેચાણના સિગ્નલ (Crossovers).</td>
+                                    <td id="cc-ind-live-macd">--</td>
+                                </tr>
+                                <tr>
+                                    <td><strong style="color:#38bdf8;">Bollinger Bands</strong><div style="font-size:0.72rem;color:#94a3b8;">BB (20, 2)</div></td>
+                                    <td><span class="cc-ind-type-pill">વોલેટિલિટી (Volatility)</span></td>
+                                    <td>ભાવમાં થતી વધઘટની રેન્જ અને સંભવિત બ્રેકઆઉટ (Breakout).</td>
+                                    <td id="cc-ind-live-bb">--</td>
+                                </tr>
+                                <tr>
+                                    <td><strong style="color:#a855f7;">Volume (વોલ્યુમ)</strong><div style="font-size:0.72rem;color:#94a3b8;">Volume + 20-Bar Avg</div></td>
+                                    <td><span class="cc-ind-type-pill">પુષ્ટિ (Confirmation)</span></td>
+                                    <td>કોઈ પણ કેન્ડલ પેટર્ન પાછળ ખરીદદારો કે વેચવાલની કેટલી તાકાત છે.</td>
+                                    <td id="cc-ind-live-vol">--</td>
+                                </tr>
+                                <tr>
+                                    <td><strong style="color:#facc15;">VWAP</strong><div style="font-size:0.72rem;color:#94a3b8;">Session Anchored (09:15–15:30)</div></td>
+                                    <td><span class="cc-ind-type-pill">ઇન્ટ્રાડે (Intraday)</span></td>
+                                    <td>દિવસ દરમિયાન શેરનો સરેરાશ ભાવ (ખાસ કરીને ઇન્ટ્રાડે ટ્રેડર્સ માટે ખૂબ ઉપયોગી).</td>
+                                    <td id="cc-ind-live-vwap">--</td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
 

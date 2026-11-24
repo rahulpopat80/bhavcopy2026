@@ -203,7 +203,7 @@ function startDashboardAfterLogin() {
     // Load Master File from Local Storage after painting UI, then refresh from Cloud in background
     loadMasterOnStartup();
 
-    // Live 1-second feed for NIFTY 50, SENSEX, GOLD/10g, SILVER/1kg, NASDAQ, SHANGHAI & Advance/Decline
+    // Live 2-3x/sec (~350ms) feed for NIFTY 50, SENSEX, GOLD/10g, SILVER/1kg, NASDAQ, HANG SENG & Advance/Decline
     if (typeof fetchLiveMarket1s === 'function') {
         fetchLiveMarket1s();
     }
@@ -212,7 +212,7 @@ function startDashboardAfterLogin() {
             if (typeof fetchLiveMarket1s === 'function') {
                 fetchLiveMarket1s();
             }
-        }, 1000);
+        }, 350);
     }
 
     // Fetch segment indices (Large/Mid/Small Cap leader) every 30s without overwriting 1s header prices
@@ -294,13 +294,13 @@ function startDashboardAfterLogin() {
         }, 1000);
     }
 
-    // 1-second live candle updater for active Candle Chart tab or open Research/Price modals
+    // Live 2-3x/sec (~350ms) candle updater for active Candle Chart tab or open Research/Price modals
     if (!candle1sTimer) {
         candle1sTimer = setInterval(() => {
             if (typeof refreshVisibleCandles1s === 'function') {
                 refreshVisibleCandles1s();
             }
-        }, 1000);
+        }, 350);
     }
 
     // Register Service Worker after dashboard startup so login screen paint stays immediate
@@ -332,12 +332,54 @@ function initEvents() {
         })
         : Promise.resolve(null);
 
+    // Check Fullscreen Chart New-Tab Mode (?fullscreenChart=1&symbol=...&interval=...)
+    const urlParams = new URLSearchParams(window.location.search);
+    const isFullscreenChartMode = urlParams.get('fullscreenChart') === '1';
+
     // Login Screen Check
     const sessionLoggedIn = sessionStorage.getItem('isLoggedIn');
     const loginOverlay = document.getElementById('login-screen');
     const mainApp = document.getElementById('main-app');
-    
-    if (sessionLoggedIn === 'true') {
+
+    if (isFullscreenChartMode) {
+        if (loginOverlay) loginOverlay.classList.add('hidden');
+        if (mainApp) mainApp.classList.remove('hidden');
+        document.body.classList.add('cc-fullscreen-mode');
+        setTimeout(() => {
+            const fsSym = urlParams.get('symbol') || '^NSEI';
+            const fsTf = urlParams.get('interval') || '10m';
+            const fsInd = urlParams.get('ind');
+            candleTabState.symbol = normalizeCandleSymbolInput(fsSym);
+            candleTabState.interval = VALID_CANDLE_TFS.includes(fsTf) ? fsTf : '10m';
+            if (fsInd) {
+                const activeSet = new Set(fsInd.split(',').filter(Boolean));
+                ['ma', 'rsi', 'macd', 'bb', 'vol', 'vwap'].forEach(k => {
+                    candleTabState.indicators[k] = activeSet.has(k);
+                });
+                candleTabState.showBB = candleTabState.indicators.bb;
+            }
+            document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+            const tabCC = document.getElementById('tab-candle-chart');
+            const ccPane = document.getElementById('candle-chart-tab-content');
+            document.querySelectorAll('#main-app > div[id$="-tab-content"]').forEach(el => el.classList.add('hidden'));
+            if (tabCC) tabCC.classList.add('active');
+            if (ccPane) ccPane.classList.remove('hidden');
+
+            if (typeof initCandleChartTab === 'function') initCandleChartTab();
+            if (typeof loadCandleChartTab === 'function') loadCandleChartTab(true);
+            if (typeof fetchLiveMarket1s === 'function') fetchLiveMarket1s();
+            if (!liveMarket1sTimer) {
+                liveMarket1sTimer = setInterval(() => {
+                    if (typeof fetchLiveMarket1s === 'function') fetchLiveMarket1s();
+                }, 350);
+            }
+            if (!candle1sTimer) {
+                candle1sTimer = setInterval(() => {
+                    if (typeof refreshVisibleCandles1s === 'function') refreshVisibleCandles1s();
+                }, 350);
+            }
+        }, 0);
+    } else if (sessionLoggedIn === 'true') {
         loginOverlay.classList.add('hidden');
         mainApp.classList.remove('hidden');
         setTimeout(startDashboardAfterLogin, 0);
@@ -7333,8 +7375,9 @@ const COMPANY_NAME_DEFAULTS = {
     ITC: 'ITC Limited',
     TATAMOTORS: 'Tata Motors Limited',
     BHARTIARTL: 'Bharti Airtel Limited',
-    '^NSEI': 'NIFTY 50 Index',
-    '^BSESN': 'BSE SENSEX Index'
+    '^NSEI': 'NIFTY 50',
+    '^BSESN': 'SENSEX',
+    '^NSEBANK': 'BANK NIFTY'
 };
 const companyNameCache = new Map(Object.entries(COMPANY_NAME_DEFAULTS));
 const modalChartState = {
@@ -7342,18 +7385,39 @@ const modalChartState = {
     cm: { symbol: '', companyName: '', interval: '5m', showBB: true, fallback: [], candles: [], visibleStartTime: null }
 };
 const candleTabState = {
-    symbol: 'RELIANCE',
-    companyName: 'Reliance Industries Limited',
-    interval: '5m',
+    symbol: '^NSEI',
+    companyName: 'NIFTY 50',
+    interval: '10m',
     showBB: true,
+    indicators: {
+        ma: true,
+        rsi: true,
+        macd: true,
+        bb: true,
+        vol: true,
+        vwap: true
+    },
     candles: [],
     visibleStartTime: null,
     guideFilter: 'all',
     initialized: false
 };
 
+function normalizeCandleSymbolInput(rawSym) {
+    const s = String(rawSym || '').trim().toUpperCase();
+    if (!s) return '^NSEI';
+    if (s === 'NIFTY' || s === 'NIFTY 50' || s === 'NIFTY50' || s === '^NSEI') return '^NSEI';
+    if (s === 'SENSEX' || s === 'BSE SENSEX' || s === 'BSESN' || s === '^BSESN') return '^BSESN';
+    if (s === 'BANKNIFTY' || s === 'BANK NIFTY' || s === 'NIFTY BANK' || s === '^NSEBANK') return '^NSEBANK';
+    return s;
+}
+
 function resolveCandleCompanyName(symbol, apiName = '') {
-    const clean = String(symbol || '').trim().toUpperCase();
+    const clean = normalizeCandleSymbolInput(symbol);
+    if (clean === '^NSEI') return 'NIFTY 50';
+    if (clean === '^BSESN') return 'SENSEX';
+    if (clean === '^NSEBANK') return 'BANK NIFTY';
+
     const cleanedApi = String(apiName || '').trim();
     if (cleanedApi) {
         companyNameCache.set(clean, cleanedApi);
@@ -7370,6 +7434,30 @@ function resolveCandleCompanyName(symbol, apiName = '') {
         }
     }
     return clean;
+}
+
+function buildCandleFullscreenUrl(symbol, interval, indicators) {
+    const params = new URLSearchParams();
+    params.set('fullscreenChart', '1');
+    params.set('symbol', symbol || '^NSEI');
+    params.set('interval', interval || '10m');
+    if (indicators) {
+        const active = Object.entries(indicators).filter(([, v]) => v).map(([k]) => k).join(',');
+        params.set('ind', active || 'bb');
+    }
+    return `${window.location.pathname}?${params.toString()}`;
+}
+
+function openCandleChartFullscreenTab(symbol, interval, indicators) {
+    const targetUrl = buildCandleFullscreenUrl(symbol, interval, indicators);
+    const a = document.createElement('a');
+    a.href = targetUrl;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
 }
 
 function formatCandleLabel(unixSec, tf) {
@@ -7402,6 +7490,7 @@ function getBucketSecondsForTf(tf) {
 
 function getDefaultMaxBarsForTf(tf, isModal = false) {
     switch (tf) {
+        case '10m': return isModal ? 60 : 78;
         case '1d': return 90;
         case '5d': return isModal ? 125 : 135;
         case '1w': return isModal ? 95 : 110;
@@ -7411,12 +7500,12 @@ function getDefaultMaxBarsForTf(tf, isModal = false) {
     }
 }
 
-async function fetchCandleSeries(symbol, interval = '5m', forceRefresh = false) {
-    const cleanSym = String(symbol || 'RELIANCE').trim().toUpperCase();
-    const tf = VALID_CANDLE_TFS.includes(interval) ? interval : '5m';
+async function fetchCandleSeries(symbol, interval = '10m', forceRefresh = false) {
+    const cleanSym = normalizeCandleSymbolInput(symbol);
+    const tf = VALID_CANDLE_TFS.includes(interval) ? interval : '10m';
     const cacheKey = `${cleanSym}:${tf}`;
     const cached = candleSeriesCache.get(cacheKey);
-    if (!forceRefresh && cached && (Date.now() - cached.ts) < 3000) {
+    if (!forceRefresh && cached && (Date.now() - cached.ts) < 2500) {
         return cached;
     }
 
@@ -7442,6 +7531,119 @@ async function fetchCandleSeries(symbol, interval = '5m', forceRefresh = false) 
     };
     candleSeriesCache.set(cacheKey, payload);
     return payload;
+}
+
+function computeSMAValues(values, period) {
+    const out = new Array(values.length).fill(null);
+    if (period <= 0) return out;
+    let sum = 0;
+    for (let i = 0; i < values.length; i++) {
+        sum += values[i];
+        if (i >= period) sum -= values[i - period];
+        if (i >= period - 1) out[i] = sum / period;
+    }
+    return out;
+}
+
+function computeEMAValues(values, period) {
+    const out = new Array(values.length).fill(null);
+    if (values.length < period || period <= 0) return out;
+    const k = 2 / (period + 1);
+    let sum = 0;
+    for (let i = 0; i < period; i++) sum += values[i];
+    let ema = sum / period;
+    out[period - 1] = ema;
+    for (let i = period; i < values.length; i++) {
+        ema = (values[i] - ema) * k + ema;
+        out[i] = ema;
+    }
+    return out;
+}
+
+function computeRSIValues(candles, period = 14) {
+    const out = new Array(candles.length).fill(null);
+    if (candles.length <= period) return out;
+    let avgGain = 0;
+    let avgLoss = 0;
+    for (let i = 1; i <= period; i++) {
+        const chg = candles[i].close - candles[i - 1].close;
+        if (chg > 0) avgGain += chg;
+        else avgLoss -= chg;
+    }
+    avgGain /= period;
+    avgLoss /= period;
+    out[period] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+
+    for (let i = period + 1; i < candles.length; i++) {
+        const chg = candles[i].close - candles[i - 1].close;
+        const gain = chg > 0 ? chg : 0;
+        const loss = chg < 0 ? -chg : 0;
+        avgGain = (avgGain * (period - 1) + gain) / period;
+        avgLoss = (avgLoss * (period - 1) + loss) / period;
+        out[i] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+    }
+    return out;
+}
+
+function computeMACDValues(candles, fast = 12, slow = 26, signalPeriod = 9) {
+    const closes = candles.map(c => c.close);
+    const emaFast = computeEMAValues(closes, fast);
+    const emaSlow = computeEMAValues(closes, slow);
+    const macd = new Array(candles.length).fill(null);
+    const macdValid = [];
+    const macdValidIdx = [];
+
+    for (let i = 0; i < candles.length; i++) {
+        if (emaFast[i] !== null && emaSlow[i] !== null) {
+            const val = emaFast[i] - emaSlow[i];
+            macd[i] = val;
+            macdValid.push(val);
+            macdValidIdx.push(i);
+        }
+    }
+
+    const sigArr = computeEMAValues(macdValid, signalPeriod);
+    const signal = new Array(candles.length).fill(null);
+    const hist = new Array(candles.length).fill(null);
+    for (let j = 0; j < macdValidIdx.length; j++) {
+        const idx = macdValidIdx[j];
+        if (sigArr[j] !== null) {
+            signal[idx] = sigArr[j];
+            hist[idx] = macd[idx] - sigArr[j];
+        }
+    }
+    return { macd, signal, hist };
+}
+
+function computeSessionVWAP(candles) {
+    const out = new Array(candles.length).fill(null);
+    let curDayKey = null;
+    let cumTPV = 0;
+    let cumV = 0;
+    let cumTP = 0;
+    let count = 0;
+
+    for (let i = 0; i < candles.length; i++) {
+        const c = candles[i];
+        const dayKey = Math.floor((c.time + 19800) / 86400);
+        if (dayKey !== curDayKey) {
+            curDayKey = dayKey;
+            cumTPV = 0;
+            cumV = 0;
+            cumTP = 0;
+            count = 0;
+        }
+        const tp = (c.high + c.low + c.close) / 3;
+        const vol = Number(c.volume || 0);
+        cumTP += tp;
+        count += 1;
+        if (vol > 0) {
+            cumTPV += tp * vol;
+            cumV += vol;
+        }
+        out[i] = cumV > 0 ? cumTPV / cumV : cumTP / Math.max(1, count);
+    }
+    return out;
 }
 
 function computeBollingerBands(candles, period = 20, mult = 2) {
@@ -7725,10 +7927,15 @@ function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
 
     let candles = [];
     let bb = { upper: [], middle: [], lower: [] };
+    let maData = { ema9: [], ema21: [], sma50: [] };
+    let vwap = [];
+    let rsi = [];
+    let macdData = { macd: [], signal: [], hist: [] };
     let volAvg = [];
     let markers = [];
     let analysis = null;
     let showBB = true;
+    let indFlags = { ma: false, rsi: false, macd: false, vol: true, vwap: false, bb: true };
     let slotCount = 0;
 
     const getDefaultBounds = (sourceCandles, opts) => {
@@ -7750,9 +7957,31 @@ function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
 
     const recomputeView = (sourceCandles, opts) => {
         const N = sourceCandles.length;
+        const closesFull = sourceCandles.map(c => c.close);
         const bbFull = computeBollingerBands(sourceCandles, 20, 2);
+        const ema9Full = computeEMAValues(closesFull, 9);
+        const ema21Full = computeEMAValues(closesFull, 21);
+        const sma50Full = computeSMAValues(closesFull, 50);
+        const vwapFull = computeSessionVWAP(sourceCandles);
+        const rsiFull = computeRSIValues(sourceCandles, 14);
+        const macdFull = computeMACDValues(sourceCandles, 12, 26, 9);
         const volAvgFull = computeVolumeSma(sourceCandles, 20);
         analysis = detectCandlestickPatterns(sourceCandles, bbFull, volAvgFull);
+
+        // Attach latest technical indicator summary to analysis for UI table
+        const lastIdx = N - 1;
+        analysis.indicators = {
+            close: sourceCandles[lastIdx]?.close ?? null,
+            ema9: ema9Full[lastIdx] ?? null,
+            ema21: ema21Full[lastIdx] ?? null,
+            sma50: sma50Full[lastIdx] ?? null,
+            vwap: vwapFull[lastIdx] ?? null,
+            rsi: rsiFull[lastIdx] ?? null,
+            macd: macdFull.macd[lastIdx] ?? null,
+            macdSignal: macdFull.signal[lastIdx] ?? null,
+            macdHist: macdFull.hist[lastIdx] ?? null,
+            hasRealVolume: sourceCandles.some(c => c.volume > 0)
+        };
 
         if (!userModifiedView) {
             const b = getDefaultBounds(sourceCandles, opts);
@@ -7779,9 +8008,31 @@ function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
             middle: bbFull.middle.slice(startIdx, endIdx),
             lower: bbFull.lower.slice(startIdx, endIdx)
         };
+        maData = {
+            ema9: ema9Full.slice(startIdx, endIdx),
+            ema21: ema21Full.slice(startIdx, endIdx),
+            sma50: sma50Full.slice(startIdx, endIdx)
+        };
+        vwap = vwapFull.slice(startIdx, endIdx);
+        rsi = rsiFull.slice(startIdx, endIdx);
+        macdData = {
+            macd: macdFull.macd.slice(startIdx, endIdx),
+            signal: macdFull.signal.slice(startIdx, endIdx),
+            hist: macdFull.hist.slice(startIdx, endIdx)
+        };
         volAvg = volAvgFull.slice(startIdx, endIdx);
         markers = analysis.markers.slice(startIdx, endIdx);
-        showBB = opts.showBB !== false;
+
+        const reqInd = opts.indicators || {};
+        showBB = reqInd.bb !== undefined ? Boolean(reqInd.bb) : (opts.showBB !== false);
+        indFlags = {
+            bb: showBB,
+            ma: Boolean(reqInd.ma),
+            rsi: Boolean(reqInd.rsi),
+            macd: Boolean(reqInd.macd),
+            vol: reqInd.vol !== undefined ? Boolean(reqInd.vol) : true,
+            vwap: Boolean(reqInd.vwap)
+        };
 
         // Reserve full 09:15 -> 15:30 (75 x 5m = 375 mins) slot timeline on 1D default view
         if (opts.interval === '1d' && !userModifiedView && candles.length > 0 && candles.length < 75) {
@@ -7802,7 +8053,7 @@ function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
         if (!canvas.parentElement) return;
         const rect = canvas.parentElement.getBoundingClientRect();
         const width = Math.max(280, Math.floor(rect.width || 600));
-        const height = Math.max(180, Math.floor(rect.height || 320));
+        const height = Math.max(200, Math.floor(rect.height || 360));
         const dpr = Math.min(window.devicePixelRatio || 1, 2);
 
         if (canvas.width !== width * dpr || canvas.height !== height * dpr) {
@@ -7813,45 +8064,111 @@ function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
         const hasChartHeader = Boolean(currentOptions.symbol || currentOptions.companyName);
+        const isCompact = height < 310;
         const padLeft = 10;
-        const padRight = 64;
-        const padTop = hasChartHeader ? 34 : 14;
+        const padRight = 68;
+        const padTop = hasChartHeader ? (isCompact ? 34 : 58) : 14;
         const padBottom = 26;
         const plotW = Math.max(80, width - padLeft - padRight);
         const totalPlotH = Math.max(100, height - padTop - padBottom);
-        const hasVolume = candles.some(c => c.volume > 0);
-        const priceH = hasVolume ? totalPlotH * 0.72 : totalPlotH;
-        const volGap = hasVolume ? 10 : 0;
-        const volTop = padTop + priceH + volGap;
-        const volH = hasVolume ? Math.max(24, totalPlotH - priceH - volGap) : 0;
+
+        const hasVolumeData = candles.some(c => c.volume > 0);
+        const showVolPane = indFlags.vol && (hasVolumeData || !isCompact);
+        const showRsiPane = indFlags.rsi && !isCompact;
+        const showMacdPane = indFlags.macd && !isCompact;
+
+        // Allocate clean vertical pane heights across active panels
+        const subPaneGap = 8;
+        const subWeights = [];
+        if (showVolPane) subWeights.push({ key: 'vol', ratio: hasVolumeData ? 0.14 : 0.08 });
+        if (showRsiPane) subWeights.push({ key: 'rsi', ratio: 0.16 });
+        if (showMacdPane) subWeights.push({ key: 'macd', ratio: 0.16 });
+
+        const totalSubRatio = subWeights.reduce((s, x) => s + x.ratio, 0);
+        const totalGaps = subWeights.length * subPaneGap;
+        const usableH = Math.max(80, totalPlotH - totalGaps);
+        const priceH = usableH * Math.max(0.46, 1 - totalSubRatio);
+
+        const paneBoxes = {};
+        let curY = padTop + priceH;
+        for (const sp of subWeights) {
+            curY += subPaneGap;
+            const h = usableH * sp.ratio;
+            paneBoxes[sp.key] = { top: curY, height: h };
+            curY += h;
+        }
 
         // Clear background
         ctx.fillStyle = '#070c17';
         ctx.fillRect(0, 0, width, height);
 
-        // Draw Company Name & Symbol badge cleanly inside the top-left of the chart
+        // Large Script Name & Active Indicators Overlay directly inside the chart
         if (hasChartHeader) {
             const symLbl = String(currentOptions.symbol || '').trim().toUpperCase();
             const compLbl = String(currentOptions.companyName || '').trim();
-            const tfLbl = currentOptions.interval ? ` • ${String(currentOptions.interval).toUpperCase()}` : '';
-            const headerText = compLbl && compLbl.toUpperCase() !== symLbl
-                ? `${compLbl} (${symLbl})${tfLbl}`
-                : `${symLbl}${tfLbl}`;
+            const tfLbl = currentOptions.interval ? String(currentOptions.interval).toUpperCase() : '';
+            const lastBar = candles[candles.length - 1];
+            const lastPriceStr = lastBar ? `  ₹${lastBar.close.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '';
+            const primaryName = compLbl || symLbl;
+            const subTag = (compLbl && compLbl.toUpperCase() !== symLbl) ? ` (${symLbl})` : '';
+            const titleText = `${primaryName}${subTag}  •  ${tfLbl}${lastPriceStr}`;
+
             ctx.save();
-            ctx.font = 'bold 12px Outfit, sans-serif';
-            const textW = Math.min(plotW - 12, ctx.measureText(headerText).width + 18);
-            ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
-            ctx.strokeStyle = 'rgba(56, 189, 248, 0.35)';
-            ctx.lineWidth = 1;
-            ctx.fillRect(padLeft + 2, 6, textW, 21);
-            ctx.strokeRect(padLeft + 2, 6, textW, 21);
-            ctx.fillStyle = '#f8fafc';
+            ctx.font = isCompact ? '800 14px Outfit, sans-serif' : '800 19px Outfit, sans-serif';
+            const boxH = isCompact ? 24 : 30;
+            const textW = Math.min(plotW - 8, ctx.measureText(titleText).width + 24);
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.90)';
+            ctx.strokeStyle = 'rgba(251, 191, 36, 0.55)';
+            ctx.lineWidth = 1.2;
+            ctx.fillRect(padLeft + 2, 5, textW, boxH);
+            ctx.strokeRect(padLeft + 2, 5, textW, boxH);
+            ctx.fillStyle = '#ffffff';
             ctx.textAlign = 'left';
-            ctx.fillText(headerText, padLeft + 10, 20.5, plotW - 24);
+            ctx.fillText(titleText, padLeft + 12, isCompact ? 21 : 26.5, plotW - 24);
+
+            // Second line: Named Active Indicators + live values directly inside chart
+            if (!isCompact) {
+                const items = [];
+                if (indFlags.bb) items.push({ label: 'Bollinger Bands(20,2)', col: '#38bdf8' });
+                if (indFlags.ma) {
+                    const e9 = maData.ema9[maData.ema9.length - 1];
+                    const e21 = maData.ema21[maData.ema21.length - 1];
+                    items.push({ label: `EMA9:${e9 ? e9.toFixed(1) : '--'} EMA21:${e21 ? e21.toFixed(1) : '--'} SMA50`, col: '#f472b6' });
+                }
+                if (indFlags.vwap) {
+                    const vw = vwap[vwap.length - 1];
+                    items.push({ label: `VWAP:${vw ? vw.toFixed(1) : '--'}`, col: '#facc15' });
+                }
+                if (indFlags.vol) items.push({ label: 'Volume', col: '#a855f7' });
+                if (indFlags.rsi) {
+                    const rv = rsi[rsi.length - 1];
+                    items.push({ label: `RSI(14):${rv !== null && rv !== undefined ? rv.toFixed(1) : '--'}`, col: '#c084fc' });
+                }
+                if (indFlags.macd) {
+                    const mv = macdData.macd[macdData.macd.length - 1];
+                    const sv = macdData.signal[macdData.signal.length - 1];
+                    items.push({ label: `MACD:${mv !== null && mv !== undefined ? mv.toFixed(1) : '--'}/${sv !== null && sv !== undefined ? sv.toFixed(1) : '--'}`, col: '#38bdf8' });
+                }
+
+                let lx = padLeft + 4;
+                const ly = 48;
+                ctx.font = '600 11px Outfit, sans-serif';
+                for (const it of items) {
+                    const segW = ctx.measureText(it.label).width + 16;
+                    if (lx + segW > padLeft + plotW) break;
+                    ctx.fillStyle = it.col;
+                    ctx.beginPath();
+                    ctx.arc(lx + 4, ly - 3.5, 3, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = '#cbd5e1';
+                    ctx.fillText(it.label, lx + 11, ly);
+                    lx += segW;
+                }
+            }
             ctx.restore();
         }
 
-        // Compute Y range across visible candles & Bollinger bands
+        // Compute Y range across visible candles & active overlay indicators
         let minP = Infinity;
         let maxP = -Infinity;
         let maxV = 0;
@@ -7863,6 +8180,15 @@ function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
             if (showBB) {
                 if (bb.lower[i] !== null) minP = Math.min(minP, bb.lower[i]);
                 if (bb.upper[i] !== null) maxP = Math.max(maxP, bb.upper[i]);
+            }
+            if (indFlags.ma) {
+                if (maData.ema9[i] !== null) { minP = Math.min(minP, maData.ema9[i]); maxP = Math.max(maxP, maData.ema9[i]); }
+                if (maData.ema21[i] !== null) { minP = Math.min(minP, maData.ema21[i]); maxP = Math.max(maxP, maData.ema21[i]); }
+                if (maData.sma50[i] !== null) { minP = Math.min(minP, maData.sma50[i]); maxP = Math.max(maxP, maData.sma50[i]); }
+            }
+            if (indFlags.vwap && vwap[i] !== null) {
+                minP = Math.min(minP, vwap[i]);
+                maxP = Math.max(maxP, vwap[i]);
             }
             if (c.volume > maxV) maxV = c.volume;
         }
@@ -7896,6 +8222,24 @@ function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
             ctx.fillText('₹' + val.toFixed(val >= 1000 ? 0 : 2), padLeft + plotW + 6, y + 4);
         }
 
+        const drawOverlayLine = (series, color, lineWidth = 1.4, dashed = false) => {
+            ctx.save();
+            ctx.strokeStyle = color;
+            ctx.lineWidth = lineWidth;
+            if (dashed) ctx.setLineDash([4, 4]);
+            ctx.beginPath();
+            let started = false;
+            for (let i = 0; i < candles.length; i++) {
+                if (series[i] === null || series[i] === undefined) continue;
+                const x = padLeft + (i + 0.5) * stepX;
+                const y = priceToY(series[i]);
+                if (!started) { ctx.moveTo(x, y); started = true; }
+                else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+            ctx.restore();
+        };
+
         // Bollinger Bands fill + Upper/Mid/Lower lines
         if (showBB) {
             const validIndices = [];
@@ -7921,37 +8265,30 @@ function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
                 ctx.fill();
             }
 
-            const drawLine = (series, color, dashed = false) => {
-                ctx.save();
-                ctx.strokeStyle = color;
-                ctx.lineWidth = 1.4;
-                if (dashed) ctx.setLineDash([4, 4]);
-                ctx.beginPath();
-                let started = false;
-                for (let i = 0; i < candles.length; i++) {
-                    if (series[i] === null) continue;
-                    const x = padLeft + (i + 0.5) * stepX;
-                    const y = priceToY(series[i]);
-                    if (!started) { ctx.moveTo(x, y); started = true; }
-                    else ctx.lineTo(x, y);
-                }
-                ctx.stroke();
-                ctx.restore();
-            };
-
-            drawLine(bb.upper, '#38bdf8', false);
-            drawLine(bb.middle, '#f59e0b', true);
-            drawLine(bb.lower, '#38bdf8', false);
+            drawOverlayLine(bb.upper, '#38bdf8', 1.3, false);
+            drawOverlayLine(bb.middle, '#f59e0b', 1.3, true);
+            drawOverlayLine(bb.lower, '#38bdf8', 1.3, false);
         }
 
-        // Draw Candlesticks + Volume Bars
+        // Moving Averages (EMA 9, EMA 21, SMA 50)
+        if (indFlags.ma) {
+            drawOverlayLine(maData.sma50, '#a78bfa', 1.4, false);
+            drawOverlayLine(maData.ema21, '#2dd4bf', 1.4, false);
+            drawOverlayLine(maData.ema9, '#f472b6', 1.4, false);
+        }
+
+        // Session VWAP
+        if (indFlags.vwap) {
+            drawOverlayLine(vwap, '#facc15', 1.7, false);
+        }
+
+        // Draw Candlesticks
         for (let i = 0; i < candles.length; i++) {
             const c = candles[i];
             const cx = padLeft + (i + 0.5) * stepX;
             const isUp = c.close >= c.open;
             const col = isUp ? '#22c55e' : '#ef4444';
 
-            // Wick
             ctx.strokeStyle = col;
             ctx.lineWidth = stepX < 4 ? 1 : 1.2;
             ctx.beginPath();
@@ -7959,7 +8296,6 @@ function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
             ctx.lineTo(cx, priceToY(c.low));
             ctx.stroke();
 
-            // Body
             const yOpen = priceToY(c.open);
             const yClose = priceToY(c.close);
             const bodyTop = Math.min(yOpen, yClose);
@@ -7967,23 +8303,15 @@ function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
             ctx.fillStyle = col;
             ctx.fillRect(cx - candleW / 2, bodyTop, candleW, bodyH);
 
-            // Pattern Marker badge on candle
             const mk = markers[i];
             if (mk) {
                 const isBullMk = mk.direction === 'BULLISH';
                 const isBearMk = mk.direction === 'BEARISH';
                 ctx.fillStyle = isBullMk ? '#10b981' : (isBearMk ? '#ef4444' : '#f59e0b');
-                const my = isBullMk ? Math.min(height - 28, priceToY(c.low) + 9) : Math.max(padTop + 9, priceToY(c.high) - 6);
+                const my = isBullMk ? Math.min(padTop + priceH - 4, priceToY(c.low) + 9) : Math.max(padTop + 6, priceToY(c.high) - 6);
                 ctx.beginPath();
                 ctx.arc(cx, my, 3.0, 0, Math.PI * 2);
                 ctx.fill();
-            }
-
-            // Volume Bars
-            if (hasVolume && maxV > 0) {
-                const vH = (c.volume / maxV) * volH;
-                ctx.fillStyle = isUp ? 'rgba(34, 197, 94, 0.55)' : 'rgba(239, 68, 68, 0.55)';
-                ctx.fillRect(cx - candleW / 2, volTop + volH - vH, candleW, vH);
             }
         }
 
@@ -8010,30 +8338,159 @@ function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
             ctx.fillText('₹' + liveCandle.close.toFixed(liveCandle.close >= 1000 ? 0 : 2), padLeft + plotW + 5, ly + 3.5);
         }
 
-        // Volume 20-SMA line
-        if (hasVolume && maxV > 0) {
+        // Sub-pane 1: Volume (વોલ્યુમ)
+        if (paneBoxes.vol) {
+            const vb = paneBoxes.vol;
             ctx.save();
-            ctx.strokeStyle = '#a855f7';
-            ctx.lineWidth = 1.2;
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+            ctx.strokeRect(padLeft, vb.top, plotW, vb.height);
+
+            if (hasVolumeData && maxV > 0) {
+                for (let i = 0; i < candles.length; i++) {
+                    const c = candles[i];
+                    const cx = padLeft + (i + 0.5) * stepX;
+                    const vH = (c.volume / maxV) * (vb.height - 6);
+                    ctx.fillStyle = c.close >= c.open ? 'rgba(34, 197, 94, 0.55)' : 'rgba(239, 68, 68, 0.55)';
+                    ctx.fillRect(cx - candleW / 2, vb.top + vb.height - vH, candleW, vH);
+                }
+                ctx.strokeStyle = '#a855f7';
+                ctx.lineWidth = 1.2;
+                ctx.setLineDash([3, 3]);
+                ctx.beginPath();
+                for (let i = 0; i < candles.length; i++) {
+                    const x = padLeft + (i + 0.5) * stepX;
+                    const y = vb.top + vb.height - ((volAvg[i] || 0) / maxV) * (vb.height - 6);
+                    if (i === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+                ctx.stroke();
+                ctx.setLineDash([]);
+            } else {
+                ctx.fillStyle = '#64748b';
+                ctx.font = '10px Outfit, sans-serif';
+                ctx.fillText('Index Spot Feed (Exchange Volume N/A – Stock chart માં live volume દેખાશે)', padLeft + 115, vb.top + vb.height / 2 + 3);
+            }
+
+            ctx.fillStyle = '#c084fc';
+            ctx.font = 'bold 10px Outfit, sans-serif';
+            ctx.textAlign = 'left';
+            ctx.fillText('Volume (વોલ્યુમ)', padLeft + 6, vb.top + 12);
+            ctx.fillText('VOL', padLeft + plotW + 6, vb.top + 12);
+            ctx.restore();
+        }
+
+        // Sub-pane 2: RSI (14)
+        if (paneBoxes.rsi) {
+            const rb = paneBoxes.rsi;
+            const rsiToY = (v) => rb.top + ((100 - Math.max(0, Math.min(100, v))) / 100) * rb.height;
+            ctx.save();
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+            ctx.strokeRect(padLeft, rb.top, plotW, rb.height);
+
+            // 70 Overbought & 30 Oversold shading
+            const y70 = rsiToY(70);
+            const y30 = rsiToY(30);
+            ctx.fillStyle = 'rgba(239, 68, 68, 0.08)';
+            ctx.fillRect(padLeft, rb.top, plotW, y70 - rb.top);
+            ctx.fillStyle = 'rgba(34, 197, 94, 0.08)';
+            ctx.fillRect(padLeft, y30, plotW, rb.top + rb.height - y30);
+
             ctx.setLineDash([3, 3]);
+            ctx.strokeStyle = 'rgba(239, 68, 68, 0.45)';
+            ctx.beginPath(); ctx.moveTo(padLeft, y70); ctx.lineTo(padLeft + plotW, y70); ctx.stroke();
+            ctx.strokeStyle = 'rgba(34, 197, 94, 0.45)';
+            ctx.beginPath(); ctx.moveTo(padLeft, y30); ctx.lineTo(padLeft + plotW, y30); ctx.stroke();
+            ctx.setLineDash([]);
+
+            ctx.strokeStyle = '#c084fc';
+            ctx.lineWidth = 1.5;
             ctx.beginPath();
+            let started = false;
             for (let i = 0; i < candles.length; i++) {
+                if (rsi[i] === null || rsi[i] === undefined) continue;
                 const x = padLeft + (i + 0.5) * stepX;
-                const y = volTop + volH - ((volAvg[i] || 0) / maxV) * volH;
-                if (i === 0) ctx.moveTo(x, y);
+                const y = rsiToY(rsi[i]);
+                if (!started) { ctx.moveTo(x, y); started = true; }
                 else ctx.lineTo(x, y);
             }
             ctx.stroke();
-            ctx.restore();
 
-            ctx.fillStyle = '#a855f7';
-            ctx.font = '10px Outfit, sans-serif';
+            const lastRsi = rsi[rsi.length - 1];
+            const rsiStatus = lastRsi >= 70 ? 'Overbought' : (lastRsi <= 30 ? 'Oversold' : 'Neutral');
+            ctx.fillStyle = '#c084fc';
+            ctx.font = 'bold 10px Outfit, sans-serif';
             ctx.textAlign = 'left';
-            ctx.fillText('VOL', padLeft + plotW + 6, volTop + 11);
+            ctx.fillText(`RSI (14) – મોમેન્ટમ: ${lastRsi !== null && lastRsi !== undefined ? lastRsi.toFixed(1) + ' (' + rsiStatus + ')' : '--'}`, padLeft + 6, rb.top + 12);
+            ctx.fillStyle = '#94a3b8';
+            ctx.fillText('70', padLeft + plotW + 6, y70 + 3);
+            ctx.fillText('30', padLeft + plotW + 6, y30 + 3);
+            ctx.restore();
+        }
+
+        // Sub-pane 3: MACD (12, 26, 9)
+        if (paneBoxes.macd) {
+            const mb = paneBoxes.macd;
+            ctx.save();
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+            ctx.strokeRect(padLeft, mb.top, plotW, mb.height);
+
+            let minM = 0;
+            let maxM = 0;
+            for (let i = 0; i < candles.length; i++) {
+                if (macdData.macd[i] !== null) { minM = Math.min(minM, macdData.macd[i]); maxM = Math.max(maxM, macdData.macd[i]); }
+                if (macdData.signal[i] !== null) { minM = Math.min(minM, macdData.signal[i]); maxM = Math.max(maxM, macdData.signal[i]); }
+                if (macdData.hist[i] !== null) { minM = Math.min(minM, macdData.hist[i]); maxM = Math.max(maxM, macdData.hist[i]); }
+            }
+            const mPad = Math.max(0.05, (maxM - minM) * 0.12);
+            minM -= mPad;
+            maxM += mPad;
+            const macdToY = (v) => mb.top + ((maxM - v) / Math.max(0.0001, maxM - minM)) * mb.height;
+            const yZero = macdToY(0);
+
+            ctx.strokeStyle = 'rgba(148, 163, 184, 0.35)';
+            ctx.setLineDash([2, 2]);
+            ctx.beginPath(); ctx.moveTo(padLeft, yZero); ctx.lineTo(padLeft + plotW, yZero); ctx.stroke();
+            ctx.setLineDash([]);
+
+            for (let i = 0; i < candles.length; i++) {
+                const h = macdData.hist[i];
+                if (h === null || h === undefined) continue;
+                const cx = padLeft + (i + 0.5) * stepX;
+                const yh = macdToY(h);
+                ctx.fillStyle = h >= 0 ? 'rgba(34, 197, 94, 0.65)' : 'rgba(239, 68, 68, 0.65)';
+                ctx.fillRect(cx - candleW / 2, Math.min(yh, yZero), candleW, Math.max(1, Math.abs(yh - yZero)));
+            }
+
+            const drawSubLine = (arr, col) => {
+                ctx.strokeStyle = col;
+                ctx.lineWidth = 1.3;
+                ctx.beginPath();
+                let st = false;
+                for (let i = 0; i < candles.length; i++) {
+                    if (arr[i] === null || arr[i] === undefined) continue;
+                    const x = padLeft + (i + 0.5) * stepX;
+                    const y = macdToY(arr[i]);
+                    if (!st) { ctx.moveTo(x, y); st = true; }
+                    else ctx.lineTo(x, y);
+                }
+                ctx.stroke();
+            };
+            drawSubLine(macdData.macd, '#38bdf8');
+            drawSubLine(macdData.signal, '#f97316');
+
+            const lm = macdData.macd[macdData.macd.length - 1];
+            const ls = macdData.signal[macdData.signal.length - 1];
+            const crossTxt = (lm !== null && ls !== null) ? (lm >= ls ? 'Bullish' : 'Bearish') : '--';
+            ctx.fillStyle = '#38bdf8';
+            ctx.font = 'bold 10px Outfit, sans-serif';
+            ctx.textAlign = 'left';
+            ctx.fillText(`MACD (12,26,9) – ${crossTxt} | M:${lm !== null && lm !== undefined ? lm.toFixed(1) : '--'} S:${ls !== null && ls !== undefined ? ls.toFixed(1) : '--'}`, padLeft + 6, mb.top + 12);
+            ctx.fillStyle = '#94a3b8';
+            ctx.fillText(lm !== null && lm !== undefined ? lm.toFixed(1) : '0', padLeft + plotW + 6, yZero + 3);
+            ctx.restore();
         }
 
         // Bottom X-axis time labels:
-        // When viewing 1D session (09:15 -> 15:30 / 3:30), anchor exact session ticks 09:15..15:30!
         ctx.fillStyle = '#94a3b8';
         ctx.font = '10px Outfit, sans-serif';
         ctx.textAlign = 'center';
@@ -8052,7 +8509,6 @@ function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
                 const idx = tickCount === 1 ? 0 : Math.round((t * (candles.length - 1)) / (tickCount - 1));
                 const x = padLeft + (idx + 0.5) * stepX;
                 let lbl = candles[idx].label || '';
-                // If an intraday chart starts at 09:15 or closes at 15:25/15:27/15:29, show clean 15:30 end label
                 if (t === tickCount - 1 && ['1m', '3m', '5m', '10m'].includes(currentOptions.interval)) {
                     const istMin = Math.floor(((candles[idx].time + 19800) % 86400) / 60);
                     if (istMin >= 920 && istMin <= 930) {
@@ -8095,12 +8551,14 @@ function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
 
             if (readoutEl) {
                 const mk = markers[hoverIdx];
+                const rsiStr = rsi[hoverIdx] !== null && rsi[hoverIdx] !== undefined ? ` | RSI:${rsi[hoverIdx].toFixed(1)}` : '';
+                const vwapStr = vwap[hoverIdx] !== null && vwap[hoverIdx] !== undefined ? ` | VWAP:${vwap[hoverIdx].toFixed(1)}` : '';
                 const bbStr = (showBB && bb.upper[hoverIdx] !== null)
-                    ? ` | BB: ${bb.upper[hoverIdx].toFixed(1)}/${bb.middle[hoverIdx].toFixed(1)}/${bb.lower[hoverIdx].toFixed(1)}`
+                    ? ` | BB:${bb.upper[hoverIdx].toFixed(1)}/${bb.middle[hoverIdx].toFixed(1)}/${bb.lower[hoverIdx].toFixed(1)}`
                     : '';
-                const volText = c.volume > 0 ? ` | Vol: ${Math.round(c.volume).toLocaleString('en-IN')}` : '';
+                const volText = c.volume > 0 ? ` | Vol:${Math.round(c.volume).toLocaleString('en-IN')}` : '';
                 const patText = mk ? ` | ${mk.name}` : '';
-                readoutEl.textContent = `${c.label} | O:${c.open.toFixed(2)} H:${c.high.toFixed(2)} L:${c.low.toFixed(2)} C:${c.close.toFixed(2)}${volText}${bbStr}${patText}`;
+                readoutEl.textContent = `${c.label} | O:${c.open.toFixed(2)} H:${c.high.toFixed(2)} L:${c.low.toFixed(2)} C:${c.close.toFixed(2)}${volText}${rsiStr}${vwapStr}${bbStr}${patText}`;
             }
         }
     };
@@ -8337,6 +8795,7 @@ function applyCandleChartAnalysisUI(symbol, interval, candles, analysis) {
 
     if (analysis && analysis.verdict) {
         const v = analysis.verdict;
+        const ind = analysis.indicators || {};
         if (badgeEl) {
             badgeEl.textContent = v.titleGu;
             badgeEl.className = 'cc-verdict-badge ' + (
@@ -8351,10 +8810,49 @@ function applyCandleChartAnalysisUI(symbol, interval, candles, analysis) {
             const el = document.getElementById(id);
             if (el) el.textContent = txt;
         };
+        const setHtml = (id, html) => {
+            const el = document.getElementById(id);
+            if (el) el.innerHTML = html;
+        };
+
         setText('cc-stat-close', `₹${v.close.toFixed(2)}`);
-        setText('cc-stat-vol', `${v.volRatio.toFixed(2)}x Avg`);
+        const rsiBadge = ind.rsi !== null && ind.rsi !== undefined ? `RSI ${ind.rsi.toFixed(1)}` : 'RSI --';
+        const macdBadge = ind.macd !== null && ind.macd !== undefined ? `MACD ${ind.macd >= 0 ? '+' : ''}${ind.macd.toFixed(1)}` : 'MACD --';
+        setText('cc-stat-vol', `${rsiBadge} | ${macdBadge}`);
         setText('cc-stat-bb', v.bbUpper ? `${v.bbUpper.toFixed(0)} / ${v.bbMid.toFixed(0)} / ${v.bbLower.toFixed(0)}` : '--');
         setText('cc-stat-meta', `${interval.toUpperCase()} • ${candles.length} Bars`);
+
+        // Populate live indicator reading cells inside Gujarati indicator explanation table
+        if (ind.ema9 !== null && ind.ema21 !== null) {
+            const maTrend = ind.ema9 >= ind.ema21 ? '<span style="color:#34d399;font-weight:700;">Up-Trend (EMA9 &gt; EMA21)</span>' : '<span style="color:#f87171;font-weight:700;">Down-Trend (EMA9 &lt; EMA21)</span>';
+            setHtml('cc-ind-live-ma', `${maTrend}<div style="font-size:0.72rem;color:#94a3b8;">EMA9: ${ind.ema9.toFixed(1)} | EMA21: ${ind.ema21.toFixed(1)}${ind.sma50 ? ' | SMA50: ' + ind.sma50.toFixed(1) : ''}</div>`);
+        }
+        if (ind.rsi !== null && ind.rsi !== undefined) {
+            const r = ind.rsi;
+            const rBadge = r >= 70
+                ? '<span style="color:#f87171;font-weight:700;">Overbought (≥70)</span>'
+                : (r <= 30 ? '<span style="color:#34d399;font-weight:700;">Oversold (≤30)</span>' : '<span style="color:#93c5fd;font-weight:700;">Neutral (30–70)</span>');
+            setHtml('cc-ind-live-rsi', `<strong>${r.toFixed(2)}</strong> • ${rBadge}`);
+        }
+        if (ind.macd !== null && ind.macdSignal !== null) {
+            const cross = ind.macd >= ind.macdSignal
+                ? '<span style="color:#34d399;font-weight:700;">Bullish Crossover</span>'
+                : '<span style="color:#f87171;font-weight:700;">Bearish Crossover</span>';
+            setHtml('cc-ind-live-macd', `${cross}<div style="font-size:0.72rem;color:#94a3b8;">MACD: ${ind.macd.toFixed(2)} | Signal: ${ind.macdSignal.toFixed(2)}</div>`);
+        }
+        if (v.bbUpper) {
+            const bbPos = v.close >= v.bbUpper ? 'Upper Breakout' : (v.close <= v.bbLower ? 'Lower Support' : 'Inside Bands');
+            setHtml('cc-ind-live-bb', `<strong>${bbPos}</strong><div style="font-size:0.72rem;color:#94a3b8;">U:${v.bbUpper.toFixed(1)} / M:${v.bbMid.toFixed(1)} / L:${v.bbLower.toFixed(1)}</div>`);
+        }
+        setHtml('cc-ind-live-vol', ind.hasRealVolume
+            ? `<strong>${v.volRatio.toFixed(2)}x Avg</strong> (${v.volRatio >= 1.3 ? 'Strong' : 'Normal'})`
+            : '<span style="color:#94a3b8;">Index Spot (Stock પર Volume દેખાશે)</span>');
+        if (ind.vwap) {
+            const vRel = v.close >= ind.vwap
+                ? '<span style="color:#34d399;font-weight:700;">ભાવ VWAP ઉપર (Bullish)</span>'
+                : '<span style="color:#f87171;font-weight:700;">ભાવ VWAP નીચે (Bearish)</span>';
+            setHtml('cc-ind-live-vwap', `<strong>₹${ind.vwap.toFixed(2)}</strong> • ${vRel}`);
+        }
     }
 
     if (detListEl) {
@@ -8593,6 +9091,7 @@ window.refreshVisibleCandles1s = async function() {
                 symbol: symKey,
                 companyName: job.state.companyName || resolveCandleCompanyName(symKey, tickData.companyName),
                 showBB: job.state.showBB,
+                indicators: job.state.indicators || { bb: job.state.showBB, vol: true },
                 readoutId: job.readoutId,
                 interval: job.state.interval,
                 maxBars: getDefaultMaxBarsForTf(job.state.interval, job.isModal),
@@ -8608,7 +9107,9 @@ window.refreshVisibleCandles1s = async function() {
 
             if (job.type === 'tab') {
                 const liveBadgeTime = document.getElementById('cc-live-time');
-                if (liveBadgeTime) liveBadgeTime.textContent = `1s Live • ${nowStr}`;
+                if (liveBadgeTime) liveBadgeTime.textContent = `Live 3x/s • ${nowStr}`;
+                const banTfEl = document.getElementById('cc-banner-tf');
+                if (banTfEl) banTfEl.textContent = `${job.state.interval.toUpperCase()} • Live 3x/s (${nowStr})`;
                 if (analysis) {
                     applyCandleChartAnalysisUI(job.state.symbol, job.state.interval, job.state.candles, analysis);
                 }
@@ -8616,7 +9117,7 @@ window.refreshVisibleCandles1s = async function() {
                 if (readoutEl && (!canvas || !canvas.__ccIsHovering || !canvas.__ccIsHovering())) {
                     const last = job.state.candles[job.state.candles.length - 1];
                     if (last) {
-                        readoutEl.textContent = `1s Live (${nowStr}) | O:${last.open.toFixed(2)} H:${last.high.toFixed(2)} L:${last.low.toFixed(2)} C:${last.close.toFixed(2)}`;
+                        readoutEl.textContent = `Live (${nowStr}) | O:${last.open.toFixed(2)} H:${last.high.toFixed(2)} L:${last.low.toFixed(2)} C:${last.close.toFixed(2)} (ડબલ-ક્લિક = Full Screen)`;
                     }
                 }
             } else {
@@ -8787,7 +9288,7 @@ function renderCandlePatternGuide(filter = 'all') {
 function populateCandleSymbolDatalist() {
     const dl = document.getElementById('cc-symbol-datalist');
     if (!dl) return;
-    const defaults = ['RELIANCE', 'TCS', 'HDFCBANK', 'ICICIBANK', 'SBIN', 'INFY', 'ITC', 'TATAMOTORS', 'BHARTIARTL', '^NSEI', '^BSESN'];
+    const defaults = ['NIFTY 50', 'SENSEX', 'BANK NIFTY', 'RELIANCE', 'TCS', 'HDFCBANK', 'ICICIBANK', 'SBIN', 'INFY', 'ITC', 'TATAMOTORS', 'BHARTIARTL', '^NSEI', '^BSESN', '^NSEBANK'];
     const set = new Set(defaults);
     if (Array.isArray(state.processedMasterData) && state.symbolColIndex !== -1) {
         for (let i = 1; i < Math.min(state.processedMasterData.length, 400); i++) {
@@ -8798,24 +9299,60 @@ function populateCandleSymbolDatalist() {
     dl.innerHTML = Array.from(set).map(s => `<option value="${s}"></option>`).join('');
 }
 
+function syncCandleControlsFromState() {
+    const symInput = document.getElementById('cc-symbol-input');
+    const tfGroup = document.getElementById('cc-timeframe-group');
+    const fsLink = document.getElementById('cc-open-fullscreen-link');
+
+    if (symInput) {
+        symInput.value = resolveCandleCompanyName(candleTabState.symbol);
+    }
+    if (tfGroup) {
+        tfGroup.querySelectorAll('.cc-tf-btn').forEach(b => {
+            b.classList.toggle('active', b.dataset.tf === candleTabState.interval);
+        });
+    }
+    document.querySelectorAll('#cc-quick-picks .cc-quick-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.sym === candleTabState.symbol);
+    });
+    const indMap = {
+        ma: 'cc-ind-ma',
+        rsi: 'cc-ind-rsi',
+        macd: 'cc-ind-macd',
+        bb: 'cc-bb-toggle',
+        vol: 'cc-ind-vol',
+        vwap: 'cc-ind-vwap'
+    };
+    Object.entries(indMap).forEach(([k, id]) => {
+        const el = document.getElementById(id);
+        if (el) el.checked = Boolean(candleTabState.indicators[k]);
+    });
+    if (fsLink) {
+        fsLink.href = buildCandleFullscreenUrl(candleTabState.symbol, candleTabState.interval, candleTabState.indicators);
+    }
+}
+
 window.initCandleChartTab = function() {
     if (candleTabState.initialized) {
         populateCandleSymbolDatalist();
+        syncCandleControlsFromState();
         return;
     }
     candleTabState.initialized = true;
     populateCandleSymbolDatalist();
     renderCandlePatternGuide(candleTabState.guideFilter);
+    syncCandleControlsFromState();
 
     const symInput = document.getElementById('cc-symbol-input');
     const loadBtn = document.getElementById('cc-load-btn');
-    const bbToggle = document.getElementById('cc-bb-toggle');
     const tfGroup = document.getElementById('cc-timeframe-group');
+    const mainCanvas = document.getElementById('candle-main-canvas');
 
     const triggerLoad = () => {
         if (symInput && symInput.value.trim()) {
-            candleTabState.symbol = symInput.value.trim().toUpperCase();
+            candleTabState.symbol = normalizeCandleSymbolInput(symInput.value);
         }
+        syncCandleControlsFromState();
         window.loadCandleChartTab(true);
     };
 
@@ -8834,40 +9371,61 @@ window.initCandleChartTab = function() {
             btn.addEventListener('click', () => {
                 tfGroup.querySelectorAll('.cc-tf-btn').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
-                candleTabState.interval = btn.dataset.tf || '5m';
+                candleTabState.interval = btn.dataset.tf || '10m';
+                syncCandleControlsFromState();
                 window.loadCandleChartTab(true);
             });
         });
     }
 
-    if (bbToggle) {
-        bbToggle.addEventListener('change', () => {
-            candleTabState.showBB = bbToggle.checked;
-            if (candleTabState.candles.length > 0) {
-                const canvas = document.getElementById('candle-main-canvas');
-                const opts = {
-                    symbol: candleTabState.symbol,
-                    companyName: candleTabState.companyName || resolveCandleCompanyName(candleTabState.symbol),
-                    showBB: candleTabState.showBB,
-                    readoutId: 'cc-hover-readout',
-                    interval: candleTabState.interval,
-                    maxBars: getDefaultMaxBarsForTf(candleTabState.interval, false),
-                    visibleStartTime: candleTabState.visibleStartTime
-                };
-                if (canvas && typeof canvas.__ccUpdateData === 'function') {
-                    canvas.__ccUpdateData(candleTabState.candles, opts);
-                } else {
-                    renderCandlestickBollingerChart('candle-main-canvas', candleTabState.candles, opts);
-                }
+    const redrawWithIndicators = () => {
+        syncCandleControlsFromState();
+        if (candleTabState.candles.length > 0) {
+            const canvas = document.getElementById('candle-main-canvas');
+            const opts = {
+                symbol: candleTabState.symbol,
+                companyName: candleTabState.companyName || resolveCandleCompanyName(candleTabState.symbol),
+                showBB: candleTabState.indicators.bb,
+                indicators: candleTabState.indicators,
+                readoutId: 'cc-hover-readout',
+                interval: candleTabState.interval,
+                maxBars: getDefaultMaxBarsForTf(candleTabState.interval, false),
+                visibleStartTime: candleTabState.visibleStartTime
+            };
+            let analysis = null;
+            if (canvas && typeof canvas.__ccUpdateData === 'function') {
+                analysis = canvas.__ccUpdateData(candleTabState.candles, opts);
+            } else {
+                analysis = renderCandlestickBollingerChart('candle-main-canvas', candleTabState.candles, opts);
             }
-        });
-    }
+            if (analysis) applyCandleChartAnalysisUI(candleTabState.symbol, candleTabState.interval, candleTabState.candles, analysis);
+        }
+    };
+
+    const indCheckboxes = [
+        ['ma', 'cc-ind-ma'],
+        ['rsi', 'cc-ind-rsi'],
+        ['macd', 'cc-ind-macd'],
+        ['bb', 'cc-bb-toggle'],
+        ['vol', 'cc-ind-vol'],
+        ['vwap', 'cc-ind-vwap']
+    ];
+    indCheckboxes.forEach(([key, id]) => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('change', () => {
+                candleTabState.indicators[key] = el.checked;
+                if (key === 'bb') candleTabState.showBB = el.checked;
+                redrawWithIndicators();
+            });
+        }
+    });
 
     document.querySelectorAll('#cc-quick-picks .cc-quick-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             const sym = btn.dataset.sym;
-            if (symInput) symInput.value = sym;
-            candleTabState.symbol = sym;
+            candleTabState.symbol = normalizeCandleSymbolInput(sym);
+            syncCandleControlsFromState();
             window.loadCandleChartTab(true);
         });
     });
@@ -8880,11 +9438,26 @@ window.initCandleChartTab = function() {
             renderCandlePatternGuide(candleTabState.guideFilter);
         });
     });
+
+    // Double-Click on Candle Chart opens it in full screen in a new browser tab
+    if (mainCanvas && !mainCanvas.dataset.dblclickWired) {
+        mainCanvas.dataset.dblclickWired = '1';
+        mainCanvas.addEventListener('dblclick', (e) => {
+            e.preventDefault();
+            openCandleChartFullscreenTab(
+                candleTabState.symbol,
+                candleTabState.interval,
+                candleTabState.indicators
+            );
+        });
+    }
 };
 
 window.loadCandleChartTab = async function(forceRefresh = false) {
-    const symbol = candleTabState.symbol || 'RELIANCE';
-    const interval = candleTabState.interval || '5m';
+    const symbol = normalizeCandleSymbolInput(candleTabState.symbol || '^NSEI');
+    const interval = candleTabState.interval || '10m';
+    candleTabState.symbol = symbol;
+    syncCandleControlsFromState();
 
     const badgeEl = document.getElementById('cc-verdict-badge');
     const patEl = document.getElementById('cc-verdict-pattern');
@@ -8897,7 +9470,7 @@ window.loadCandleChartTab = async function(forceRefresh = false) {
     const initialName = resolveCandleCompanyName(symbol);
     if (banSymEl) banSymEl.textContent = symbol;
     if (banNameEl) banNameEl.textContent = initialName;
-    if (banTfEl) banTfEl.textContent = `${interval.toUpperCase()} • 1s Live`;
+    if (banTfEl) banTfEl.textContent = `${interval.toUpperCase()} • Live 3x/s`;
     if (detSymEl) detSymEl.textContent = `${initialName} (${symbol} • ${interval.toUpperCase()})`;
     if (patEl) patEl.textContent = `${initialName} (${symbol} • ${interval.toUpperCase()}) લોડ થઈ રહ્યું છે...`;
 
@@ -8910,13 +9483,14 @@ window.loadCandleChartTab = async function(forceRefresh = false) {
 
         if (banSymEl) banSymEl.textContent = symbol;
         if (banNameEl) banNameEl.textContent = resolvedName;
-        if (banTfEl) banTfEl.textContent = `${interval.toUpperCase()} • 1s Live`;
+        if (banTfEl) banTfEl.textContent = `${interval.toUpperCase()} • Live 3x/s`;
         if (detSymEl) detSymEl.textContent = `${resolvedName} (${symbol} • ${interval.toUpperCase()})`;
 
         const analysis = renderCandlestickBollingerChart('candle-main-canvas', series.candles, {
             symbol,
             companyName: resolvedName,
-            showBB: candleTabState.showBB,
+            showBB: candleTabState.indicators.bb,
+            indicators: candleTabState.indicators,
             readoutId: 'cc-hover-readout',
             interval,
             maxBars: getDefaultMaxBarsForTf(interval, false),
@@ -8926,7 +9500,7 @@ window.loadCandleChartTab = async function(forceRefresh = false) {
         applyCandleChartAnalysisUI(symbol, interval, series.candles, analysis);
         const liveBadgeTime = document.getElementById('cc-live-time');
         if (liveBadgeTime) {
-            liveBadgeTime.textContent = `1s Live • ${new Date().toLocaleTimeString('en-IN', { hour12: false })}`;
+            liveBadgeTime.textContent = `Live 3x/s • ${new Date().toLocaleTimeString('en-IN', { hour12: false })}`;
         }
     } catch (err) {
         if (badgeEl) {
@@ -8934,7 +9508,7 @@ window.loadCandleChartTab = async function(forceRefresh = false) {
             badgeEl.className = 'cc-verdict-badge cc-verdict-neutral';
         }
         if (patEl) patEl.textContent = `${symbol} (${interval.toUpperCase()})`;
-        if (descEl) descEl.textContent = `ચાર્ટ લોડ કરવામાં ભૂલ: ${err.message}. કૃપા કરી સાચો NSE Symbol (જેમ કે RELIANCE, TCS, ^NSEI) તપાસો.`;
+        if (descEl) descEl.textContent = `ચાર્ટ લોડ કરવામાં ભૂલ: ${err.message}. કૃપા કરી સાચો Symbol (જેમ કે NIFTY 50, SENSEX, BANK NIFTY, RELIANCE) તપાસો.`;
     }
 };
 
