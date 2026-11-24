@@ -10,6 +10,10 @@ const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
 let cachedPayload = null;
 let cachedAt = 0;
 let cachedSecondary = { nasdaq: null, hangseng: null, nseMarket: null, nifty50Breadth: null, nifty50Index: null, ts: 0 };
+const metalPrevCache = {
+    'GC=F': { prevClose: null, ts: 0 },
+    'SI=F': { prevClose: null, ts: 0 }
+};
 
 // Cache discovered active MCX Gold/Silver expiries for 6 hours
 const mcxExpiryCache = {
@@ -107,9 +111,43 @@ async function fetchYahooChart(symbol) {
     const price = Number(meta.regularMarketPrice);
     const prev = Number(meta.previousClose !== undefined ? meta.previousClose : meta.chartPreviousClose);
     const validPrev = Number.isFinite(prev) && prev > 0 ? prev : price;
+    if (metalPrevCache[symbol]) {
+        metalPrevCache[symbol] = { prevClose: validPrev, ts: Date.now() };
+    }
     const change = price - validPrev;
     const changePercent = validPrev > 0 ? (change / validPrev) * 100 : 0;
     return { price, prevClose: validPrev, change, changePercent };
+}
+
+async function fetchSwissquoteMetal(instrument, yahooSym) {
+    const [sqRes, prevRes] = await Promise.allSettled([
+        fetchWithTimeout(`https://forex-data-feed.swissquote.com/public-quotes/bboquotes/instrument/${instrument}`, {
+            headers: { 'User-Agent': UA, Accept: 'application/json' }
+        }, 1200),
+        (metalPrevCache[yahooSym]?.prevClose && (Date.now() - metalPrevCache[yahooSym].ts) < 60000)
+            ? Promise.resolve({ prevClose: metalPrevCache[yahooSym].prevClose })
+            : fetchYahooChart(yahooSym).catch(() => null)
+    ]);
+
+    if (sqRes.status === 'fulfilled' && sqRes.value.ok) {
+        const arr = await sqRes.value.json();
+        const prices = arr?.[0]?.spreadProfilePrices?.[0];
+        const bid = Number(prices?.bid);
+        const ask = Number(prices?.ask);
+        if (Number.isFinite(bid) && Number.isFinite(ask) && bid > 0 && ask > 0) {
+            const price = (bid + ask) / 2;
+            const prevClose = prevRes.status === 'fulfilled' && prevRes.value?.prevClose
+                ? Number(prevRes.value.prevClose)
+                : (metalPrevCache[yahooSym]?.prevClose || price);
+            const change = price - prevClose;
+            const changePercent = prevClose > 0 ? (change / prevClose) * 100 : 0;
+            return { price, prevClose, change, changePercent, currency: 'USD', symbol: yahooSym, unit: '/oz', source: 'Spot Live' };
+        }
+    }
+    if (prevRes.status === 'fulfilled' && prevRes.value?.price) {
+        return { ...prevRes.value, currency: 'USD', symbol: yahooSym, unit: '/oz', source: 'COMEX USD' };
+    }
+    return null;
 }
 
 async function fetchGrowwIndex(exchange, segment, symbol) {
@@ -235,11 +273,11 @@ export default async function handler(req, res) {
         return res.status(200).end();
     }
 
-    if (cachedPayload && (Date.now() - cachedAt) < 250) {
+    if (cachedPayload && (Date.now() - cachedAt) < 200) {
         return res.status(200).json(cachedPayload);
     }
 
-    const needSecondary = !cachedSecondary.ts || (Date.now() - cachedSecondary.ts) >= 900;
+    const needSecondary = !cachedSecondary.ts || (Date.now() - cachedSecondary.ts) >= 450;
 
     const corePromises = [
         fetchGrowwIndex('NSE', 'CASH', 'NIFTY'),
@@ -247,8 +285,8 @@ export default async function handler(req, res) {
         fetchMcSensex(),
         fetchMcxCommodity('GOLD'),
         fetchMcxCommodity('SILVER'),
-        fetchYahooChart('GC=F').catch(() => null),
-        fetchYahooChart('SI=F').catch(() => null)
+        fetchSwissquoteMetal('XAU/USD', 'GC=F').catch(() => null),
+        fetchSwissquoteMetal('XAG/USD', 'SI=F').catch(() => null)
     ];
 
     const secondaryPromises = needSecondary
@@ -288,10 +326,10 @@ export default async function handler(req, res) {
     let sensex = growwSensexRes.status === 'fulfilled' ? growwSensexRes.value : (mcSensexData.index || null);
     let gold = mcxGoldRes.status === 'fulfilled' ? mcxGoldRes.value : null;
     let silver = mcxSilverRes.status === 'fulfilled' ? mcxSilverRes.value : null;
-    const rawGoldUsd = comexGoldRes.status === 'fulfilled' && comexGoldRes.value ? comexGoldRes.value : null;
-    const rawSilverUsd = comexSilverRes.status === 'fulfilled' && comexSilverRes.value ? comexSilverRes.value : null;
-    const goldUsd = rawGoldUsd ? { ...rawGoldUsd, currency: 'USD', symbol: 'GC=F', unit: '/oz', source: 'COMEX USD' } : null;
-    const silverUsd = rawSilverUsd ? { ...rawSilverUsd, currency: 'USD', symbol: 'SI=F', unit: '/oz', source: 'COMEX USD' } : null;
+    const goldUsd = comexGoldRes.status === 'fulfilled' && comexGoldRes.value ? comexGoldRes.value : null;
+    const silverUsd = comexSilverRes.status === 'fulfilled' && comexSilverRes.value ? comexSilverRes.value : null;
+    const rawGoldUsd = goldUsd;
+    const rawSilverUsd = silverUsd;
     const nasdaq = cachedSecondary.nasdaq;
     const hangseng = cachedSecondary.hangseng;
 

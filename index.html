@@ -57,7 +57,7 @@
                     <img src="./logo.png" alt="Rahul Finance Logo" class="logo-image">
                     <h1 class="logo-text">Rahul Finance</h1>
                 </div>
-                <!-- Nifty / Sensex / Gold / Silver live widget (Double-Click to open chart) -->
+                <!-- Nifty / Sensex / Gold (INR & USD) / Silver (INR & USD) live widget (Double-Click to open chart) -->
                 <div class="header-indices-widget no-print">
                     <div class="index-card live-chart-trigger" data-chart-symbol="^NSEI" title="ડબલ-ક્લિક કરી NIFTY 50 Chart જુઓ">
                         <span class="index-label">NIFTY 50</span>
@@ -69,17 +69,25 @@
                         <span class="index-val" id="sensex-val">—</span>
                         <span class="index-chg" id="sensex-chg">-</span>
                     </div>
-                    <div class="index-card live-chart-trigger" data-chart-symbol="GC=F" style="border-color: rgba(255,193,7,0.3);" title="ડબલ-ક્લિક કરી GOLD Chart જુઓ">
-                        <span class="index-label" style="color:#f59e0b;"><i class="fa-solid fa-circle" style="font-size:0.55rem;margin-right:3px;"></i> GOLD /10g</span>
+                    <div class="index-card live-chart-trigger" data-chart-symbol="GOLD_INR" style="border-color: rgba(255,193,7,0.35);" title="ડબલ-ક્લિક કરી GOLD (₹ INR) Candle Chart જુઓ">
+                        <span class="index-label" style="color:#f59e0b;"><i class="fa-solid fa-circle" style="font-size:0.55rem;margin-right:3px;"></i> GOLD /10g (₹)</span>
                         <span class="index-val" id="gold-val">—</span>
                         <span class="index-chg" id="gold-chg">-</span>
-                        <span class="index-usd-sub" id="gold-usd">Intl: $—</span>
                     </div>
-                    <div class="index-card live-chart-trigger" data-chart-symbol="SI=F" style="border-color: rgba(148,163,184,0.3);" title="ડબલ-ક્લિક કરી SILVER Chart જુઓ">
-                        <span class="index-label" style="color:#94a3b8;"><i class="fa-solid fa-circle" style="font-size:0.55rem;margin-right:3px;"></i> SILVER /kg</span>
+                    <div class="index-card live-chart-trigger" data-chart-symbol="SILVER_INR" style="border-color: rgba(148,163,184,0.35);" title="ડબલ-ક્લિક કરી SILVER (₹ INR) Candle Chart જુઓ">
+                        <span class="index-label" style="color:#cbd5e1;"><i class="fa-solid fa-circle" style="font-size:0.55rem;margin-right:3px;"></i> SILVER /kg (₹)</span>
                         <span class="index-val" id="silver-val">—</span>
                         <span class="index-chg" id="silver-chg">-</span>
-                        <span class="index-usd-sub" id="silver-usd">Intl: $—</span>
+                    </div>
+                    <div class="index-card live-chart-trigger" data-chart-symbol="GC=F" style="border-color: rgba(56,189,248,0.38);" title="ડબલ-ક્લિક કરી GOLD ($ USD) Candle Chart જુઓ">
+                        <span class="index-label" style="color:#38bdf8;"><i class="fa-solid fa-dollar-sign" style="font-size:0.6rem;margin-right:2px;"></i> GOLD ($ USD)</span>
+                        <span class="index-val" id="gold-usd-val">—</span>
+                        <span class="index-chg" id="gold-usd-chg">-</span>
+                    </div>
+                    <div class="index-card live-chart-trigger" data-chart-symbol="SI=F" style="border-color: rgba(56,189,248,0.38);" title="ડબલ-ક્લિક કરી SILVER ($ USD) Candle Chart જુઓ">
+                        <span class="index-label" style="color:#7dd3fc;"><i class="fa-solid fa-dollar-sign" style="font-size:0.6rem;margin-right:2px;"></i> SILVER ($ USD)</span>
+                        <span class="index-val" id="silver-usd-val">—</span>
+                        <span class="index-chg" id="silver-usd-chg">-</span>
                     </div>
                 </div>
                 <div class="cloud-sync-badge" id="cloud-sync-status">
@@ -1032,29 +1040,37 @@
 
                 <div id="cp-status-msg" class="cp-status-banner hidden"></div>
 
-                <!-- Live Strip: NIFTY 50, SENSEX, GOLD/10g (+Intl USD), SILVER/1kg (+Intl USD), NASDAQ, HANG SENG (Double-Click to open Chart) -->
+                <!-- Live Strip: NIFTY 50, SENSEX, GOLD (INR & USD), SILVER (INR & USD), NASDAQ, HANG SENG (Double-Click to open Chart) -->
                 <div class="cp-live-strip-grid" id="cp-market-ticker-grid">
                     <div class="cp-live-card live-chart-trigger" data-chart-symbol="^NSEI" title="ડબલ-ક્લિક કરી NIFTY 50 Chart જુઓ">
-                        <span class="cp-live-title">NIFTY 50 <small id="cp-live-nifty-src">LIVE 1s</small></span>
+                        <span class="cp-live-title">NIFTY 50 <small id="cp-live-nifty-src">LIVE 2x/s</small></span>
                         <strong class="cp-live-val" id="cp-live-nifty-val">--</strong>
                         <span class="cp-live-chg" id="cp-live-nifty-chg">--</span>
                     </div>
                     <div class="cp-live-card live-chart-trigger" data-chart-symbol="^BSESN" title="ડબલ-ક્લિક કરી SENSEX Chart જુઓ">
-                        <span class="cp-live-title">SENSEX <small id="cp-live-sensex-src">LIVE 1s</small></span>
+                        <span class="cp-live-title">SENSEX <small id="cp-live-sensex-src">LIVE 2x/s</small></span>
                         <strong class="cp-live-val" id="cp-live-sensex-val">--</strong>
                         <span class="cp-live-chg" id="cp-live-sensex-chg">--</span>
                     </div>
-                    <div class="cp-live-card cp-gold-card live-chart-trigger" data-chart-symbol="GC=F" title="ડબલ-ક્લિક કરી GOLD Chart જુઓ">
-                        <span class="cp-live-title" style="color:#f59e0b;">GOLD / 10g <small id="cp-live-gold-src">MCX</small></span>
+                    <div class="cp-live-card cp-gold-card live-chart-trigger" data-chart-symbol="GOLD_INR" title="ડબલ-ક્લિક કરી GOLD (₹ INR) Chart જુઓ">
+                        <span class="cp-live-title" style="color:#f59e0b;">GOLD / 10g (₹) <small id="cp-live-gold-src">MCX</small></span>
                         <strong class="cp-live-val" id="cp-live-gold-val">--</strong>
                         <span class="cp-live-chg" id="cp-live-gold-chg">--</span>
-                        <span class="cp-live-usd" id="cp-live-gold-usd">Intl USD: $--</span>
                     </div>
-                    <div class="cp-live-card cp-silver-card live-chart-trigger" data-chart-symbol="SI=F" title="ડબલ-ક્લિક કરી SILVER Chart જુઓ">
-                        <span class="cp-live-title" style="color:#cbd5e1;">SILVER / 1kg <small id="cp-live-silver-src">MCX</small></span>
+                    <div class="cp-live-card cp-silver-card live-chart-trigger" data-chart-symbol="SILVER_INR" title="ડબલ-ક્લિક કરી SILVER (₹ INR) Chart જુઓ">
+                        <span class="cp-live-title" style="color:#cbd5e1;">SILVER / 1kg (₹) <small id="cp-live-silver-src">MCX</small></span>
                         <strong class="cp-live-val" id="cp-live-silver-val">--</strong>
                         <span class="cp-live-chg" id="cp-live-silver-chg">--</span>
-                        <span class="cp-live-usd" id="cp-live-silver-usd">Intl USD: $--</span>
+                    </div>
+                    <div class="cp-live-card cp-global-card live-chart-trigger" data-chart-symbol="GC=F" title="ડબલ-ક્લિક કરી GOLD ($ USD) Chart જુઓ">
+                        <span class="cp-live-title" style="color:#fbbf24;">GOLD ($ USD) <small id="cp-live-gold-usd-src">XAU/USD</small></span>
+                        <strong class="cp-live-val" id="cp-live-gold-usd-val">--</strong>
+                        <span class="cp-live-chg" id="cp-live-gold-usd-chg">--</span>
+                    </div>
+                    <div class="cp-live-card cp-global-card live-chart-trigger" data-chart-symbol="SI=F" title="ડબલ-ક્લિક કરી SILVER ($ USD) Chart જુઓ">
+                        <span class="cp-live-title" style="color:#7dd3fc;">SILVER ($ USD) <small id="cp-live-silver-usd-src">XAG/USD</small></span>
+                        <strong class="cp-live-val" id="cp-live-silver-usd-val">--</strong>
+                        <span class="cp-live-chg" id="cp-live-silver-usd-chg">--</span>
                     </div>
                     <div class="cp-live-card cp-global-card live-chart-trigger" data-chart-symbol="^IXIC" title="ડબલ-ક્લિક કરી NASDAQ Chart જુઓ">
                         <span class="cp-live-title" style="color:#38bdf8;">NASDAQ <small>^IXIC</small></span>
@@ -1356,8 +1372,10 @@
                     <button type="button" class="cc-quick-btn active" data-sym="^NSEI">NIFTY 50</button>
                     <button type="button" class="cc-quick-btn" data-sym="^BSESN">SENSEX</button>
                     <button type="button" class="cc-quick-btn" data-sym="^NSEBANK">BANK NIFTY</button>
-                    <button type="button" class="cc-quick-btn" data-sym="GC=F" style="border-color:rgba(245,158,11,0.45);color:#fbbf24;">GOLD ($)</button>
-                    <button type="button" class="cc-quick-btn" data-sym="SI=F" style="border-color:rgba(148,163,184,0.45);color:#cbd5e1;">SILVER ($)</button>
+                    <button type="button" class="cc-quick-btn" data-sym="GOLD_INR" style="border-color:rgba(245,158,11,0.45);color:#fbbf24;">GOLD (₹)</button>
+                    <button type="button" class="cc-quick-btn" data-sym="SILVER_INR" style="border-color:rgba(148,163,184,0.45);color:#e2e8f0;">SILVER (₹)</button>
+                    <button type="button" class="cc-quick-btn" data-sym="GC=F" style="border-color:rgba(56,189,248,0.45);color:#38bdf8;">GOLD ($)</button>
+                    <button type="button" class="cc-quick-btn" data-sym="SI=F" style="border-color:rgba(56,189,248,0.45);color:#7dd3fc;">SILVER ($)</button>
                     <button type="button" class="cc-quick-btn" data-sym="RELIANCE">RELIANCE</button>
                     <button type="button" class="cc-quick-btn" data-sym="TCS">TCS</button>
                     <button type="button" class="cc-quick-btn" data-sym="HDFCBANK">HDFCBANK</button>
@@ -1583,6 +1601,9 @@
                         </p>
                     </div>
                     <div class="samco-actions">
+                        <button type="button" id="samco-proxy-btn" class="btn btn-secondary samco-btn" title="જો કોમ્પ્યુટરમાં web.samco.in બ્લોક હોય તો સર્વર Proxy દ્વારા ખોલો">
+                            <i class="fa-solid fa-shield-halved"></i> Server Proxy Mode (Blocked Network Bypass)
+                        </button>
                         <button type="button" id="samco-home-btn" class="btn btn-secondary samco-btn" title="Login / Home Page પર જાઓ">
                             <i class="fa-solid fa-right-to-bracket"></i> Web Login / Home
                         </button>
@@ -1599,7 +1620,10 @@
                 </div>
                 <div class="samco-login-tip">
                     <i class="fa-solid fa-circle-info" style="color:#38bdf8;"></i>
-                    <span><strong>Web Login માર્ગદર્શન:</strong> નીચેના પેજ પર <strong>Web Login</strong> પસંદ કરી તમારા મોબાઇલ પર Samco App &rarr; Profile &rarr; Web Login દ્વારા કોડ/QR દાખલ કરો અથવા Client Code + Password થી લોગીન કરો.</span>
+                    <span>
+                        <strong id="samco-mode-badge" style="color:#34d399;">Mode: Direct Connection</strong> &bull;
+                        <strong>Banned/Blocked PC ઉપાય:</strong> જો તમારા કોમ્પ્યુટર/ઓફિસ નેટવર્ક પર <code>web.samco.in</code> બ્લોક હોય, તો <strong>Server Proxy Mode</strong> બટન ચાલુ કરો &mdash; સર્વર પોતે Samco લોડ કરીને તમારા સોફ્ટવેરમાં બતાવશે (કોમ્પ્યુટરમાં સાઇટ અનબ્લોક કર્યા વગર). <strong>Web Login</strong> દ્વારા QR/કોડ અથવા Client ID + Password થી લોગીન કરી શકાશે.
+                    </span>
                 </div>
                 <div class="samco-iframe-wrap" id="samco-iframe-wrap">
                     <iframe
