@@ -7191,10 +7191,10 @@ function renderMmiPanel(mmi) {
     const subEl = document.getElementById('cp-mmi-updated-sub');
 
     const zones = [
-        { id: 'ef', name: 'EXTREME FEAR', min: 0, max: 30, startDeg: -135, endDeg: -54, color: '#26a69a' },
+        { id: 'ef', name: 'EXTREME FEAR', min: 0, max: 30, startDeg: -135, endDeg: -54, color: '#16a34a' },
         { id: 'f', name: 'FEAR', min: 30, max: 50, startDeg: -54, endDeg: 0, color: '#f59e0b' },
-        { id: 'g', name: 'GREED', min: 50, max: 70, startDeg: 0, endDeg: 54, color: '#fb923c' },
-        { id: 'eg', name: 'EXTREME GREED', min: 70, max: 100, startDeg: 54, endDeg: 135, color: '#ef5350' }
+        { id: 'g', name: 'GREED', min: 50, max: 70, startDeg: 0, endDeg: 54, color: '#f97316' },
+        { id: 'eg', name: 'EXTREME GREED', min: 70, max: 100, startDeg: 54, endDeg: 135, color: '#dc2626' }
     ];
     const activeZone = zones.find(z => val < z.max) || zones[zones.length - 1];
     const activeColor = activeZone.color;
@@ -8170,32 +8170,32 @@ function detectCandlestickPatterns(candles, bb, volAvg) {
     const latestPat = recent.length > 0 ? recent[recent.length - 1] : null;
 
     let direction = 'NEUTRAL';
-    let titleGu = 'રાહ જુઓ (SIDEWAYS)';
+    let titleGu = 'મિશ્ર / રાહ જુઓ (SIDEWAYS)';
     let patternTitle = latestPat ? latestPat.name : 'Bollinger + Volume Trend';
     let summaryGu = '';
 
     if (latestPat && latestPat.direction === 'BULLISH') {
         direction = 'BULLISH';
-        titleGu = 'તેજી સંકેત (BULLISH)';
-        summaryGu = `${latestPat.desc}${bbMid ? (last.close >= bbMid ? ' 20-SMA ઉપર.' : ' Lower BB સપોર્ટ.') : ''}`;
+        titleGu = 'આગળ ભાવ વધશે (BULLISH / UP)';
+        summaryGu = `${latestPat.desc} ${bbMid ? (last.close >= bbMid ? 'ભાવ 20-SMA ની ઉપર મજબૂત છે.' : 'Lower Band પાસેથી રિવર્સલ સપોર્ટ.') : ''}`;
     } else if (latestPat && latestPat.direction === 'BEARISH') {
         direction = 'BEARISH';
-        titleGu = 'મંદી સંકેત (BEARISH)';
-        summaryGu = `${latestPat.desc}${bbMid ? (last.close <= bbMid ? ' 20-SMA નીચે.' : ' Upper BB રેઝિસ્ટન્સ.') : ''}`;
+        titleGu = 'આગળ ભાવ ઘટશે (BEARISH / DOWN)';
+        summaryGu = `${latestPat.desc} ${bbMid ? (last.close <= bbMid ? 'ભાવ 20-SMA ની નીચે નબળો છે.' : 'Upper Band પાસેથી નફા વસૂલી.') : ''}`;
     } else if (bbMid) {
         if (last.close > bbMid && last.close >= last.open) {
             direction = 'BULLISH';
-            titleGu = 'હળવી તેજી (BULLISH)';
-            summaryGu = `20-SMA (₹${bbMid.toFixed(2)}) ઉપર ગ્રીન કેન્ડલ · Vol ${lastVolRatio.toFixed(1)}x.`;
+            titleGu = 'તેજી તરફી ઝોક (MILD BULLISH)';
+            summaryGu = `ભાવ Bollinger Middle (20-SMA ₹${bbMid.toFixed(2)}) ની ઉપર ગ્રીન કેન્ડલમાં ટકી રહ્યો છે (Vol: ${lastVolRatio.toFixed(2)}x Avg).`;
         } else if (last.close < bbMid && last.close < last.open) {
             direction = 'BEARISH';
-            titleGu = 'હળવી મંદી (BEARISH)';
-            summaryGu = `20-SMA (₹${bbMid.toFixed(2)}) નીચે લાલ કેન્ડલ · Vol ${lastVolRatio.toFixed(1)}x.`;
+            titleGu = 'મંદી તરફી ઝોક (MILD BEARISH)';
+            summaryGu = `ભાવ Bollinger Middle (20-SMA ₹${bbMid.toFixed(2)}) ની નીચે લાલ કેન્ડલમાં દબાણ હેઠળ છે (Vol: ${lastVolRatio.toFixed(2)}x Avg).`;
         } else {
-            summaryGu = `રેન્જમાં (20-SMA ₹${bbMid.toFixed(2)}) · 1.5x+ Vol બ્રેકઆઉટની રાહ જુઓ.`;
+            summaryGu = `બજાર રેન્જમાં છે (20-SMA ₹${bbMid.toFixed(2)}). ઊંચા વોલ્યુમ (>1.5x) સાથે Upper/Lower Band બ્રેકઆઉટની રાહ જુઓ.`;
         }
     } else {
-        summaryGu = 'પૂરતી કેન્ડલ્સ ઉપલબ્ધ નથી — બેઝિક ભાવ સ્થિતિ.';
+        summaryGu = 'પૂરતી કેન્ડલ્સ ઉપલબ્ધ ન હોવાથી બેઝિક ભાવ વિશ્લેષણ બતાવેલ છે.';
     }
 
     return {
@@ -8366,34 +8366,34 @@ function computeTechnicalTradeSignal(candles, bbFull, ema9Full, ema21Full, sma50
 
     // Classify Action + Compute Swing-aware SL & Targets
     let action = 'WAIT';
-    let actionGu = 'રાહ જુઓ (WAIT)';
+    let actionGu = 'રાહ જુઓ (WAIT / SIDEWAYS)';
     let badgeClass = 'cc-sig-wait';
-    let subheadGu = 'મિશ્ર સંકેત — બ્રેકઆઉટની રાહ જુઓ.';
+    let subheadGu = 'ઇન્ડિકેટર્સ મિશ્ર છે — બ્રેકઆઉટ કે સ્પષ્ટ ક્રોસઓવરની રાહ જુઓ.';
     let biasSide = score >= 0 ? 'BUY' : 'SELL';
 
     if (score >= 3.25) {
         action = 'STRONG BUY';
         actionGu = 'મજબૂત ખરીદી (STRONG BUY)';
         badgeClass = 'cc-sig-buy';
-        subheadGu = 'મજબૂત તેજી — Stop Loss સાથે Buy પોઝિશન.';
+        subheadGu = 'મોટાભાગના ઇન્ડિકેટર્સ તેજી દર્શાવે છે — Stop Loss સાથે Buy પોઝિશન લઈ શકાય.';
         biasSide = 'BUY';
     } else if (score >= 1.0) {
         action = 'BUY';
-        actionGu = 'ખરીદી (BUY)';
+        actionGu = 'ખરીદી કરો (BUY)';
         badgeClass = 'cc-sig-buy';
-        subheadGu = 'તેજી ઝોક — Target અને Stop Loss મુજબ ટ્રેડ.';
+        subheadGu = 'ટેકનિકલ ઇન્ડિકેટર્સ તેજી તરફી છે — નીચે મુજબ Target અને Stop Loss રાખો.';
         biasSide = 'BUY';
     } else if (score <= -3.25) {
         action = 'STRONG SELL';
         actionGu = 'મજબૂત વેચાણ (STRONG SELL)';
         badgeClass = 'cc-sig-sell';
-        subheadGu = 'મજબૂત મંદી — Stop Loss સાથે Sell / Exit.';
+        subheadGu = 'મોટાભાગના ઇન્ડિકેટર્સ મંદી દર્શાવે છે — Stop Loss સાથે Sell / Exit પોઝિશન રાખો.';
         biasSide = 'SELL';
     } else if (score <= -1.0) {
         action = 'SELL';
-        actionGu = 'વેચાણ (SELL)';
+        actionGu = 'વેચાણ કરો (SELL)';
         badgeClass = 'cc-sig-sell';
-        subheadGu = 'નબળાઈ — Target અને Stop Loss મુજબ વેચાણ.';
+        subheadGu = 'ટેકનિકલ ઇન્ડિકેટર્સ નબળા છે — નીચે મુજબ Target અને Stop Loss રાખો.';
         biasSide = 'SELL';
     }
 
@@ -8658,11 +8658,11 @@ function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
             curY += h;
         }
 
-        // Clear background (TradingView Dark Slate)
-        ctx.fillStyle = '#0c1018';
+        // Clear background
+        ctx.fillStyle = '#070c17';
         ctx.fillRect(0, 0, width, height);
 
-        // Minimal Apple + TradingView Script & Active Indicator HUD inside chart
+        // Large Script Name & Active Indicators Overlay directly inside the chart
         if (hasChartHeader) {
             const symLbl = String(currentOptions.symbol || '').trim().toUpperCase();
             const compLbl = String(currentOptions.companyName || '').trim();
@@ -8671,40 +8671,38 @@ function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
             const lastPriceStr = lastBar ? `  ${fmtCandlePrice(lastBar.close, symLbl)}` : '';
             const primaryName = compLbl || symLbl;
             const subTag = (compLbl && compLbl.toUpperCase() !== symLbl) ? ` (${symLbl})` : '';
-            const titleText = `${primaryName}${subTag} · ${tfLbl}${lastPriceStr}`;
+            const titleText = `${primaryName}${subTag}  •  ${tfLbl}${lastPriceStr}`;
 
             ctx.save();
-            ctx.font = isCompact ? '700 13px "Plus Jakarta Sans", sans-serif' : '700 17px "Plus Jakarta Sans", sans-serif';
+            ctx.font = isCompact ? '800 14px Outfit, sans-serif' : '800 19px Outfit, sans-serif';
             const boxH = isCompact ? 24 : 30;
-            const textW = Math.min(plotW - 8, ctx.measureText(titleText).width + 20);
-            ctx.fillStyle = 'rgba(19, 23, 34, 0.88)';
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.10)';
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.roundRect ? ctx.roundRect(padLeft + 2, 6, textW, boxH, 6) : ctx.rect(padLeft + 2, 6, textW, boxH);
-            ctx.fill();
-            ctx.stroke();
-            ctx.fillStyle = '#f1f5f9';
+            const textW = Math.min(plotW - 8, ctx.measureText(titleText).width + 24);
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.90)';
+            ctx.strokeStyle = 'rgba(251, 191, 36, 0.55)';
+            ctx.lineWidth = 1.2;
+            ctx.fillRect(padLeft + 2, 5, textW, boxH);
+            ctx.strokeRect(padLeft + 2, 5, textW, boxH);
+            ctx.fillStyle = '#ffffff';
             ctx.textAlign = 'left';
-            ctx.fillText(titleText, padLeft + 12, isCompact ? 22 : 26, plotW - 24);
+            ctx.fillText(titleText, padLeft + 12, isCompact ? 21 : 26.5, plotW - 24);
 
-            // Second line: Active Indicators + live values
+            // Second line: Named Active Indicators + live values directly inside chart
             if (!isCompact) {
                 const items = [];
-                if (indFlags.bb) items.push({ label: 'BB(20,2)', col: '#38bdf8' });
+                if (indFlags.bb) items.push({ label: 'Bollinger Bands(20,2)', col: '#38bdf8' });
                 if (indFlags.ma) {
                     const e9 = maData.ema9[maData.ema9.length - 1];
                     const e21 = maData.ema21[maData.ema21.length - 1];
-                    items.push({ label: `EMA9:${e9 ? e9.toFixed(1) : '--'} EMA21:${e21 ? e21.toFixed(1) : '--'}`, col: '#f472b6' });
+                    items.push({ label: `EMA9:${e9 ? e9.toFixed(1) : '--'} EMA21:${e21 ? e21.toFixed(1) : '--'} SMA50`, col: '#f472b6' });
                 }
                 if (indFlags.vwap) {
                     const vw = vwap[vwap.length - 1];
-                    items.push({ label: `VWAP:${vw ? vw.toFixed(1) : '--'}`, col: '#eab308' });
+                    items.push({ label: `VWAP:${vw ? vw.toFixed(1) : '--'}`, col: '#facc15' });
                 }
-                if (indFlags.vol) items.push({ label: 'Vol', col: '#94a3b8' });
+                if (indFlags.vol) items.push({ label: 'Volume', col: '#a855f7' });
                 if (indFlags.rsi) {
                     const rv = rsi[rsi.length - 1];
-                    items.push({ label: `RSI:${rv !== null && rv !== undefined ? rv.toFixed(1) : '--'}`, col: '#c084fc' });
+                    items.push({ label: `RSI(14):${rv !== null && rv !== undefined ? rv.toFixed(1) : '--'}`, col: '#c084fc' });
                 }
                 if (indFlags.macd) {
                     const mv = macdData.macd[macdData.macd.length - 1];
@@ -8714,15 +8712,15 @@ function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
 
                 let lx = padLeft + 4;
                 const ly = 48;
-                ctx.font = '600 10.5px "JetBrains Mono", monospace';
+                ctx.font = '600 11px Outfit, sans-serif';
                 for (const it of items) {
                     const segW = ctx.measureText(it.label).width + 16;
                     if (lx + segW > padLeft + plotW) break;
                     ctx.fillStyle = it.col;
                     ctx.beginPath();
-                    ctx.arc(lx + 4, ly - 3.5, 2.5, 0, Math.PI * 2);
+                    ctx.arc(lx + 4, ly - 3.5, 3, 0, Math.PI * 2);
                     ctx.fill();
-                    ctx.fillStyle = '#9aa4b2';
+                    ctx.fillStyle = '#cbd5e1';
                     ctx.fillText(it.label, lx + 11, ly);
                     lx += segW;
                 }
@@ -8781,10 +8779,10 @@ function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
         lastStepX = stepX;
         const chartSym = currentOptions.symbol || '';
 
-        // Gridlines & Right Y-axis Price Labels (TradingView Subtle Grid)
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
-        ctx.fillStyle = '#788496';
-        ctx.font = '500 11px "JetBrains Mono", monospace';
+        // Gridlines & Right Y-axis Price Labels
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '11px Outfit, sans-serif';
         ctx.textAlign = 'left';
         ctx.lineWidth = 1;
 
@@ -8837,33 +8835,33 @@ function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
                     ctx.lineTo(x, y);
                 }
                 ctx.closePath();
-                ctx.fillStyle = 'rgba(56, 189, 248, 0.06)';
+                ctx.fillStyle = 'rgba(56, 189, 248, 0.08)';
                 ctx.fill();
             }
 
-            drawOverlayLine(bb.upper, '#38bdf8', 1.2, false);
-            drawOverlayLine(bb.middle, '#f59e0b', 1.2, true);
-            drawOverlayLine(bb.lower, '#38bdf8', 1.2, false);
+            drawOverlayLine(bb.upper, '#38bdf8', 1.3, false);
+            drawOverlayLine(bb.middle, '#f59e0b', 1.3, true);
+            drawOverlayLine(bb.lower, '#38bdf8', 1.3, false);
         }
 
         // Moving Averages (EMA 9, EMA 21, SMA 50)
         if (indFlags.ma) {
-            drawOverlayLine(maData.sma50, '#a78bfa', 1.3, false);
-            drawOverlayLine(maData.ema21, '#2dd4bf', 1.3, false);
-            drawOverlayLine(maData.ema9, '#f472b6', 1.3, false);
+            drawOverlayLine(maData.sma50, '#a78bfa', 1.4, false);
+            drawOverlayLine(maData.ema21, '#2dd4bf', 1.4, false);
+            drawOverlayLine(maData.ema9, '#f472b6', 1.4, false);
         }
 
         // Session VWAP
         if (indFlags.vwap) {
-            drawOverlayLine(vwap, '#eab308', 1.5, false);
+            drawOverlayLine(vwap, '#facc15', 1.7, false);
         }
 
-        // Draw Candlesticks (TradingView crisp teal-green & coral-red)
+        // Draw Candlesticks
         for (let i = 0; i < candles.length; i++) {
             const c = candles[i];
             const cx = padLeft + (i + 0.5) * stepX;
             const isUp = c.close >= c.open;
-            const col = isUp ? '#26a69a' : '#ef5350';
+            const col = isUp ? '#22c55e' : '#ef4444';
 
             ctx.strokeStyle = col;
             ctx.lineWidth = stepX < 4 ? 1 : 1.2;
@@ -8883,10 +8881,10 @@ function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
             if (mk) {
                 const isBullMk = mk.direction === 'BULLISH';
                 const isBearMk = mk.direction === 'BEARISH';
-                ctx.fillStyle = isBullMk ? '#26a69a' : (isBearMk ? '#ef5350' : '#f59e0b');
+                ctx.fillStyle = isBullMk ? '#10b981' : (isBearMk ? '#ef4444' : '#f59e0b');
                 const my = isBullMk ? Math.min(padTop + priceH - 4, priceToY(c.low) + 9) : Math.max(padTop + 6, priceToY(c.high) - 6);
                 ctx.beginPath();
-                ctx.arc(cx, my, 2.8, 0, Math.PI * 2);
+                ctx.arc(cx, my, 3.0, 0, Math.PI * 2);
                 ctx.fill();
             }
         }
@@ -8900,15 +8898,15 @@ function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
 
                 ctx.save();
                 ctx.strokeStyle = strokeCol;
-                ctx.lineWidth = 1.25;
-                ctx.setLineDash([5, 4]);
+                ctx.lineWidth = 1.4;
+                ctx.setLineDash([6, 4]);
                 ctx.beginPath();
                 ctx.moveTo(padLeft, y);
                 ctx.lineTo(padLeft + plotW, y);
                 ctx.stroke();
                 ctx.setLineDash([]);
 
-                ctx.font = '600 10.5px "JetBrains Mono", monospace';
+                ctx.font = 'bold 10.5px Outfit, sans-serif';
                 const lblW = ctx.measureText(labelText).width + 14;
                 const lblY = Math.max(padTop + 10, Math.min(padTop + priceH - 10, y));
                 ctx.fillStyle = fillCol;
@@ -8923,58 +8921,56 @@ function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
                 // Right axis pill for Target / SL
                 ctx.fillStyle = strokeCol;
                 ctx.fillRect(padLeft + plotW + 2, lblY - 8, padRight - 4, 16);
-                ctx.fillStyle = '#0b0e14';
-                ctx.font = '700 9.5px "JetBrains Mono", monospace';
+                ctx.fillStyle = '#070c17';
+                ctx.font = 'bold 9.5px Outfit, sans-serif';
                 ctx.fillText(`${axisTagPrefix}${fmtCandlePrice(priceVal, chartSym, true)}`, padLeft + plotW + 4, lblY + 3);
                 ctx.restore();
             };
 
             drawLevelLine(
                 sig.target1,
-                '#26a69a',
-                'rgba(19, 23, 34, 0.92)',
-                '#4dd0c4',
+                '#22c55e',
+                'rgba(6, 78, 59, 0.92)',
+                '#86efac',
                 `TARGET: ${fmtCandlePrice(sig.target1, chartSym)}`,
                 'T:'
             );
             drawLevelLine(
                 sig.stopLoss,
-                '#ef5350',
-                'rgba(19, 23, 34, 0.92)',
+                '#ef4444',
+                'rgba(127, 29, 29, 0.92)',
                 '#fca5a5',
-                `SL: ${fmtCandlePrice(sig.stopLoss, chartSym)}`,
+                `STOP LOSS: ${fmtCandlePrice(sig.stopLoss, chartSym)}`,
                 'SL:'
             );
 
             // Compact Live BUY / SELL Action Card at Top-Right of Chart Canvas
-            const sigCol = sig.action.includes('BUY') ? '#26a69a' : (sig.action.includes('SELL') ? '#ef5350' : '#f59e0b');
-            const sigBg = 'rgba(19, 23, 34, 0.92)';
-            const sigActionIcon = sig.action.includes('BUY') ? '▲' : (sig.action.includes('SELL') ? '▼' : '·');
+            const sigCol = sig.action.includes('BUY') ? '#22c55e' : (sig.action.includes('SELL') ? '#ef4444' : '#f59e0b');
+            const sigBg = sig.action.includes('BUY') ? 'rgba(6, 78, 59, 0.92)' : (sig.action.includes('SELL') ? 'rgba(127, 29, 29, 0.92)' : 'rgba(120, 53, 15, 0.92)');
+            const sigActionIcon = sig.action.includes('BUY') ? '▲' : (sig.action.includes('SELL') ? '▼' : '⏸');
             const sigMainTxt = `${sigActionIcon} ${sig.action} @ ${fmtCandlePrice(sig.entry, chartSym)}`;
-            const sigSubTxt = `TGT: ${fmtCandlePrice(sig.target1, chartSym)} · SL: ${fmtCandlePrice(sig.stopLoss, chartSym)} · R:R 1:${sig.rrRatio.toFixed(1)}`;
+            const sigSubTxt = `TGT: ${fmtCandlePrice(sig.target1, chartSym)} | SL: ${fmtCandlePrice(sig.stopLoss, chartSym)} | R:R 1:${sig.rrRatio.toFixed(1)}`;
 
             ctx.save();
-            ctx.font = '700 11.5px "Plus Jakarta Sans", sans-serif';
+            ctx.font = '800 12px Outfit, sans-serif';
             const w1 = ctx.measureText(sigMainTxt).width;
-            ctx.font = '500 10.5px "JetBrains Mono", monospace';
+            ctx.font = '600 10.5px Outfit, sans-serif';
             const w2 = ctx.measureText(sigSubTxt).width;
             const boxW = Math.min(plotW - 16, Math.max(w1, w2) + 22);
             const boxX = padLeft + plotW - boxW - 6;
             const boxY = padTop + 6;
             ctx.fillStyle = sigBg;
             ctx.strokeStyle = sigCol;
-            ctx.lineWidth = 1.1;
-            ctx.beginPath();
-            ctx.roundRect ? ctx.roundRect(boxX, boxY, boxW, 38, 6) : ctx.rect(boxX, boxY, boxW, 38);
-            ctx.fill();
-            ctx.stroke();
+            ctx.lineWidth = 1.4;
+            ctx.fillRect(boxX, boxY, boxW, 38);
+            ctx.strokeRect(boxX, boxY, boxW, 38);
 
-            ctx.fillStyle = sigCol;
-            ctx.font = '700 11.5px "Plus Jakarta Sans", sans-serif';
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '800 12px Outfit, sans-serif';
             ctx.textAlign = 'left';
             ctx.fillText(sigMainTxt, boxX + 10, boxY + 15, boxW - 16);
-            ctx.fillStyle = '#cbd5e1';
-            ctx.font = '500 10px "JetBrains Mono", monospace';
+            ctx.fillStyle = '#e2e8f0';
+            ctx.font = '600 10.5px Outfit, sans-serif';
             ctx.fillText(sigSubTxt, boxX + 10, boxY + 31, boxW - 16);
             ctx.restore();
         }
@@ -8983,7 +8979,7 @@ function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
         const liveCandle = candles[candles.length - 1];
         if (liveCandle) {
             const ly = priceToY(liveCandle.close);
-            const liveCol = liveCandle.close >= liveCandle.open ? '#26a69a' : '#ef5350';
+            const liveCol = liveCandle.close >= liveCandle.open ? '#22c55e' : '#ef4444';
             ctx.save();
             ctx.strokeStyle = liveCol;
             ctx.globalAlpha = 0.55;
@@ -8996,8 +8992,8 @@ function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
 
             ctx.fillStyle = liveCol;
             ctx.fillRect(padLeft + plotW + 2, ly - 8, padRight - 4, 16);
-            ctx.fillStyle = '#0b0e14';
-            ctx.font = '700 10px "JetBrains Mono", monospace';
+            ctx.fillStyle = '#0f172a';
+            ctx.font = 'bold 10px Outfit, sans-serif';
             ctx.textAlign = 'left';
             ctx.fillText(fmtCandlePrice(liveCandle.close, chartSym, true), padLeft + plotW + 4, ly + 3.5);
         }
@@ -9006,7 +9002,7 @@ function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
         if (paneBoxes.vol) {
             const vb = paneBoxes.vol;
             ctx.save();
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
             ctx.strokeRect(padLeft, vb.top, plotW, vb.height);
 
             if (hasVolumeData && maxV > 0) {
@@ -9014,7 +9010,7 @@ function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
                     const c = candles[i];
                     const cx = padLeft + (i + 0.5) * stepX;
                     const vH = (c.volume / maxV) * (vb.height - 6);
-                    ctx.fillStyle = c.close >= c.open ? 'rgba(38, 166, 154, 0.55)' : 'rgba(239, 83, 80, 0.55)';
+                    ctx.fillStyle = c.close >= c.open ? 'rgba(34, 197, 94, 0.55)' : 'rgba(239, 68, 68, 0.55)';
                     ctx.fillRect(cx - candleW / 2, vb.top + vb.height - vH, candleW, vH);
                 }
                 ctx.strokeStyle = '#a855f7';
@@ -10085,7 +10081,7 @@ function analyzeTenMinLastThreeCandles(candles10m, symbol) {
 
     let score = 0;
     const signals = [];
-    let patternGu = '10M 3-કેન્ડલ';
+    let patternGu = '૩-કેન્ડલ પ્રાઇસ એક્શન (10M Structure)';
 
     const bullCount = [d1, d2, d3].filter(x => x.isBull).length;
     const bearCount = 3 - bullCount;
@@ -10097,39 +10093,39 @@ function analyzeTenMinLastThreeCandles(candles10m, symbol) {
     // 1. Classic 3-Candle Pattern Recognition
     if (d1.isBull && d2.isBull && d3.isBull && c3.close > c2.close && c2.close > c1.close) {
         score += 2.6;
-        patternGu = 'Three White Soldiers';
-        signals.push({ type: 'bull', text: '૩ ગ્રીન કેન્ડલ' });
+        patternGu = 'Three White Soldiers (સતત ૩ મજબૂત ગ્રીન કેન્ડલ્સ)';
+        signals.push({ type: 'bull', text: 'સતત ૩ ગ્રીન કેન્ડલ + ઊંચા બંધ' });
     } else if (!d1.isBull && !d2.isBull && !d3.isBull && c3.close < c2.close && c2.close < c1.close) {
         score -= 2.6;
-        patternGu = 'Three Black Crows';
-        signals.push({ type: 'bear', text: '૩ લાલ કેન્ડલ' });
+        patternGu = 'Three Black Crows (સતત ૩ મજબૂત લાલ કેન્ડલ્સ)';
+        signals.push({ type: 'bear', text: 'સતત ૩ લાલ કેન્ડલ + નીચા બંધ' });
     } else if (!d1.isBull && d2.bodyRatio < 0.4 && d3.isBull && c3.close > (c1.open + c1.close) / 2) {
         score += 2.3;
-        patternGu = 'Morning Star (Bullish)';
-        signals.push({ type: 'bull', text: 'Morning Star' });
+        patternGu = 'Morning Star (ઘટાડા પછી મજબૂત બુલિશ રિવર્સલ)';
+        signals.push({ type: 'bull', text: 'Morning Star (3-Candle Reversal)' });
     } else if (d1.isBull && d2.bodyRatio < 0.4 && !d3.isBull && c3.close < (c1.open + c1.close) / 2) {
         score -= 2.3;
-        patternGu = 'Evening Star (Bearish)';
-        signals.push({ type: 'bear', text: 'Evening Star' });
+        patternGu = 'Evening Star (તેજીની ટોચ પરથી મંદીનું રિવર્સલ)';
+        signals.push({ type: 'bear', text: 'Evening Star (3-Candle Top Reversal)' });
     } else if (!d2.isBull && d3.isBull && c3.close > c2.open && c3.open <= c2.close) {
         score += 1.8;
-        patternGu = 'Bullish Engulfing';
-        signals.push({ type: 'bull', text: 'Bullish Engulfing' });
+        patternGu = 'Bullish Engulfing (છેલ્લી ગ્રીન કેન્ડલે પાછલી લાલ કેન્ડલ ગળી)';
+        signals.push({ type: 'bull', text: 'C3 Bullish Engulfing' });
     } else if (d2.isBull && !d3.isBull && c3.close < c2.open && c3.open >= c2.close) {
         score -= 1.8;
-        patternGu = 'Bearish Engulfing';
-        signals.push({ type: 'bear', text: 'Bearish Engulfing' });
+        patternGu = 'Bearish Engulfing (છેલ્લી લાલ કેન્ડલે પાછલી ગ્રીન કેન્ડલ ગળી)';
+        signals.push({ type: 'bear', text: 'C3 Bearish Engulfing' });
     } else if (higherHighs && higherLows && bullCount >= 2) {
         score += 1.6;
-        patternGu = 'અપટ્રેન્ડ (HH / HL)';
-        signals.push({ type: 'bull', text: 'HH / HL' });
+        patternGu = 'Higher-High / Higher-Low અપટ્રેન્ડ (10M)';
+        signals.push({ type: 'bull', text: 'HH / HL સ્ટ્રક્ચર' });
     } else if (lowerLows && lowerHighs && bearCount >= 2) {
         score -= 1.6;
-        patternGu = 'ડાઉનટ્રેન્ડ (LH / LL)';
-        signals.push({ type: 'bear', text: 'LH / LL' });
+        patternGu = 'Lower-High / Lower-Low ડાઉનટ્રેન્ડ (10M)';
+        signals.push({ type: 'bear', text: 'LH / LL સ્ટ્રક્ચર' });
     } else {
-        patternGu = 'સાઇડવેઝ રેન્જ';
-        signals.push({ type: 'neutral', text: `ગ્રીન ${bullCount} · લાલ ${bearCount}` });
+        patternGu = 'મિશ્ર / સાઇડવેઝ રેન્જ (Indecision in Last 3 Candles)';
+        signals.push({ type: 'neutral', text: `ગ્રીન: ${bullCount} | લાલ: ${bearCount} (કોન્સોલિડેશન)` });
     }
 
     // 2. Momentum net change across the 3 candles + Volume confirmation
@@ -10143,10 +10139,10 @@ function analyzeTenMinLastThreeCandles(candles10m, symbol) {
     if (d3.hasVol && d3.volRatio >= 1.25) {
         if (d3.isBull) {
             score += 0.8;
-            signals.push({ type: 'bull', text: `Vol ${d3.volRatio.toFixed(1)}x` });
+            signals.push({ type: 'bull', text: `C3 વોલ્યુમ ${d3.volRatio.toFixed(2)}x (ખરીદી તાકાત)` });
         } else {
             score -= 0.8;
-            signals.push({ type: 'bear', text: `Vol ${d3.volRatio.toFixed(1)}x` });
+            signals.push({ type: 'bear', text: `C3 વોલ્યુમ ${d3.volRatio.toFixed(2)}x (વેચવાલી દબાણ)` });
         }
     }
 
@@ -10154,34 +10150,34 @@ function analyzeTenMinLastThreeCandles(candles10m, symbol) {
     if (ema9 !== null && ema21 !== null) {
         if (c3.close > ema9 && ema9 > ema21) {
             score += 1.0;
-            signals.push({ type: 'bull', text: 'EMA Up' });
+            signals.push({ type: 'bull', text: '10M EMA9 > EMA21 (Up)' });
         } else if (c3.close < ema9 && ema9 < ema21) {
             score -= 1.0;
-            signals.push({ type: 'bear', text: 'EMA Down' });
+            signals.push({ type: 'bear', text: '10M EMA9 < EMA21 (Down)' });
         }
     }
     if (rsi !== null && rsi !== undefined) {
         if (rsi >= 55 && rsi <= 72) {
             score += 0.7;
-            signals.push({ type: 'bull', text: `RSI ${rsi.toFixed(0)} Bull` });
+            signals.push({ type: 'bull', text: `10M RSI ${rsi.toFixed(1)} (Bullish Momentum)` });
         } else if (rsi <= 45 && rsi >= 28) {
             score -= 0.7;
-            signals.push({ type: 'bear', text: `RSI ${rsi.toFixed(0)} Bear` });
+            signals.push({ type: 'bear', text: `10M RSI ${rsi.toFixed(1)} (Bearish Momentum)` });
         } else if (rsi > 75) {
             score -= 0.5;
-            signals.push({ type: 'neutral', text: `RSI ${rsi.toFixed(0)} OB` });
+            signals.push({ type: 'neutral', text: `10M RSI ${rsi.toFixed(1)} Overbought` });
         } else if (rsi < 25) {
             score += 0.5;
-            signals.push({ type: 'neutral', text: `RSI ${rsi.toFixed(0)} OS` });
+            signals.push({ type: 'neutral', text: `10M RSI ${rsi.toFixed(1)} Oversold` });
         }
     }
     if (macd !== null && macdSig !== null) {
         if (macd > macdSig) {
             score += 0.7;
-            signals.push({ type: 'bull', text: 'MACD +' });
+            signals.push({ type: 'bull', text: '10M MACD Bullish' });
         } else {
             score -= 0.7;
-            signals.push({ type: 'bear', text: 'MACD -' });
+            signals.push({ type: 'bear', text: '10M MACD Bearish' });
         }
     }
     if (vwap) {
@@ -10206,18 +10202,18 @@ function analyzeTenMinLastThreeCandles(candles10m, symbol) {
 
     if (score >= 1.8) {
         action = 'BUY';
-        actionGu = 'ખરીદી (BUY)';
+        actionGu = 'ખરીદી કરી શકાય (BUY)';
         badgeClass = 'cc-sig-buy';
         const breakoutAbove = Math.max(c1.high, c2.high, c3.high);
-        summaryGu = `ખરીદી (BUY) · ${fmtCandlePrice(c3.close, symbol)} (બ્રેકઆઉટ ${fmtCandlePrice(breakoutAbove, symbol)}+) · SL: ${fmtCandlePrice(Math.min(c2.low, c3.low), symbol)}`;
+        summaryGu = `૧૦ મિનિટની છેલ્લી ૩ પૂર્ણ કેન્ડલમાં તેજીનું માળખું (${patternGu}) અને મજબૂત ઇન્ડિકેટર સપોર્ટ (Score +${score.toFixed(1)}) દેખાય છે. C3 ક્લોઝ (${fmtCandlePrice(c3.close, symbol)}) પાસે અથવા ${fmtCandlePrice(breakoutAbove, symbol)} ઉપર ખરીદીનો વિચાર કરી શકાય; C1/C2 નીચું (${fmtCandlePrice(Math.min(c2.low, c3.low), symbol)}) સ્ટોપ-લોસ ગણી શકાય.`;
     } else if (score <= -1.8) {
         action = 'SELL';
-        actionGu = 'વેચાણ (SELL)';
+        actionGu = 'વેચાણ કરી શકાય (SELL)';
         badgeClass = 'cc-sig-sell';
         const breakdownBelow = Math.min(c1.low, c2.low, c3.low);
-        summaryGu = `વેચાણ (SELL) · ${fmtCandlePrice(c3.close, symbol)} (બ્રેકડાઉન ${fmtCandlePrice(breakdownBelow, symbol)}-) · SL: ${fmtCandlePrice(Math.max(c2.high, c3.high), symbol)}`;
+        summaryGu = `૧૦ મિનિટની છેલ્લી ૩ પૂર્ણ કેન્ડલમાં નબળાઈ/વેચવાલીનું દબાણ (${patternGu}) અને મંદીના ઇન્ડિકેટર્સ (Score ${score.toFixed(1)}) છે. C3 ક્લોઝ (${fmtCandlePrice(c3.close, symbol)}) પાસે અથવા ${fmtCandlePrice(breakdownBelow, symbol)} નીચે વેચાણ/નફો બુક કરી શકાય; ઊંચું (${fmtCandlePrice(Math.max(c2.high, c3.high), symbol)}) સ્ટોપ-લોસ ગણી શકાય.`;
     } else {
-        summaryGu = `રાહ જોવી (WAIT) · રેન્જ: ${fmtCandlePrice(Math.min(c1.low, c2.low, c3.low), symbol)} – ${fmtCandlePrice(Math.max(c1.high, c2.high, c3.high), symbol)}`;
+        summaryGu = `૧૦ મિનિટની છેલ્લી ૩ પૂર્ણ કેન્ડલમાં હાલ સ્પષ્ટ એકતરફી બ્રેકઆઉટ નથી (${patternGu}, Score ${score >= 0 ? '+' : ''}${score.toFixed(1)}). નવી એન્ટ્રી લેતા પહેલા હાલની ૩-કેન્ડલ રેન્જ (${fmtCandlePrice(Math.min(c1.low, c2.low, c3.low), symbol)} – ${fmtCandlePrice(Math.max(c1.high, c2.high, c3.high), symbol)}) માંથી સ્પષ્ટ બ્રેકઆઉટ/બ્રેકડાઉનની રાહ જોવી હિતાવહ છે.`;
     }
 
     return {
