@@ -136,6 +136,9 @@
             <button class="nav-btn" id="tab-candle-chart" style="border-color: #f59e0b; color: #fbbf24; font-weight: bold;">
                 <i class="fa-solid fa-chart-column"></i> Candle Chart
             </button>
+            <button class="nav-btn" id="tab-samco-web" style="border-color: #10b981; color: #34d399; font-weight: bold;">
+                <i class="fa-solid fa-arrow-up-right-dots"></i> SAMCO Web
+            </button>
         </nav>
 
         <!-- Tab 1: Stock Research Content -->
@@ -1563,6 +1566,49 @@
                         <a href="https://www.investopedia.com/trading/candlestick-charting-what-is-it/" target="_blank" rel="noopener noreferrer">Investopedia Candlestick Guide <i class="fa-solid fa-arrow-up-right-from-square"></i></a>
                         <a href="https://www.tradingview.com/support/solutions/43000502253-bollinger-bands-bb/" target="_blank" rel="noopener noreferrer">TradingView Bollinger Bands <i class="fa-solid fa-arrow-up-right-from-square"></i></a>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab 14: SAMCO Web Embedded Portal (https://web.samco.in/) -->
+        <div id="samco-web-tab-content" class="hidden">
+            <div class="card samco-web-card" id="samco-web-card">
+                <div class="samco-toolbar">
+                    <div class="samco-title-wrap">
+                        <h2 style="color:#34d399; margin:0; font-size:1.15rem;">
+                            <i class="fa-solid fa-arrow-up-right-dots"></i> SAMCO Web (web.samco.in)
+                        </h2>
+                        <p class="samco-subtitle">
+                            આ જ ટેબમાં SAMCO વેબ પોર્ટલ ખુલશે — <strong>Web Login</strong> (Samco App કોડ / QR) અથવા Client ID &amp; Password વડે લોગીન કરો.
+                        </p>
+                    </div>
+                    <div class="samco-actions">
+                        <button type="button" id="samco-home-btn" class="btn btn-secondary samco-btn" title="Login / Home Page પર જાઓ">
+                            <i class="fa-solid fa-right-to-bracket"></i> Web Login / Home
+                        </button>
+                        <button type="button" id="samco-reload-btn" class="btn btn-secondary samco-btn" title="SAMCO પેજ રિલોડ કરો">
+                            <i class="fa-solid fa-rotate"></i> Reload
+                        </button>
+                        <button type="button" id="samco-expand-btn" class="btn btn-secondary samco-btn" title="ચાર્ટ/ટ્રેડિંગ માટે વધારે ઊંચાઈ">
+                            <i class="fa-solid fa-up-right-and-down-left-from-center"></i> Full Height
+                        </button>
+                        <a href="https://web.samco.in/" target="_blank" rel="noopener noreferrer" class="samco-ext-link" title="નવી ટેબમાં web.samco.in ખોલો">
+                            <i class="fa-solid fa-arrow-up-right-from-square"></i> New Tab
+                        </a>
+                    </div>
+                </div>
+                <div class="samco-login-tip">
+                    <i class="fa-solid fa-circle-info" style="color:#38bdf8;"></i>
+                    <span><strong>Web Login માર્ગદર્શન:</strong> નીચેના પેજ પર <strong>Web Login</strong> પસંદ કરી તમારા મોબાઇલ પર Samco App &rarr; Profile &rarr; Web Login દ્વારા કોડ/QR દાખલ કરો અથવા Client Code + Password થી લોગીન કરો.</span>
+                </div>
+                <div class="samco-iframe-wrap" id="samco-iframe-wrap">
+                    <iframe
+                        id="samco-web-iframe"
+                        data-src="https://web.samco.in/"
+                        title="SAMCO Web Trading Portal"
+                        allow="clipboard-read; clipboard-write; fullscreen"
+                        referrerpolicy="no-referrer-when-downgrade">
+                    </iframe>
                 </div>
             </div>
         </div>

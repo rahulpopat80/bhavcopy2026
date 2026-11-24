@@ -548,6 +548,7 @@ function initEvents() {
     const tabMasterPiece = document.getElementById('tab-master-piece');
     const tabCallPut     = document.getElementById('tab-call-put');
     const tabCandleChart = document.getElementById('tab-candle-chart');
+    const tabSamcoWeb    = document.getElementById('tab-samco-web');
     
     const researchTabContent      = document.getElementById('research-tab-content');
     const portfolioTabContent     = document.getElementById('portfolio-tab-content');
@@ -562,11 +563,12 @@ function initEvents() {
     const masterPieceTabContent   = document.getElementById('master-piece-tab-content');
     const callPutTabContent       = document.getElementById('call-put-tab-content');
     const candleChartTabContent   = document.getElementById('candle-chart-tab-content');
+    const samcoWebTabContent      = document.getElementById('samco-web-tab-content');
 
     const hideAllTabs = () => {
-        [researchTabContent, portfolioTabContent, resultsTabContent, watchlistTabContent, morningPicksTabContent, adviceTabContent, volPromoterTabContent, circuitsTabContent, globalIndicesTabContent, intradayTabContent, masterPieceTabContent, callPutTabContent, candleChartTabContent]
+        [researchTabContent, portfolioTabContent, resultsTabContent, watchlistTabContent, morningPicksTabContent, adviceTabContent, volPromoterTabContent, circuitsTabContent, globalIndicesTabContent, intradayTabContent, masterPieceTabContent, callPutTabContent, candleChartTabContent, samcoWebTabContent]
             .forEach(el => el && el.classList.add('hidden'));
-        [tabResearch, tabPortfolio, tabResults, tabWatchlist, tabMorning, tabAdvice, tabVolPromoter, tabCircuits, tabGlobalIndices, tabIntraday, tabMasterPiece, tabCallPut, tabCandleChart]
+        [tabResearch, tabPortfolio, tabResults, tabWatchlist, tabMorning, tabAdvice, tabVolPromoter, tabCircuits, tabGlobalIndices, tabIntraday, tabMasterPiece, tabCallPut, tabCandleChart, tabSamcoWeb]
             .forEach(el => el && el.classList.remove('active'));
     };
 
@@ -698,6 +700,17 @@ function initEvents() {
             }
             if (typeof loadCandleChartTab === 'function') {
                 loadCandleChartTab(false);
+            }
+        });
+    }
+
+    if (tabSamcoWeb && samcoWebTabContent) {
+        tabSamcoWeb.addEventListener('click', () => {
+            hideAllTabs();
+            tabSamcoWeb.classList.add('active');
+            samcoWebTabContent.classList.remove('hidden');
+            if (typeof initSamcoWebTab === 'function') {
+                initSamcoWebTab();
             }
         });
     }
@@ -9981,7 +9994,48 @@ window.loadCandleChartTab = async function(forceRefresh = false) {
     }
 };
 
+// ==========================================
+// SAMCO WEB EMBEDDED PORTAL TAB (https://web.samco.in/)
+// ==========================================
+window.initSamcoWebTab = function() {
+    const iframe = document.getElementById('samco-web-iframe');
+    const homeBtn = document.getElementById('samco-home-btn');
+    const reloadBtn = document.getElementById('samco-reload-btn');
+    const expandBtn = document.getElementById('samco-expand-btn');
+    const wrap = document.getElementById('samco-iframe-wrap');
+    const targetUrl = (iframe && iframe.dataset.src) ? iframe.dataset.src : 'https://web.samco.in/';
+
+    if (iframe && !iframe.getAttribute('src')) {
+        iframe.src = targetUrl;
+    }
+
+    if (!document.body.dataset.samcoTabWired) {
+        document.body.dataset.samcoTabWired = '1';
+
+        if (homeBtn && iframe) {
+            homeBtn.addEventListener('click', () => {
+                iframe.src = targetUrl;
+            });
+        }
+        if (reloadBtn && iframe) {
+            reloadBtn.addEventListener('click', () => {
+                const cur = iframe.getAttribute('src') || targetUrl;
+                iframe.src = cur;
+            });
+        }
+        if (expandBtn && wrap) {
+            expandBtn.addEventListener('click', () => {
+                const expanded = wrap.classList.toggle('samco-frame-expanded');
+                expandBtn.innerHTML = expanded
+                    ? '<i class="fa-solid fa-down-left-and-up-right-to-center"></i> Normal Height'
+                    : '<i class="fa-solid fa-up-right-and-down-left-from-center"></i> Full Height';
+            });
+        }
+    }
+};
+
 // Run on load
 document.addEventListener('DOMContentLoaded', initEvents);
+
 
 

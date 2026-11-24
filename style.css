@@ -3357,6 +3357,119 @@ body.cc-fullscreen-mode .cc-canvas-wrap {
     }
 }
 
+/* SAMCO Web Embedded Tab (https://web.samco.in/) */
+.samco-web-card {
+    padding: 1rem 1.15rem;
+    border-color: rgba(16, 185, 129, 0.32);
+}
+
+.samco-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.65rem;
+}
+
+.samco-subtitle {
+    margin: 0.25rem 0 0;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.samco-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.samco-btn {
+    padding: 0.42rem 0.78rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    border-radius: 7px;
+    border: 1px solid rgba(16, 185, 129, 0.35);
+    background: rgba(16, 185, 129, 0.12);
+    color: #e2e8f0;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    cursor: pointer;
+}
+
+.samco-btn:hover {
+    background: rgba(16, 185, 129, 0.24);
+    color: #ffffff;
+}
+
+.samco-ext-link {
+    padding: 0.42rem 0.78rem;
+    font-size: 0.78rem;
+    font-weight: 700;
+    border-radius: 7px;
+    border: 1px solid rgba(56, 189, 248, 0.45);
+    background: rgba(56, 189, 248, 0.14);
+    color: #38bdf8;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.samco-ext-link:hover {
+    background: rgba(56, 189, 248, 0.24);
+    color: #ffffff;
+}
+
+.samco-login-tip {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 0.5rem 0.8rem;
+    margin-bottom: 0.75rem;
+    border-radius: 8px;
+    background: rgba(15, 23, 42, 0.75);
+    border: 1px solid rgba(56, 189, 248, 0.25);
+    font-size: 0.78rem;
+    color: #cbd5e1;
+}
+
+.samco-iframe-wrap {
+    width: 100%;
+    height: 760px;
+    min-height: 620px;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    background: #0b1120;
+}
+
+.samco-iframe-wrap.samco-frame-expanded {
+    height: calc(100vh - 115px);
+}
+
+#samco-web-iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+    display: block;
+    background: #ffffff;
+}
+
+@media (max-width: 768px) {
+    .samco-web-card {
+        padding: 0.75rem;
+    }
+
+    .samco-iframe-wrap {
+        height: 640px;
+        min-height: 520px;
+    }
+}
+
+
 
 
 
