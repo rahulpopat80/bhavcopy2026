@@ -57,27 +57,29 @@
                     <img src="./logo.png" alt="Rahul Finance Logo" class="logo-image">
                     <h1 class="logo-text">Rahul Finance</h1>
                 </div>
-                <!-- Nifty / Sensex live widget -->
+                <!-- Nifty / Sensex / Gold / Silver live widget (Double-Click to open chart) -->
                 <div class="header-indices-widget no-print">
-                    <div class="index-card">
+                    <div class="index-card live-chart-trigger" data-chart-symbol="^NSEI" title="ડબલ-ક્લિક કરી NIFTY 50 Chart જુઓ">
                         <span class="index-label">NIFTY 50</span>
                         <span class="index-val" id="nifty-val">—</span>
                         <span class="index-chg" id="nifty-chg">-</span>
                     </div>
-                    <div class="index-card">
+                    <div class="index-card live-chart-trigger" data-chart-symbol="^BSESN" title="ડબલ-ક્લિક કરી SENSEX Chart જુઓ">
                         <span class="index-label">SENSEX</span>
                         <span class="index-val" id="sensex-val">—</span>
                         <span class="index-chg" id="sensex-chg">-</span>
                     </div>
-                    <div class="index-card" style="border-color: rgba(255,193,7,0.3);">
+                    <div class="index-card live-chart-trigger" data-chart-symbol="GC=F" style="border-color: rgba(255,193,7,0.3);" title="ડબલ-ક્લિક કરી GOLD Chart જુઓ">
                         <span class="index-label" style="color:#f59e0b;"><i class="fa-solid fa-circle" style="font-size:0.55rem;margin-right:3px;"></i> GOLD /10g</span>
                         <span class="index-val" id="gold-val">—</span>
                         <span class="index-chg" id="gold-chg">-</span>
+                        <span class="index-usd-sub" id="gold-usd">Intl: $—</span>
                     </div>
-                    <div class="index-card" style="border-color: rgba(148,163,184,0.3);">
+                    <div class="index-card live-chart-trigger" data-chart-symbol="SI=F" style="border-color: rgba(148,163,184,0.3);" title="ડબલ-ક્લિક કરી SILVER Chart જુઓ">
                         <span class="index-label" style="color:#94a3b8;"><i class="fa-solid fa-circle" style="font-size:0.55rem;margin-right:3px;"></i> SILVER /kg</span>
                         <span class="index-val" id="silver-val">—</span>
                         <span class="index-chg" id="silver-chg">-</span>
+                        <span class="index-usd-sub" id="silver-usd">Intl: $—</span>
                     </div>
                 </div>
                 <div class="cloud-sync-badge" id="cloud-sync-status">
@@ -1027,34 +1029,36 @@
 
                 <div id="cp-status-msg" class="cp-status-banner hidden"></div>
 
-                <!-- 1-Second Live Strip: NIFTY 50, SENSEX, GOLD/10g, SILVER/1kg, NASDAQ, SHANGHAI INDEX -->
+                <!-- Live Strip: NIFTY 50, SENSEX, GOLD/10g (+Intl USD), SILVER/1kg (+Intl USD), NASDAQ, HANG SENG (Double-Click to open Chart) -->
                 <div class="cp-live-strip-grid" id="cp-market-ticker-grid">
-                    <div class="cp-live-card">
+                    <div class="cp-live-card live-chart-trigger" data-chart-symbol="^NSEI" title="ડબલ-ક્લિક કરી NIFTY 50 Chart જુઓ">
                         <span class="cp-live-title">NIFTY 50 <small id="cp-live-nifty-src">LIVE 1s</small></span>
                         <strong class="cp-live-val" id="cp-live-nifty-val">--</strong>
                         <span class="cp-live-chg" id="cp-live-nifty-chg">--</span>
                     </div>
-                    <div class="cp-live-card">
+                    <div class="cp-live-card live-chart-trigger" data-chart-symbol="^BSESN" title="ડબલ-ક્લિક કરી SENSEX Chart જુઓ">
                         <span class="cp-live-title">SENSEX <small id="cp-live-sensex-src">LIVE 1s</small></span>
                         <strong class="cp-live-val" id="cp-live-sensex-val">--</strong>
                         <span class="cp-live-chg" id="cp-live-sensex-chg">--</span>
                     </div>
-                    <div class="cp-live-card cp-gold-card">
+                    <div class="cp-live-card cp-gold-card live-chart-trigger" data-chart-symbol="GC=F" title="ડબલ-ક્લિક કરી GOLD Chart જુઓ">
                         <span class="cp-live-title" style="color:#f59e0b;">GOLD / 10g <small id="cp-live-gold-src">MCX</small></span>
                         <strong class="cp-live-val" id="cp-live-gold-val">--</strong>
                         <span class="cp-live-chg" id="cp-live-gold-chg">--</span>
+                        <span class="cp-live-usd" id="cp-live-gold-usd">Intl USD: $--</span>
                     </div>
-                    <div class="cp-live-card cp-silver-card">
+                    <div class="cp-live-card cp-silver-card live-chart-trigger" data-chart-symbol="SI=F" title="ડબલ-ક્લિક કરી SILVER Chart જુઓ">
                         <span class="cp-live-title" style="color:#cbd5e1;">SILVER / 1kg <small id="cp-live-silver-src">MCX</small></span>
                         <strong class="cp-live-val" id="cp-live-silver-val">--</strong>
                         <span class="cp-live-chg" id="cp-live-silver-chg">--</span>
+                        <span class="cp-live-usd" id="cp-live-silver-usd">Intl USD: $--</span>
                     </div>
-                    <div class="cp-live-card cp-global-card">
+                    <div class="cp-live-card cp-global-card live-chart-trigger" data-chart-symbol="^IXIC" title="ડબલ-ક્લિક કરી NASDAQ Chart જુઓ">
                         <span class="cp-live-title" style="color:#38bdf8;">NASDAQ <small>^IXIC</small></span>
                         <strong class="cp-live-val" id="cp-live-nasdaq-val">--</strong>
                         <span class="cp-live-chg" id="cp-live-nasdaq-chg">--</span>
                     </div>
-                    <div class="cp-live-card cp-global-card">
+                    <div class="cp-live-card cp-global-card live-chart-trigger" data-chart-symbol="^HSI" title="ડબલ-ક્લિક કરી HANG SENG Chart જુઓ">
                         <span class="cp-live-title" style="color:#f472b6;">HANG SENG <small>^HSI</small></span>
                         <strong class="cp-live-val" id="cp-live-hangseng-val">--</strong>
                         <span class="cp-live-chg" id="cp-live-hangseng-chg">--</span>
@@ -1349,12 +1353,50 @@
                     <button type="button" class="cc-quick-btn active" data-sym="^NSEI">NIFTY 50</button>
                     <button type="button" class="cc-quick-btn" data-sym="^BSESN">SENSEX</button>
                     <button type="button" class="cc-quick-btn" data-sym="^NSEBANK">BANK NIFTY</button>
+                    <button type="button" class="cc-quick-btn" data-sym="GC=F" style="border-color:rgba(245,158,11,0.45);color:#fbbf24;">GOLD ($)</button>
+                    <button type="button" class="cc-quick-btn" data-sym="SI=F" style="border-color:rgba(148,163,184,0.45);color:#cbd5e1;">SILVER ($)</button>
                     <button type="button" class="cc-quick-btn" data-sym="RELIANCE">RELIANCE</button>
                     <button type="button" class="cc-quick-btn" data-sym="TCS">TCS</button>
                     <button type="button" class="cc-quick-btn" data-sym="HDFCBANK">HDFCBANK</button>
                     <button type="button" class="cc-quick-btn" data-sym="SBIN">SBIN</button>
                     <button type="button" class="cc-quick-btn" data-sym="INFY">INFY</button>
                     <button type="button" class="cc-quick-btn" data-sym="ICICIBANK">ICICIBANK</button>
+                </div>
+
+                <!-- Live Technical Buy/Sell + Target + Stop Loss Guidance Card -->
+                <div class="cc-trade-signal-card" id="cc-trade-signal-card">
+                    <div class="cc-signal-left">
+                        <div class="cc-signal-kicker-row">
+                            <span class="cp-kicker">ટેકનિકલ બાય / સેલ, ટાર્ગેટ અને સ્ટોપ લોસ માર્ગદર્શન (ALL 6 INDICATORS LIVE)</span>
+                            <span id="cc-signal-score-pill" class="cc-signal-score-pill">Score: --</span>
+                        </div>
+                        <div class="cc-signal-headline">
+                            <span id="cc-signal-action-badge" class="cc-signal-action-badge cc-sig-wait">વિશ્લેષણ ચાલુ...</span>
+                            <strong id="cc-signal-subhead" class="cc-signal-subhead">ચાર્ટ ઇન્ડિકેટર્સ ગણતરી થઈ રહી છે...</strong>
+                        </div>
+                        <div id="cc-signal-reasons" class="cc-signal-reasons"></div>
+                    </div>
+                    <div class="cc-signal-levels-grid">
+                        <div class="cc-level-box cc-level-entry">
+                            <span>પ્રવેશ ભાવ (Entry / Live)</span>
+                            <strong id="cc-signal-entry">--</strong>
+                        </div>
+                        <div class="cc-level-box cc-level-target">
+                            <span>🎯 ટાર્ગેટ 1 / ટાર્ગેટ 2</span>
+                            <strong id="cc-signal-target">--</strong>
+                            <small id="cc-signal-target2">T2: --</small>
+                        </div>
+                        <div class="cc-level-box cc-level-sl">
+                            <span>🛑 સ્ટોપ લોસ (Stop Loss)</span>
+                            <strong id="cc-signal-sl">--</strong>
+                            <small id="cc-signal-sl-pct">Risk: --</small>
+                        </div>
+                        <div class="cc-level-box cc-level-rr">
+                            <span>Risk : Reward &amp; ATR</span>
+                            <strong id="cc-signal-rr">--</strong>
+                            <small id="cc-signal-atr">ATR(14): --</small>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Future Price Direction Verdict (Bullish / Bearish + Volume + BB) -->
@@ -1411,6 +1453,8 @@
                         <span><i class="fa-solid fa-chart-simple" style="color:#a855f7;"></i> Volume</span>
                         <span><i class="fa-solid fa-wave-square" style="color:#c084fc;"></i> RSI(14)</span>
                         <span><i class="fa-solid fa-chart-line" style="color:#38bdf8;"></i> MACD(12,26,9)</span>
+                        <span style="color:#4ade80;font-weight:700;">— Target (🎯)</span>
+                        <span style="color:#f87171;font-weight:700;">— Stop Loss (🛑)</span>
                         <div class="cc-zoom-controls" data-target-canvas="candle-main-canvas">
                             <button type="button" class="cc-zoom-btn" data-action="pan-left" title="Scroll Left (પાછળ જુઓ)"><i class="fa-solid fa-chevron-left"></i></button>
                             <button type="button" class="cc-zoom-btn" data-action="pan-right" title="Scroll Right (આગળ જુઓ)"><i class="fa-solid fa-chevron-right"></i></button>

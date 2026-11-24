@@ -705,6 +705,9 @@ function initEvents() {
     if (typeof initModalChartControls === 'function') {
         initModalChartControls();
     }
+    if (typeof wireLivePositionChartDblClick === 'function') {
+        wireLivePositionChartDblClick();
+    }
 
 
     // Portfolio Form Initializations
@@ -7246,19 +7249,39 @@ window.fetchLiveMarket1s = async function() {
         if (!res.ok) return;
         const d = await res.json();
 
-        // 1. Update global header cards every 1 second (NIFTY 50, SENSEX, GOLD/10g, SILVER/1kg)
+        // 1. Update global header cards every ~350ms (NIFTY 50, SENSEX, GOLD/10g, SILVER/1kg)
         updateTickerPair('nifty-val', 'nifty-chg', d.nifty, { decimals: 2 });
         updateTickerPair('sensex-val', 'sensex-chg', d.sensex, { decimals: 2 });
         updateTickerPair('gold-val', 'gold-chg', d.gold, { decimals: 0, prefix: '\u20b9' });
         updateTickerPair('silver-val', 'silver-chg', d.silver, { decimals: 0, prefix: '\u20b9' });
 
-        // 2. Update Call Put tab 1-second strip (including NASDAQ & HANG SENG)
+        // 2. Update Call Put tab live strip (including NASDAQ, HANG SENG & Intl Gold/Silver USD)
         updateTickerPair('cp-live-nifty-val', 'cp-live-nifty-chg', d.nifty, { decimals: 2 });
         updateTickerPair('cp-live-sensex-val', 'cp-live-sensex-chg', d.sensex, { decimals: 2 });
         updateTickerPair('cp-live-gold-val', 'cp-live-gold-chg', d.gold, { decimals: 0, prefix: '\u20b9' });
         updateTickerPair('cp-live-silver-val', 'cp-live-silver-chg', d.silver, { decimals: 0, prefix: '\u20b9' });
         updateTickerPair('cp-live-nasdaq-val', 'cp-live-nasdaq-chg', d.nasdaq, { decimals: 2 });
         updateTickerPair('cp-live-hangseng-val', 'cp-live-hangseng-chg', d.hangseng, { decimals: 2 });
+
+        const updateUsdSub = (id, prefixLabel, usdObj, decimals) => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            if (!usdObj || !Number.isFinite(Number(usdObj.price))) {
+                el.textContent = `${prefixLabel} $--`;
+                return;
+            }
+            const p = Number(usdObj.price);
+            const pct = Number(usdObj.changePercent || 0);
+            const sign = pct >= 0 ? '+' : '';
+            el.textContent = `${prefixLabel} $${p.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })} (${sign}${pct.toFixed(2)}%)`;
+            el.style.color = pct >= 0 ? '#34d399' : '#f87171';
+        };
+        const gUsd = d.goldUsd || d.gold?.usd;
+        const sUsd = d.silverUsd || d.silver?.usd;
+        updateUsdSub('gold-usd', 'Intl:', gUsd, 2);
+        updateUsdSub('silver-usd', 'Intl:', sUsd, 3);
+        updateUsdSub('cp-live-gold-usd', 'Intl USD:', gUsd, 2);
+        updateUsdSub('cp-live-silver-usd', 'Intl USD:', sUsd, 3);
 
         const setElText = (id, text) => {
             const el = document.getElementById(id);
@@ -7377,7 +7400,11 @@ const COMPANY_NAME_DEFAULTS = {
     BHARTIARTL: 'Bharti Airtel Limited',
     '^NSEI': 'NIFTY 50',
     '^BSESN': 'SENSEX',
-    '^NSEBANK': 'BANK NIFTY'
+    '^NSEBANK': 'BANK NIFTY',
+    'GC=F': 'GOLD COMEX (USD/oz)',
+    'SI=F': 'SILVER COMEX (USD/oz)',
+    '^IXIC': 'NASDAQ Composite',
+    '^HSI': 'HANG SENG Index'
 };
 const companyNameCache = new Map(Object.entries(COMPANY_NAME_DEFAULTS));
 const modalChartState = {
@@ -7409,7 +7436,66 @@ function normalizeCandleSymbolInput(rawSym) {
     if (s === 'NIFTY' || s === 'NIFTY 50' || s === 'NIFTY50' || s === '^NSEI') return '^NSEI';
     if (s === 'SENSEX' || s === 'BSE SENSEX' || s === 'BSESN' || s === '^BSESN') return '^BSESN';
     if (s === 'BANKNIFTY' || s === 'BANK NIFTY' || s === 'NIFTY BANK' || s === '^NSEBANK') return '^NSEBANK';
+    if (s === 'GOLD' || s === 'GOLD /10G' || s === 'GOLD / 10G' || s === 'GOLD ($)' || s === 'GOLD COMEX (USD/OZ)' || s === 'XAU' || s === 'XAUUSD' || s === 'GC=F') return 'GC=F';
+    if (s === 'SILVER' || s === 'SILVER /KG' || s === 'SILVER / 1KG' || s === 'SILVER ($)' || s === 'SILVER COMEX (USD/OZ)' || s === 'XAG' || s === 'XAGUSD' || s === 'SI=F') return 'SI=F';
+    if (s === 'NASDAQ' || s === 'NASDAQ COMPOSITE' || s === 'IXIC' || s === '^IXIC') return '^IXIC';
+    if (s === 'HANG SENG' || s === 'HANG SENG INDEX' || s === 'HANGSENG' || s === 'HSI' || s === '^HSI') return '^HSI';
     return s;
+}
+
+function getCandleCurrencyInfo(symbol) {
+    const clean = normalizeCandleSymbolInput(symbol);
+    if (clean === 'SI=F') return { prefix: '$', decimals: 3 };
+    if (clean === 'GC=F' || clean === '^IXIC') return { prefix: '$', decimals: 2 };
+    if (clean === '^HSI') return { prefix: 'HK$', decimals: 2 };
+    return { prefix: '₹', decimals: 2 };
+}
+
+function fmtCandlePrice(val, symbol, compactAxis = false) {
+    if (!Number.isFinite(Number(val))) return '--';
+    const num = Number(val);
+    const { prefix, decimals } = getCandleCurrencyInfo(symbol);
+    const dec = compactAxis && num >= 1000 ? 0 : decimals;
+    return `${prefix}${num.toLocaleString('en-IN', { minimumFractionDigits: dec, maximumFractionDigits: dec })}`;
+}
+
+window.openSymbolInCandleChart = function(symbol) {
+    const clean = normalizeCandleSymbolInput(symbol);
+    candleTabState.symbol = clean;
+    candleTabState.companyName = resolveCandleCompanyName(clean);
+    if (!candleTabState.interval) candleTabState.interval = '10m';
+
+    if (document.body.classList.contains('cc-fullscreen-mode')) {
+        if (typeof initCandleChartTab === 'function') initCandleChartTab();
+        if (typeof loadCandleChartTab === 'function') loadCandleChartTab(true);
+        return;
+    }
+
+    const tabCC = document.getElementById('tab-candle-chart');
+    const ccPane = document.getElementById('candle-chart-tab-content');
+    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('#main-app > div[id$="-tab-content"]').forEach(el => el.classList.add('hidden'));
+    if (tabCC) tabCC.classList.add('active');
+    if (ccPane) ccPane.classList.remove('hidden');
+
+    if (typeof initCandleChartTab === 'function') initCandleChartTab();
+    if (typeof loadCandleChartTab === 'function') loadCandleChartTab(true);
+    if (ccPane) {
+        ccPane.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+};
+
+function wireLivePositionChartDblClick() {
+    if (document.body.dataset.livePosDblClickWired) return;
+    document.body.dataset.livePosDblClickWired = '1';
+    document.addEventListener('dblclick', (e) => {
+        const trigger = e.target.closest('.live-chart-trigger[data-chart-symbol]');
+        if (!trigger) return;
+        const sym = trigger.dataset.chartSymbol;
+        if (!sym) return;
+        e.preventDefault();
+        window.openSymbolInCandleChart(sym);
+    });
 }
 
 function resolveCandleCompanyName(symbol, apiName = '') {
@@ -7417,6 +7503,10 @@ function resolveCandleCompanyName(symbol, apiName = '') {
     if (clean === '^NSEI') return 'NIFTY 50';
     if (clean === '^BSESN') return 'SENSEX';
     if (clean === '^NSEBANK') return 'BANK NIFTY';
+    if (clean === 'GC=F') return 'GOLD COMEX (USD/oz)';
+    if (clean === 'SI=F') return 'SILVER COMEX (USD/oz)';
+    if (clean === '^IXIC') return 'NASDAQ Composite';
+    if (clean === '^HSI') return 'HANG SENG Index';
 
     const cleanedApi = String(apiName || '').trim();
     if (cleanedApi) {
@@ -7907,6 +7997,246 @@ function detectCandlestickPatterns(candles, bb, volAvg) {
     };
 }
 
+function computeATRValues(candles, period = 14) {
+    const out = new Array(candles.length).fill(null);
+    if (!candles || candles.length === 0) return out;
+    const tr = new Array(candles.length).fill(0);
+    for (let i = 0; i < candles.length; i++) {
+        const c = candles[i];
+        const prevC = i > 0 ? candles[i - 1].close : c.open;
+        tr[i] = Math.max(c.high - c.low, Math.abs(c.high - prevC), Math.abs(c.low - prevC));
+    }
+    if (candles.length < period) {
+        let sum = 0;
+        for (let i = 0; i < candles.length; i++) {
+            sum += tr[i];
+            out[i] = sum / (i + 1);
+        }
+        return out;
+    }
+    let atrSum = 0;
+    for (let i = 0; i < period; i++) atrSum += tr[i];
+    let atr = atrSum / period;
+    out[period - 1] = atr;
+    for (let i = period; i < candles.length; i++) {
+        atr = ((atr * (period - 1)) + tr[i]) / period;
+        out[i] = atr;
+    }
+    return out;
+}
+
+function computeTechnicalTradeSignal(candles, bbFull, ema9Full, ema21Full, sma50Full, vwapFull, rsiFull, macdFull, volAvgFull, patternAnalysis) {
+    if (!candles || candles.length === 0) return null;
+    const i = candles.length - 1;
+    const last = candles[i];
+    const entry = last.close;
+    const atrArr = computeATRValues(candles, 14);
+    const atr = Math.max(entry * 0.0012, atrArr[i] || (last.high - last.low) || entry * 0.003);
+
+    const ema9 = ema9Full[i];
+    const ema21 = ema21Full[i];
+    const sma50 = sma50Full[i];
+    const vwap = vwapFull[i];
+    const rsi = rsiFull[i];
+    const macd = macdFull.macd[i];
+    const macdSig = macdFull.signal[i];
+    const macdHist = macdFull.hist[i];
+    const prevHist = i > 0 ? macdFull.hist[i - 1] : null;
+    const bbUp = bbFull.upper[i];
+    const bbMid = bbFull.middle[i];
+    const bbLow = bbFull.lower[i];
+    const avgV = volAvgFull[i] || 0;
+    const hasVol = candles.some(c => c.volume > 0);
+    const volRatio = hasVol && avgV > 0 ? last.volume / avgV : 1;
+
+    let score = 0;
+    const reasons = [];
+
+    // 1. Moving Averages (EMA 9 / EMA 21 / SMA 50)
+    if (ema9 !== null && ema21 !== null) {
+        if (ema9 > ema21 && entry >= ema9) {
+            score += 1.75;
+            reasons.push({ text: 'EMA9 > EMA21 (તેજી ટ્રેન્ડ)', type: 'bull' });
+        } else if (ema9 > ema21) {
+            score += 1.0;
+            reasons.push({ text: 'EMA9 > EMA21 (હકારાત્મક)', type: 'bull' });
+        } else if (ema9 < ema21 && entry <= ema9) {
+            score -= 1.75;
+            reasons.push({ text: 'EMA9 < EMA21 (મંદી ટ્રેન્ડ)', type: 'bear' });
+        } else {
+            score -= 1.0;
+            reasons.push({ text: 'EMA9 < EMA21 (દબાણ)', type: 'bear' });
+        }
+    }
+    if (sma50 !== null) {
+        if (entry >= sma50) {
+            score += 0.75;
+            reasons.push({ text: 'ભાવ SMA50 ઉપર', type: 'bull' });
+        } else {
+            score -= 0.75;
+            reasons.push({ text: 'ભાવ SMA50 નીચે', type: 'bear' });
+        }
+    }
+
+    // 2. VWAP Intraday
+    if (vwap !== null) {
+        if (entry >= vwap) {
+            score += 1.25;
+            reasons.push({ text: 'ભાવ VWAP ઉપર (ખરીદદાર મજબૂત)', type: 'bull' });
+        } else {
+            score -= 1.25;
+            reasons.push({ text: 'ભાવ VWAP નીચે (વેચવાલ હાવી)', type: 'bear' });
+        }
+    }
+
+    // 3. RSI (14)
+    if (rsi !== null && rsi !== undefined) {
+        if (rsi <= 32) {
+            score += 1.5;
+            reasons.push({ text: `RSI ${rsi.toFixed(1)} (Oversold બાઉન્સ)`, type: 'bull' });
+        } else if (rsi >= 52 && rsi < 70) {
+            score += 1.0;
+            reasons.push({ text: `RSI ${rsi.toFixed(1)} (બુલિશ મોમેન્ટમ)`, type: 'bull' });
+        } else if (rsi >= 72) {
+            score -= 1.0;
+            reasons.push({ text: `RSI ${rsi.toFixed(1)} (Overbought સાવચેતી)`, type: 'bear' });
+        } else if (rsi <= 48 && rsi > 32) {
+            score -= 1.0;
+            reasons.push({ text: `RSI ${rsi.toFixed(1)} (બેરીશ મોમેન્ટમ)`, type: 'bear' });
+        }
+    }
+
+    // 4. MACD (12, 26, 9)
+    if (macd !== null && macdSig !== null) {
+        if (macd > macdSig) {
+            score += (prevHist !== null && macdHist > prevHist) ? 1.5 : 1.0;
+            reasons.push({ text: 'MACD Bullish Crossover', type: 'bull' });
+        } else {
+            score -= (prevHist !== null && macdHist < prevHist) ? 1.5 : 1.0;
+            reasons.push({ text: 'MACD Bearish Crossover', type: 'bear' });
+        }
+    }
+
+    // 5. Bollinger Bands (20, 2)
+    if (bbUp !== null && bbLow !== null && bbMid !== null) {
+        if (entry <= bbLow * 1.002) {
+            score += 0.75;
+            reasons.push({ text: 'Lower BB સપોર્ટ ઝોન', type: 'bull' });
+        } else if (entry >= bbUp * 0.998) {
+            score += (rsi && rsi >= 74) ? -0.5 : 0.75;
+            reasons.push({ text: rsi && rsi >= 74 ? 'Upper BB ઓવરબોટ' : 'Upper BB બ્રેકઆઉટ', type: rsi && rsi >= 74 ? 'bear' : 'bull' });
+        } else if (entry >= bbMid) {
+            score += 0.5;
+        } else {
+            score -= 0.5;
+        }
+    }
+
+    // 6. Volume + Candlestick Pattern
+    if (hasVol && volRatio >= 1.25) {
+        if (last.close >= last.open) {
+            score += 0.5;
+            reasons.push({ text: `મજબૂત ખરીદી Volume (${volRatio.toFixed(1)}x)`, type: 'bull' });
+        } else {
+            score -= 0.5;
+            reasons.push({ text: `ભારે વેચવાલી Volume (${volRatio.toFixed(1)}x)`, type: 'bear' });
+        }
+    }
+    const dir = patternAnalysis?.verdict?.direction;
+    if (dir === 'BULLISH') score += 0.75;
+    else if (dir === 'BEARISH') score -= 0.75;
+
+    // Classify Action + Compute Swing-aware SL & Targets
+    let action = 'WAIT';
+    let actionGu = 'રાહ જુઓ (WAIT / SIDEWAYS)';
+    let badgeClass = 'cc-sig-wait';
+    let subheadGu = 'ઇન્ડિકેટર્સ મિશ્ર છે — બ્રેકઆઉટ કે સ્પષ્ટ ક્રોસઓવરની રાહ જુઓ.';
+    let biasSide = score >= 0 ? 'BUY' : 'SELL';
+
+    if (score >= 3.25) {
+        action = 'STRONG BUY';
+        actionGu = 'મજબૂત ખરીદી (STRONG BUY)';
+        badgeClass = 'cc-sig-buy';
+        subheadGu = 'મોટાભાગના ઇન્ડિકેટર્સ તેજી દર્શાવે છે — Stop Loss સાથે Buy પોઝિશન લઈ શકાય.';
+        biasSide = 'BUY';
+    } else if (score >= 1.0) {
+        action = 'BUY';
+        actionGu = 'ખરીદી કરો (BUY)';
+        badgeClass = 'cc-sig-buy';
+        subheadGu = 'ટેકનિકલ ઇન્ડિકેટર્સ તેજી તરફી છે — નીચે મુજબ Target અને Stop Loss રાખો.';
+        biasSide = 'BUY';
+    } else if (score <= -3.25) {
+        action = 'STRONG SELL';
+        actionGu = 'મજબૂત વેચાણ (STRONG SELL)';
+        badgeClass = 'cc-sig-sell';
+        subheadGu = 'મોટાભાગના ઇન્ડિકેટર્સ મંદી દર્શાવે છે — Stop Loss સાથે Sell / Exit પોઝિશન રાખો.';
+        biasSide = 'SELL';
+    } else if (score <= -1.0) {
+        action = 'SELL';
+        actionGu = 'વેચાણ કરો (SELL)';
+        badgeClass = 'cc-sig-sell';
+        subheadGu = 'ટેકનિકલ ઇન્ડિકેટર્સ નબળા છે — નીચે મુજબ Target અને Stop Loss રાખો.';
+        biasSide = 'SELL';
+    }
+
+    const lookbackStart = Math.max(0, i - 11);
+    let swingLow = Infinity;
+    let swingHigh = -Infinity;
+    for (let k = lookbackStart; k <= i; k++) {
+        swingLow = Math.min(swingLow, candles[k].low);
+        swingHigh = Math.max(swingHigh, candles[k].high);
+    }
+
+    const minRisk = Math.max(entry * 0.0012, atr * 0.65);
+    const maxRisk = Math.max(minRisk * 1.5, atr * 2.4);
+
+    let stopLoss = entry;
+    let target1 = entry;
+    let target2 = entry;
+
+    if (biasSide === 'BUY') {
+        const techFloor = Math.min(swingLow, ema21 || swingLow);
+        const rawRisk = Math.max(entry - techFloor + atr * 0.2, atr * 1.35);
+        const risk = Math.min(maxRisk, Math.max(minRisk, rawRisk));
+        stopLoss = Math.max(0.0001, entry - risk);
+        const minT1 = entry + risk * 1.8;
+        target1 = (bbUp && bbUp > entry + risk * 1.1 && bbUp < entry + risk * 3.0) ? Math.max(minT1, bbUp) : minT1;
+        target2 = entry + risk * 2.8;
+    } else {
+        const techCeil = Math.max(swingHigh, ema21 || swingHigh);
+        const rawRisk = Math.max(techCeil - entry + atr * 0.2, atr * 1.35);
+        const risk = Math.min(maxRisk, Math.max(minRisk, rawRisk));
+        stopLoss = entry + risk;
+        const maxT1 = Math.max(0.0001, entry - risk * 1.8);
+        target1 = (bbLow && bbLow < entry - risk * 1.1 && bbLow > entry - risk * 3.0) ? Math.min(maxT1, bbLow) : maxT1;
+        target2 = Math.max(0.0001, entry - risk * 2.8);
+    }
+
+    const riskAmt = Math.abs(entry - stopLoss);
+    const rewardAmt = Math.abs(target1 - entry);
+    const rrRatio = riskAmt > 0 ? rewardAmt / riskAmt : 1.8;
+    const slPct = entry > 0 ? (riskAmt / entry) * 100 : 0;
+    const t1Pct = entry > 0 ? (rewardAmt / entry) * 100 : 0;
+
+    return {
+        action,
+        actionGu,
+        badgeClass,
+        subheadGu,
+        biasSide,
+        score,
+        entry,
+        target1,
+        target2,
+        stopLoss,
+        atr,
+        rrRatio,
+        slPct,
+        t1Pct,
+        reasons: reasons.slice(0, 6)
+    };
+}
+
 function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
     const canvas = document.getElementById(canvasId);
     if (!canvas || !Array.isArray(allCandles) || allCandles.length === 0) return;
@@ -7967,6 +8297,18 @@ function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
         const macdFull = computeMACDValues(sourceCandles, 12, 26, 9);
         const volAvgFull = computeVolumeSma(sourceCandles, 20);
         analysis = detectCandlestickPatterns(sourceCandles, bbFull, volAvgFull);
+        analysis.tradeSignal = computeTechnicalTradeSignal(
+            sourceCandles,
+            bbFull,
+            ema9Full,
+            ema21Full,
+            sma50Full,
+            vwapFull,
+            rsiFull,
+            macdFull,
+            volAvgFull,
+            analysis
+        );
 
         // Attach latest technical indicator summary to analysis for UI table
         const lastIdx = N - 1;
@@ -8108,7 +8450,7 @@ function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
             const compLbl = String(currentOptions.companyName || '').trim();
             const tfLbl = currentOptions.interval ? String(currentOptions.interval).toUpperCase() : '';
             const lastBar = candles[candles.length - 1];
-            const lastPriceStr = lastBar ? `  ₹${lastBar.close.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '';
+            const lastPriceStr = lastBar ? `  ${fmtCandlePrice(lastBar.close, symLbl)}` : '';
             const primaryName = compLbl || symLbl;
             const subTag = (compLbl && compLbl.toUpperCase() !== symLbl) ? ` (${symLbl})` : '';
             const titleText = `${primaryName}${subTag}  •  ${tfLbl}${lastPriceStr}`;
@@ -8193,8 +8535,21 @@ function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
             if (c.volume > maxV) maxV = c.volume;
         }
 
+        const sig = analysis?.tradeSignal;
+        if (sig && Number.isFinite(minP) && Number.isFinite(maxP)) {
+            const baseSpan = Math.max(0.5, maxP - minP);
+            if (sig.target1 && Math.abs(sig.target1 - sig.entry) <= baseSpan * 2.5) {
+                minP = Math.min(minP, sig.target1);
+                maxP = Math.max(maxP, sig.target1);
+            }
+            if (sig.stopLoss && Math.abs(sig.stopLoss - sig.entry) <= baseSpan * 2.5) {
+                minP = Math.min(minP, sig.stopLoss);
+                maxP = Math.max(maxP, sig.stopLoss);
+            }
+        }
+
         if (!Number.isFinite(minP) || !Number.isFinite(maxP)) return;
-        const padPrice = Math.max(0.5, (maxP - minP) * 0.08);
+        const padPrice = Math.max(0.05, (maxP - minP) * 0.09);
         minP -= padPrice;
         maxP += padPrice;
 
@@ -8204,6 +8559,7 @@ function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
         const candleW = Math.max(1.4, Math.min(16, stepX * 0.65));
         lastPlotW = plotW;
         lastStepX = stepX;
+        const chartSym = currentOptions.symbol || '';
 
         // Gridlines & Right Y-axis Price Labels
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
@@ -8219,7 +8575,7 @@ function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
             ctx.moveTo(padLeft, y);
             ctx.lineTo(padLeft + plotW, y);
             ctx.stroke();
-            ctx.fillText('₹' + val.toFixed(val >= 1000 ? 0 : 2), padLeft + plotW + 6, y + 4);
+            ctx.fillText(fmtCandlePrice(val, chartSym, true), padLeft + plotW + 5, y + 4);
         }
 
         const drawOverlayLine = (series, color, lineWidth = 1.4, dashed = false) => {
@@ -8315,6 +8671,92 @@ function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
             }
         }
 
+        // Draw Live Technical BUY / SELL Entry, TARGET & STOP LOSS Lines directly on Chart
+        if (sig && !isCompact) {
+            const drawLevelLine = (priceVal, strokeCol, fillCol, textCol, labelText, axisTagPrefix) => {
+                if (!Number.isFinite(priceVal)) return;
+                const y = priceToY(priceVal);
+                if (y < padTop + 2 || y > padTop + priceH - 2) return;
+
+                ctx.save();
+                ctx.strokeStyle = strokeCol;
+                ctx.lineWidth = 1.4;
+                ctx.setLineDash([6, 4]);
+                ctx.beginPath();
+                ctx.moveTo(padLeft, y);
+                ctx.lineTo(padLeft + plotW, y);
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                ctx.font = 'bold 10.5px Outfit, sans-serif';
+                const lblW = ctx.measureText(labelText).width + 14;
+                const lblY = Math.max(padTop + 10, Math.min(padTop + priceH - 10, y));
+                ctx.fillStyle = fillCol;
+                ctx.fillRect(padLeft + 6, lblY - 9, lblW, 17);
+                ctx.strokeStyle = strokeCol;
+                ctx.lineWidth = 1;
+                ctx.strokeRect(padLeft + 6, lblY - 9, lblW, 17);
+                ctx.fillStyle = textCol;
+                ctx.textAlign = 'left';
+                ctx.fillText(labelText, padLeft + 12, lblY + 3.5);
+
+                // Right axis pill for Target / SL
+                ctx.fillStyle = strokeCol;
+                ctx.fillRect(padLeft + plotW + 2, lblY - 8, padRight - 4, 16);
+                ctx.fillStyle = '#070c17';
+                ctx.font = 'bold 9.5px Outfit, sans-serif';
+                ctx.fillText(`${axisTagPrefix}${fmtCandlePrice(priceVal, chartSym, true)}`, padLeft + plotW + 4, lblY + 3);
+                ctx.restore();
+            };
+
+            drawLevelLine(
+                sig.target1,
+                '#22c55e',
+                'rgba(6, 78, 59, 0.92)',
+                '#86efac',
+                `TARGET: ${fmtCandlePrice(sig.target1, chartSym)}`,
+                'T:'
+            );
+            drawLevelLine(
+                sig.stopLoss,
+                '#ef4444',
+                'rgba(127, 29, 29, 0.92)',
+                '#fca5a5',
+                `STOP LOSS: ${fmtCandlePrice(sig.stopLoss, chartSym)}`,
+                'SL:'
+            );
+
+            // Compact Live BUY / SELL Action Card at Top-Right of Chart Canvas
+            const sigCol = sig.action.includes('BUY') ? '#22c55e' : (sig.action.includes('SELL') ? '#ef4444' : '#f59e0b');
+            const sigBg = sig.action.includes('BUY') ? 'rgba(6, 78, 59, 0.92)' : (sig.action.includes('SELL') ? 'rgba(127, 29, 29, 0.92)' : 'rgba(120, 53, 15, 0.92)');
+            const sigActionIcon = sig.action.includes('BUY') ? '▲' : (sig.action.includes('SELL') ? '▼' : '⏸');
+            const sigMainTxt = `${sigActionIcon} ${sig.action} @ ${fmtCandlePrice(sig.entry, chartSym)}`;
+            const sigSubTxt = `TGT: ${fmtCandlePrice(sig.target1, chartSym)} | SL: ${fmtCandlePrice(sig.stopLoss, chartSym)} | R:R 1:${sig.rrRatio.toFixed(1)}`;
+
+            ctx.save();
+            ctx.font = '800 12px Outfit, sans-serif';
+            const w1 = ctx.measureText(sigMainTxt).width;
+            ctx.font = '600 10.5px Outfit, sans-serif';
+            const w2 = ctx.measureText(sigSubTxt).width;
+            const boxW = Math.min(plotW - 16, Math.max(w1, w2) + 22);
+            const boxX = padLeft + plotW - boxW - 6;
+            const boxY = padTop + 6;
+            ctx.fillStyle = sigBg;
+            ctx.strokeStyle = sigCol;
+            ctx.lineWidth = 1.4;
+            ctx.fillRect(boxX, boxY, boxW, 38);
+            ctx.strokeRect(boxX, boxY, boxW, 38);
+
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '800 12px Outfit, sans-serif';
+            ctx.textAlign = 'left';
+            ctx.fillText(sigMainTxt, boxX + 10, boxY + 15, boxW - 16);
+            ctx.fillStyle = '#e2e8f0';
+            ctx.font = '600 10.5px Outfit, sans-serif';
+            ctx.fillText(sigSubTxt, boxX + 10, boxY + 31, boxW - 16);
+            ctx.restore();
+        }
+
         // Highlight latest live price horizontal dashed guide
         const liveCandle = candles[candles.length - 1];
         if (liveCandle) {
@@ -8335,7 +8777,7 @@ function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
             ctx.fillStyle = '#0f172a';
             ctx.font = 'bold 10px Outfit, sans-serif';
             ctx.textAlign = 'left';
-            ctx.fillText('₹' + liveCandle.close.toFixed(liveCandle.close >= 1000 ? 0 : 2), padLeft + plotW + 5, ly + 3.5);
+            ctx.fillText(fmtCandlePrice(liveCandle.close, chartSym, true), padLeft + plotW + 4, ly + 3.5);
         }
 
         // Sub-pane 1: Volume (વોલ્યુમ)
@@ -8815,17 +9257,44 @@ function applyCandleChartAnalysisUI(symbol, interval, candles, analysis) {
             if (el) el.innerHTML = html;
         };
 
-        setText('cc-stat-close', `₹${v.close.toFixed(2)}`);
+        setText('cc-stat-close', fmtCandlePrice(v.close, symbol));
         const rsiBadge = ind.rsi !== null && ind.rsi !== undefined ? `RSI ${ind.rsi.toFixed(1)}` : 'RSI --';
         const macdBadge = ind.macd !== null && ind.macd !== undefined ? `MACD ${ind.macd >= 0 ? '+' : ''}${ind.macd.toFixed(1)}` : 'MACD --';
         setText('cc-stat-vol', `${rsiBadge} | ${macdBadge}`);
-        setText('cc-stat-bb', v.bbUpper ? `${v.bbUpper.toFixed(0)} / ${v.bbMid.toFixed(0)} / ${v.bbLower.toFixed(0)}` : '--');
+        setText('cc-stat-bb', v.bbUpper ? `${v.bbUpper.toFixed(2)} / ${v.bbMid.toFixed(2)} / ${v.bbLower.toFixed(2)}` : '--');
         setText('cc-stat-meta', `${interval.toUpperCase()} • ${candles.length} Bars`);
+
+        // Populate Technical Buy / Sell + Target + Stop Loss Guidance Card
+        const ts = analysis.tradeSignal;
+        if (ts) {
+            const sigBadgeEl = document.getElementById('cc-signal-action-badge');
+            if (sigBadgeEl) {
+                sigBadgeEl.textContent = ts.actionGu;
+                sigBadgeEl.className = `cc-signal-action-badge ${ts.badgeClass}`;
+            }
+            setText('cc-signal-score-pill', `Score: ${ts.score >= 0 ? '+' : ''}${ts.score.toFixed(2)} / 7.5`);
+            setText('cc-signal-subhead', ts.subheadGu);
+            setText('cc-signal-entry', fmtCandlePrice(ts.entry, symbol));
+            setText('cc-signal-target', `${fmtCandlePrice(ts.target1, symbol)} (${ts.biasSide === 'SELL' ? '-' : '+'}${ts.t1Pct.toFixed(2)}%)`);
+            setText('cc-signal-target2', `T2: ${fmtCandlePrice(ts.target2, symbol)}`);
+            setText('cc-signal-sl', `${fmtCandlePrice(ts.stopLoss, symbol)}`);
+            setText('cc-signal-sl-pct', `Risk: ${ts.slPct.toFixed(2)}%`);
+            setText('cc-signal-rr', `1 : ${ts.rrRatio.toFixed(2)}`);
+            setText('cc-signal-atr', `ATR(14): ${fmtCandlePrice(ts.atr, symbol)}`);
+
+            const reasonsEl = document.getElementById('cc-signal-reasons');
+            if (reasonsEl) {
+                reasonsEl.innerHTML = (ts.reasons || []).map(r => {
+                    const cls = r.type === 'bull' ? 'cc-reason-bull' : (r.type === 'bear' ? 'cc-reason-bear' : '');
+                    return `<span class="cc-reason-chip ${cls}">${r.text}</span>`;
+                }).join('');
+            }
+        }
 
         // Populate live indicator reading cells inside Gujarati indicator explanation table
         if (ind.ema9 !== null && ind.ema21 !== null) {
             const maTrend = ind.ema9 >= ind.ema21 ? '<span style="color:#34d399;font-weight:700;">Up-Trend (EMA9 &gt; EMA21)</span>' : '<span style="color:#f87171;font-weight:700;">Down-Trend (EMA9 &lt; EMA21)</span>';
-            setHtml('cc-ind-live-ma', `${maTrend}<div style="font-size:0.72rem;color:#94a3b8;">EMA9: ${ind.ema9.toFixed(1)} | EMA21: ${ind.ema21.toFixed(1)}${ind.sma50 ? ' | SMA50: ' + ind.sma50.toFixed(1) : ''}</div>`);
+            setHtml('cc-ind-live-ma', `${maTrend}<div style="font-size:0.72rem;color:#94a3b8;">EMA9: ${ind.ema9.toFixed(2)} | EMA21: ${ind.ema21.toFixed(2)}${ind.sma50 ? ' | SMA50: ' + ind.sma50.toFixed(2) : ''}</div>`);
         }
         if (ind.rsi !== null && ind.rsi !== undefined) {
             const r = ind.rsi;
@@ -8842,7 +9311,7 @@ function applyCandleChartAnalysisUI(symbol, interval, candles, analysis) {
         }
         if (v.bbUpper) {
             const bbPos = v.close >= v.bbUpper ? 'Upper Breakout' : (v.close <= v.bbLower ? 'Lower Support' : 'Inside Bands');
-            setHtml('cc-ind-live-bb', `<strong>${bbPos}</strong><div style="font-size:0.72rem;color:#94a3b8;">U:${v.bbUpper.toFixed(1)} / M:${v.bbMid.toFixed(1)} / L:${v.bbLower.toFixed(1)}</div>`);
+            setHtml('cc-ind-live-bb', `<strong>${bbPos}</strong><div style="font-size:0.72rem;color:#94a3b8;">U:${v.bbUpper.toFixed(2)} / M:${v.bbMid.toFixed(2)} / L:${v.bbLower.toFixed(2)}</div>`);
         }
         setHtml('cc-ind-live-vol', ind.hasRealVolume
             ? `<strong>${v.volRatio.toFixed(2)}x Avg</strong> (${v.volRatio >= 1.3 ? 'Strong' : 'Normal'})`
@@ -8851,7 +9320,7 @@ function applyCandleChartAnalysisUI(symbol, interval, candles, analysis) {
             const vRel = v.close >= ind.vwap
                 ? '<span style="color:#34d399;font-weight:700;">ભાવ VWAP ઉપર (Bullish)</span>'
                 : '<span style="color:#f87171;font-weight:700;">ભાવ VWAP નીચે (Bearish)</span>';
-            setHtml('cc-ind-live-vwap', `<strong>₹${ind.vwap.toFixed(2)}</strong> • ${vRel}`);
+            setHtml('cc-ind-live-vwap', `<strong>${fmtCandlePrice(ind.vwap, symbol)}</strong> • ${vRel}`);
         }
     }
 
@@ -8869,7 +9338,7 @@ function applyCandleChartAnalysisUI(symbol, interval, candles, analysis) {
                             <strong style="font-size:0.84rem;color:#f8fafc;">${r.name}</strong>
                             <span class="cc-guide-sig ${bCls}" style="margin:0;">${dTxt}</span>
                         </div>
-                        <div style="font-size:0.72rem;color:#38bdf8;">Time: ${r.label} • Price: ₹${r.price.toFixed(2)} • ${r.volStr}</div>
+                        <div style="font-size:0.72rem;color:#38bdf8;">Time: ${r.label} • Price: ${fmtCandlePrice(r.price, symbol)} • ${r.volStr}</div>
                         <p>${r.desc}</p>
                     </div>
                 `;
@@ -9288,7 +9757,7 @@ function renderCandlePatternGuide(filter = 'all') {
 function populateCandleSymbolDatalist() {
     const dl = document.getElementById('cc-symbol-datalist');
     if (!dl) return;
-    const defaults = ['NIFTY 50', 'SENSEX', 'BANK NIFTY', 'RELIANCE', 'TCS', 'HDFCBANK', 'ICICIBANK', 'SBIN', 'INFY', 'ITC', 'TATAMOTORS', 'BHARTIARTL', '^NSEI', '^BSESN', '^NSEBANK'];
+    const defaults = ['NIFTY 50', 'SENSEX', 'BANK NIFTY', 'GOLD', 'SILVER', 'GC=F', 'SI=F', 'RELIANCE', 'TCS', 'HDFCBANK', 'ICICIBANK', 'SBIN', 'INFY', 'ITC', 'TATAMOTORS', 'BHARTIARTL', '^NSEI', '^BSESN', '^NSEBANK'];
     const set = new Set(defaults);
     if (Array.isArray(state.processedMasterData) && state.symbolColIndex !== -1) {
         for (let i = 1; i < Math.min(state.processedMasterData.length, 400); i++) {

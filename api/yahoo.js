@@ -11,6 +11,10 @@ function normalizeUpstreamSymbol(rawSym) {
     if (s === 'NIFTY' || s === 'NIFTY 50' || s === 'NIFTY50') return '^NSEI';
     if (s === 'SENSEX' || s === 'BSE SENSEX' || s === 'BSESN') return '^BSESN';
     if (s === 'BANKNIFTY' || s === 'BANK NIFTY' || s === 'NIFTY BANK') return '^NSEBANK';
+    if (s === 'GOLD' || s === 'GOLD /10G' || s === 'GOLD / 10G' || s === 'XAU' || s === 'XAUUSD' || s === 'COMEX GOLD') return 'GC=F';
+    if (s === 'SILVER' || s === 'SILVER /KG' || s === 'SILVER / 1KG' || s === 'XAG' || s === 'XAGUSD' || s === 'COMEX SILVER') return 'SI=F';
+    if (s === 'NASDAQ' || s === 'IXIC') return '^IXIC';
+    if (s === 'HANG SENG' || s === 'HANGSENG' || s === 'HSI') return '^HSI';
     const needsSuffix = !s.includes('.') && !s.includes('=') && !s.includes('^');
     return needsSuffix ? `${s}.NS` : s;
 }

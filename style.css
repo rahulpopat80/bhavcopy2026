@@ -3150,7 +3150,180 @@ body.cc-fullscreen-mode .cc-canvas-wrap {
     text-decoration: underline;
 }
 
+/* Live Double-Click Chart Triggers & International USD Metal Price Sub-rows */
+.live-chart-trigger {
+    cursor: pointer;
+    user-select: none;
+    transition: transform 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
+}
+
+.live-chart-trigger:hover {
+    border-color: rgba(251, 191, 36, 0.55) !important;
+    box-shadow: 0 4px 14px rgba(251, 191, 36, 0.14);
+}
+
+.index-usd-sub {
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: #38bdf8;
+    margin-top: 0.12rem;
+    letter-spacing: 0.01em;
+}
+
+.cp-live-usd {
+    display: block;
+    margin-top: 0.22rem;
+    font-size: 0.74rem;
+    font-weight: 700;
+    color: #38bdf8;
+}
+
+/* Technical Buy / Sell + Target + Stop Loss Guidance Card */
+.cc-trade-signal-card {
+    display: grid;
+    grid-template-columns: 1.35fr 1fr;
+    gap: 1rem;
+    background: linear-gradient(135deg, rgba(15, 23, 42, 0.94), rgba(17, 24, 39, 0.88));
+    border: 1px solid rgba(251, 191, 36, 0.35);
+    border-radius: 12px;
+    padding: 1rem 1.15rem;
+    margin-bottom: 0.9rem;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+}
+
+.cc-signal-kicker-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+.cc-signal-score-pill {
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 0.18rem 0.55rem;
+    border-radius: 6px;
+    background: rgba(56, 189, 248, 0.14);
+    color: #38bdf8;
+    border: 1px solid rgba(56, 189, 248, 0.32);
+}
+
+.cc-signal-headline {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.65rem;
+    margin: 0.45rem 0 0.55rem;
+}
+
+.cc-signal-action-badge {
+    font-size: 0.96rem;
+    font-weight: 800;
+    padding: 0.32rem 0.85rem;
+    border-radius: 8px;
+    letter-spacing: 0.02em;
+}
+
+.cc-sig-buy {
+    background: rgba(16, 185, 129, 0.22);
+    color: #34d399;
+    border: 1px solid rgba(16, 185, 129, 0.65);
+}
+
+.cc-sig-sell {
+    background: rgba(239, 68, 68, 0.22);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.65);
+}
+
+.cc-sig-wait {
+    background: rgba(245, 158, 11, 0.2);
+    color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.55);
+}
+
+.cc-signal-subhead {
+    font-size: 0.9rem;
+    color: #f8fafc;
+}
+
+.cc-signal-reasons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
+.cc-reason-chip {
+    font-size: 0.72rem;
+    padding: 0.22rem 0.55rem;
+    border-radius: 6px;
+    background: rgba(30, 41, 59, 0.72);
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    color: #e2e8f0;
+}
+
+.cc-reason-bull {
+    border-color: rgba(34, 197, 94, 0.45);
+    color: #86efac;
+}
+
+.cc-reason-bear {
+    border-color: rgba(239, 68, 68, 0.45);
+    color: #fca5a5;
+}
+
+.cc-signal-levels-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.55rem;
+}
+
+.cc-level-box {
+    background: rgba(15, 23, 42, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 0.52rem 0.7rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.14rem;
+}
+
+.cc-level-box span {
+    font-size: 0.69rem;
+    color: var(--text-secondary);
+}
+
+.cc-level-box strong {
+    font-size: 0.94rem;
+    color: #f8fafc;
+}
+
+.cc-level-box small {
+    font-size: 0.7rem;
+    color: #94a3b8;
+}
+
+.cc-level-target {
+    border-color: rgba(34, 197, 94, 0.42);
+    background: rgba(16, 185, 129, 0.08);
+}
+
+.cc-level-target strong {
+    color: #4ade80;
+}
+
+.cc-level-sl {
+    border-color: rgba(239, 68, 68, 0.42);
+    background: rgba(239, 68, 68, 0.08);
+}
+
+.cc-level-sl strong {
+    color: #f87171;
+}
+
 @media (max-width: 1100px) {
+    .cc-trade-signal-card,
     .cc-verdict-card,
     .cc-detected-grid,
     .cc-guide-grid {
@@ -3159,6 +3332,7 @@ body.cc-fullscreen-mode .cc-canvas-wrap {
 }
 
 @media (max-width: 768px) {
+    .cc-trade-signal-card,
     .cc-verdict-card,
     .cc-detected-grid,
     .cc-guide-grid {
@@ -3182,6 +3356,7 @@ body.cc-fullscreen-mode .cc-canvas-wrap {
         padding: 1rem;
     }
 }
+
 
 
 

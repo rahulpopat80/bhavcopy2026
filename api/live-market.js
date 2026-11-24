@@ -246,7 +246,9 @@ export default async function handler(req, res) {
         fetchGrowwIndex('BSE', 'CASH', '1'),
         fetchMcSensex(),
         fetchMcxCommodity('GOLD'),
-        fetchMcxCommodity('SILVER')
+        fetchMcxCommodity('SILVER'),
+        fetchYahooChart('GC=F').catch(() => null),
+        fetchYahooChart('SI=F').catch(() => null)
     ];
 
     const secondaryPromises = needSecondary
@@ -262,7 +264,9 @@ export default async function handler(req, res) {
         growwSensexRes,
         mcSensexRes,
         mcxGoldRes,
-        mcxSilverRes
+        mcxSilverRes,
+        comexGoldRes,
+        comexSilverRes
     ] = await Promise.allSettled(corePromises);
 
     if (needSecondary) {
@@ -284,6 +288,10 @@ export default async function handler(req, res) {
     let sensex = growwSensexRes.status === 'fulfilled' ? growwSensexRes.value : (mcSensexData.index || null);
     let gold = mcxGoldRes.status === 'fulfilled' ? mcxGoldRes.value : null;
     let silver = mcxSilverRes.status === 'fulfilled' ? mcxSilverRes.value : null;
+    const rawGoldUsd = comexGoldRes.status === 'fulfilled' && comexGoldRes.value ? comexGoldRes.value : null;
+    const rawSilverUsd = comexSilverRes.status === 'fulfilled' && comexSilverRes.value ? comexSilverRes.value : null;
+    const goldUsd = rawGoldUsd ? { ...rawGoldUsd, currency: 'USD', symbol: 'GC=F', unit: '/oz', source: 'COMEX USD' } : null;
+    const silverUsd = rawSilverUsd ? { ...rawSilverUsd, currency: 'USD', symbol: 'SI=F', unit: '/oz', source: 'COMEX USD' } : null;
     const nasdaq = cachedSecondary.nasdaq;
     const hangseng = cachedSecondary.hangseng;
 
@@ -300,8 +308,8 @@ export default async function handler(req, res) {
             try {
                 const [fx, gc, si] = await Promise.all([
                     fetchYahooChart('INR=X'),
-                    fetchYahooChart('GC=F'),
-                    fetchYahooChart('SI=F')
+                    rawGoldUsd ? Promise.resolve(rawGoldUsd) : fetchYahooChart('GC=F'),
+                    rawSilverUsd ? Promise.resolve(rawSilverUsd) : fetchYahooChart('SI=F')
                 ]);
                 const usdInr = fx.price || 85;
                 if (!gold && gc.price) {
@@ -323,11 +331,16 @@ export default async function handler(req, res) {
         await Promise.allSettled(fallbacks);
     }
 
+    if (gold && goldUsd) gold = { ...gold, usd: goldUsd };
+    if (silver && silverUsd) silver = { ...silver, usd: silverUsd };
+
     const payload = {
         nifty,
         sensex,
         gold,
         silver,
+        goldUsd,
+        silverUsd,
         nasdaq,
         hangseng,
         breadth: {
