@@ -133,6 +133,16 @@ const signalTimelineMap = new Map();
 const exitHistoryMap = new Map();
 const recentExitsMap = new Map();
 const nseSignalStateMap = new Map();
+const nseBootRankMap = new Map();
+const TECH_FLIP_COOLDOWN_MS = 120 * 1000;
+
+function stabilizeTechAction(sigKey, rawAction, now, cooldownMs = TECH_FLIP_COOLDOWN_MS) {
+    const prev = signalTimelineMap.get(sigKey);
+    if (prev && prev.action && prev.action !== rawAction && (now - (prev.issuedAtMs || 0)) < cooldownMs) {
+        return prev.action;
+    }
+    return rawAction;
+}
 const mcxExpiryCache = {
     GOLD: { expiry: '2026-12-04' },
     SILVER: { expiry: '2026-12-04' }
@@ -897,6 +907,8 @@ async function fetchIndexOptionTips(cfg) {
 
     const now = Date.now();
     if (ocRows.length > 0) {
+        const slotKey = `opt-atm-${cfg.symbol}`;
+        const prevSlot = signalTimelineMap.get(slotKey);
         let atmIdx = 0;
         let bestDiff = Infinity;
         for (let i = 0; i < ocRows.length; i++) {
@@ -909,6 +921,19 @@ async function fetchIndexOptionTips(cfg) {
             }
         }
 
+        // Hysteresis + 45s lock: avoid strike ping-pong when spot sits near a midpoint (e.g. 63849 <-> 63852)
+        if (prevSlot && Number.isFinite(prevSlot.strike)) {
+            const prevIdx = ocRows.findIndex(r => r.strike === prevSlot.strike);
+            if (prevIdx >= 0 && prevIdx !== atmIdx) {
+                const step = ocRows.length >= 2 ? Math.abs(ocRows[1].strike - ocRows[0].strike) : 100;
+                const holdCooldown = (now - (prevSlot.issuedAtMs || 0)) < 45000;
+                const nearMidpoint = Number.isFinite(spotPrice) && Math.abs(spotPrice - prevSlot.strike) < step * 0.65;
+                if (holdCooldown || nearMidpoint) {
+                    atmIdx = prevIdx;
+                }
+            }
+        }
+
         const windowRows = ocRows.slice(Math.max(0, atmIdx - 3), atmIdx + 4);
         const totalCeOi = windowRows.reduce((s, r) => s + r.ceOi, 0);
         const totalPeOi = windowRows.reduce((s, r) => s + r.peOi, 0);
@@ -918,7 +943,10 @@ async function fetchIndexOptionTips(cfg) {
         if (pcr >= 1.05) bullScore += 1;
         else if (pcr <= 0.9) bullScore -= 1;
 
-        const isBullish = bullScore >= 0;
+        const isBullishRaw = bullScore >= 0;
+        const idxSigKey = `idx-${cfg.symbol.toLowerCase()}`;
+        const idxAction = stabilizeTechAction(idxSigKey, isBullishRaw ? 'BUY' : 'SELL', now, 120000);
+        const isBullish = idxAction === 'BUY';
         const atmRow = ocRows[atmIdx];
         const nextBullRow = ocRows[Math.min(ocRows.length - 1, atmIdx + 1)] || atmRow;
         const nextBearRow = ocRows[Math.max(0, atmIdx - 1)] || atmRow;
@@ -946,9 +974,7 @@ async function fetchIndexOptionTips(cfg) {
                 publishedAt: expiry || '1s Live',
                 chartSymbol: cfg.chartSymbol
             };
-            const slotKey = `opt-atm-${cfg.symbol}`;
-            const prevSlot = signalTimelineMap.get(slotKey);
-            if (prevSlot && prevSlot.snapshot && prevSlot.snapshot.scriptName !== tipObj.scriptName && (now - prevSlot.issuedAtMs) >= 5000) {
+            if (prevSlot && prevSlot.snapshot && prevSlot.snapshot.scriptName !== tipObj.scriptName && (now - prevSlot.issuedAtMs) >= 45000) {
                 const old = prevSlot.snapshot;
                 const exitId = `exit-opt-${cfg.symbol.toLowerCase()}-${now}`;
                 recentExitsMap.set(exitId, {
@@ -967,12 +993,15 @@ async function fetchIndexOptionTips(cfg) {
                 signalTimelineMap.set(slotKey, {
                     issuedAtMs: now,
                     action: tipObj.action,
+                    strike: atmRow.strike,
                     signature: tipObj.scriptName,
                     snapshot: tipObj
                 });
                 tipObj.issuedAtMs = now;
             } else {
                 tipObj.issuedAtMs = registerObservedTipTime(slotKey, tipObj, now);
+                const curSlot = signalTimelineMap.get(slotKey);
+                if (curSlot) curSlot.strike = atmRow.strike;
             }
             tips.push(tipObj);
         }
@@ -1007,7 +1036,9 @@ async function fetchIndexOptionTips(cfg) {
     }
 
     if (Number.isFinite(spotPrice) && spotPrice > 0) {
-        const isBullish = bullScore >= 0;
+        const idxSigKey = `idx-${cfg.symbol.toLowerCase()}`;
+        const stableIdxAction = stabilizeTechAction(idxSigKey, bullScore >= 0 ? 'BUY' : 'SELL', now, 120000);
+        const isBullish = stableIdxAction === 'BUY';
         const rawEma9 = tech?.ema9;
         const emaDiverges = !Number.isFinite(rawEma9) || (Math.abs(rawEma9 - spotPrice) / spotPrice) > 0.025;
         const entry = roundTick(emaDiverges ? spotPrice : rawEma9);
@@ -1136,7 +1167,8 @@ async function fetchCommodityGoldSilverTips() {
             if (spotUsd >= tech.vwap) score += 1; else score -= 1;
             if (tech.rsi >= 50) score += 1; else score -= 1;
         }
-        const action = score >= 0 ? 'BUY' : 'SELL';
+        const rawAction = score >= 0 ? 'BUY' : 'SELL';
+        const action = stabilizeTechAction(`com-${symKey.toLowerCase()}-usd`, rawAction, now, 120000);
         const atrPct = (tech?.atr > 0 && tech?.price > 0) ? Math.min(0.015, Math.max(0.0025, tech.atr / tech.price)) : 0.0045;
 
         // 1. USD Tip
@@ -1380,12 +1412,23 @@ async function fetchAllNseScriptsTips(force = false) {
                 }
                 const rsiStr = Number.isFinite(rsi) ? rsi.toFixed(1) : '--';
 
+                if (!nseBootRankMap.has(sym)) {
+                    nseBootRankMap.set(sym, nseBootRankMap.size + 1);
+                }
+                const bootRank = nseBootRankMap.get(sym);
+
                 const prevNse = nseSignalStateMap.get(sym);
                 let issuedAtMs;
+                let finalAction = action;
+                let finalEntry = entry;
+                let finalTarget = target;
+                let finalStoploss = stoploss;
+                const liveCmp = roundTick(close, 2);
+
                 if (!prevNse) {
                     issuedAtMs = nseInitialBootDone ? scanNow : baselineTs;
-                    nseSignalStateMap.set(sym, { action, issuedAtMs, entry, cmp: roundTick(close, 2), target, stoploss });
-                } else if (prevNse.action !== action) {
+                    nseSignalStateMap.set(sym, { action: finalAction, issuedAtMs, entry: finalEntry, cmp: liveCmp, target: finalTarget, stoploss: finalStoploss });
+                } else if (prevNse.action !== action && (scanNow - prevNse.issuedAtMs) >= TECH_FLIP_COOLDOWN_MS && Math.abs(score) >= 3) {
                     const exitId = `exit-nse-${sym.toLowerCase()}-${scanNow}`;
                     recentExitsMap.set(exitId, {
                         id: exitId,
@@ -1394,7 +1437,7 @@ async function fetchAllNseScriptsTips(force = false) {
                         currency: 'INR',
                         action: prevNse.action,
                         entry: prevNse.entry,
-                        cmp: roundTick(close, 2),
+                        cmp: liveCmp,
                         target: prevNse.target,
                         stoploss: prevNse.stoploss,
                         stoplossEstimated: false,
@@ -1414,10 +1457,14 @@ async function fetchAllNseScriptsTips(force = false) {
                         recentExitsMap.delete(recentExitsMap.keys().next().value);
                     }
                     issuedAtMs = scanNow;
-                    nseSignalStateMap.set(sym, { action, issuedAtMs, entry, cmp: roundTick(close, 2), target, stoploss });
+                    nseSignalStateMap.set(sym, { action: finalAction, issuedAtMs, entry: finalEntry, cmp: liveCmp, target: finalTarget, stoploss: finalStoploss });
                 } else {
                     issuedAtMs = prevNse.issuedAtMs;
-                    prevNse.cmp = roundTick(close, 2);
+                    finalAction = prevNse.action;
+                    finalEntry = prevNse.entry;
+                    finalTarget = prevNse.target;
+                    finalStoploss = prevNse.stoploss;
+                    prevNse.cmp = liveCmp;
                 }
 
                 const descRaw = String(d[12] || '').trim();
@@ -1427,17 +1474,18 @@ async function fetchAllNseScriptsTips(force = false) {
                     companyKey: normalizeCompanyKey(descRaw),
                     segment: 'NSE_ALL',
                     currency: 'INR',
-                    action,
-                    entry,
-                    cmp: roundTick(close, 2),
-                    target,
-                    stoploss,
+                    action: finalAction,
+                    entry: finalEntry,
+                    cmp: liveCmp,
+                    target: finalTarget,
+                    stoploss: finalStoploss,
                     stoplossEstimated: false,
                     brokerId: 'nse-all-live',
                     broker: `NSE Live Tech (RSI ${rsiStr})`,
                     sourceUrl: '',
                     publishedAt: 'NSE Live',
                     issuedAtMs,
+                    bootRank,
                     chartSymbol: `${sym}.NS`
                 });
             }
@@ -1690,18 +1738,24 @@ async function refreshCoreSnapshot(forceRefresh = false) {
         }
 
         const optionTips = indexGroups.flat();
-        const recentExits = Array.from(recentExitsMap.values());
-        const combinedRaw = [...optionTips, ...commodityRes, ...enrichedBrokerTips, ...nseAllRes, ...recentExits];
+        const recentExits = Array.from(recentExitsMap.values()).map(finalizeTip);
+        const combinedRaw = [...optionTips, ...commodityRes, ...enrichedBrokerTips, ...nseAllRes];
         const allTips = combinedRaw.map(finalizeTip);
 
         allTips.sort((a, b) => {
-            const diff = (b.lastEventMs || 0) - (a.lastEventMs || 0);
+            const diff = (b.issuedAtMs || 0) - (a.issuedAtMs || 0);
             if (diff !== 0) return diff;
-            if (Boolean(b.exitFlag) !== Boolean(a.exitFlag)) return b.exitFlag ? 1 : -1;
-            return (SEG_PRIORITY[b.segment] || 0) - (SEG_PRIORITY[a.segment] || 0);
+            const segDiff = (SEG_PRIORITY[b.segment] || 0) - (SEG_PRIORITY[a.segment] || 0);
+            if (segDiff !== 0) return segDiff;
+            const rankA = Number(a.bootRank) || 999999;
+            const rankB = Number(b.bootRank) || 999999;
+            if (rankA !== rankB) return rankA - rankB;
+            return String(a.id || '').localeCompare(String(b.id || ''));
         });
 
-        const exitTipsAll = allTips.filter(t => Boolean(t.exitFlag));
+        const exitTipsAll = [...allTips.filter(t => Boolean(t.exitFlag)), ...recentExits];
+        exitTipsAll.sort((a, b) => (b.exitAtMs || b.lastEventMs || b.issuedAtMs || 0) - (a.exitAtMs || a.lastEventMs || a.issuedAtMs || 0));
+
         const brokerStats = BROKER_DIRECTORY.map(b => ({
             id: b.id,
             name: b.name,
@@ -1720,7 +1774,8 @@ async function refreshCoreSnapshot(forceRefresh = false) {
             exitCount: exitTipsAll.length,
             latestExits: exitTipsAll.slice(0, 4),
             brokerStats,
-            allTips
+            allTips,
+            exitTipsAll
         };
             coreCache = snapshot;
             return snapshot;
@@ -1747,7 +1802,7 @@ export default async function handler(req, res) {
     const segFilter = String(req.query?.seg || 'all').trim();
     const brokerFilter = String(req.query?.broker || 'all').trim();
     const searchQuery = String(req.query?.q || '').trim().toLowerCase();
-    const reqLimit = Math.min(1200, Math.max(20, parseInt(req.query?.limit, 10) || 120));
+    const reqLimit = Math.min(1200, Math.max(20, parseInt(req.query?.limit, 10) || 100));
 
     const now = Date.now();
 
@@ -1763,8 +1818,9 @@ export default async function handler(req, res) {
 
         const snap = coreCache;
         const allTips = snap.allTips || [];
+        const sourcePool = segFilter === 'EXIT' ? (snap.exitTipsAll || []) : allTips;
 
-        const filtered = allTips.filter(t => {
+        const filtered = sourcePool.filter(t => {
             if (segFilter === 'EXIT') {
                 if (!t.exitFlag) return false;
             } else if (segFilter !== 'all') {
