@@ -1,0 +1,2206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rahul Finance – Stock Research & Portfolio Tracker</title>
+    <!-- Google Fonts for premium typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Favicon and PWA support -->
+    <link rel="icon" type="image/png" href="icon.png">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#3b82f6">
+    <!-- CSS stylesheet -->
+    <link rel="stylesheet" href="style.css">
+    <!-- SheetJS and ChartJS for processing and visualization -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
+    <!-- Firebase SDK (Compat Version) -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js" defer></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js" defer></script>
+    <script>
+        // FIX: Log errors to console and show a non-blocking toast instead of blocking alert()
+        window.onerror = function(message, source, lineno, colno, error) {
+            console.error('[Browser Error]', message, source, lineno, colno, error);
+            if (typeof window.showNotification === 'function') {
+                window.showNotification('Error: ' + message, 'error');
+            } else {
+                const container = document.getElementById('notification-container');
+                if (container) {
+                    const toast = document.createElement('div');
+                    toast.className = 'notification error';
+                    toast.innerHTML = '<i class="fa-solid fa-exclamation-circle"></i><span></span>';
+                    toast.querySelector('span').textContent = 'Error: ' + message;
+                    container.appendChild(toast);
+                    setTimeout(() => toast.remove(), 4000);
+                }
+            }
+            return false;
+        };
+    </script>
+</head>
+<body>
+    <div class="background-decor">
+        <div class="circle circle-1"></div>
+        <div class="circle circle-2"></div>
+    </div>
+
+    <div class="app-container hidden" id="main-app">
+        <header class="app-header">
+            <div class="header-main-row">
+                <div class="logo">
+                    <img src="./logo.png" alt="Rahul Finance Logo" class="logo-image">
+                    <h1 class="logo-text">Rahul Finance</h1>
+                </div>
+                <!-- Nifty / Sensex / Gold (INR & USD) / Silver (INR & USD) live widget (Double-Click to open chart) -->
+                <div class="header-indices-widget no-print">
+                    <div class="index-card live-chart-trigger" data-chart-symbol="^NSEI" title="ડબલ-ક્લિક કરી NIFTY 50 Chart જુઓ">
+                        <span class="index-label">NIFTY 50</span>
+                        <span class="index-val" id="nifty-val">—</span>
+                        <span class="index-chg" id="nifty-chg">-</span>
+                    </div>
+                    <div class="index-card live-chart-trigger" data-chart-symbol="^BSESN" title="ડબલ-ક્લિક કરી SENSEX Chart જુઓ">
+                        <span class="index-label">SENSEX</span>
+                        <span class="index-val" id="sensex-val">—</span>
+                        <span class="index-chg" id="sensex-chg">-</span>
+                    </div>
+                    <div class="index-card live-chart-trigger" data-chart-symbol="GOLD_INR" style="border-color: rgba(255,193,7,0.35);" title="ડબલ-ક્લિક કરી GOLD (₹ INR) Candle Chart જુઓ">
+                        <span class="index-label" style="color:#f59e0b;"><i class="fa-solid fa-circle" style="font-size:0.55rem;margin-right:3px;"></i> GOLD /10g (₹)</span>
+                        <span class="index-val" id="gold-val">—</span>
+                        <span class="index-chg" id="gold-chg">-</span>
+                    </div>
+                    <div class="index-card live-chart-trigger" data-chart-symbol="SILVER_INR" style="border-color: rgba(148,163,184,0.35);" title="ડબલ-ક્લિક કરી SILVER (₹ INR) Candle Chart જુઓ">
+                        <span class="index-label" style="color:#cbd5e1;"><i class="fa-solid fa-circle" style="font-size:0.55rem;margin-right:3px;"></i> SILVER /kg (₹)</span>
+                        <span class="index-val" id="silver-val">—</span>
+                        <span class="index-chg" id="silver-chg">-</span>
+                    </div>
+                    <div class="index-card live-chart-trigger" data-chart-symbol="GC=F" style="border-color: rgba(56,189,248,0.38);" title="ડબલ-ક્લિક કરી GOLD ($ USD) Candle Chart જુઓ">
+                        <span class="index-label" style="color:#38bdf8;"><i class="fa-solid fa-dollar-sign" style="font-size:0.6rem;margin-right:2px;"></i> GOLD ($ USD)</span>
+                        <span class="index-val" id="gold-usd-val">—</span>
+                        <span class="index-chg" id="gold-usd-chg">-</span>
+                    </div>
+                    <div class="index-card live-chart-trigger" data-chart-symbol="SI=F" style="border-color: rgba(56,189,248,0.38);" title="ડબલ-ક્લિક કરી SILVER ($ USD) Candle Chart જુઓ">
+                        <span class="index-label" style="color:#7dd3fc;"><i class="fa-solid fa-dollar-sign" style="font-size:0.6rem;margin-right:2px;"></i> SILVER ($ USD)</span>
+                        <span class="index-val" id="silver-usd-val">—</span>
+                        <span class="index-chg" id="silver-usd-chg">-</span>
+                    </div>
+                    <div class="index-card live-chart-trigger" data-chart-symbol="INR=X" style="border-color: rgba(16,185,129,0.42);" title="ડબલ-ક્લિક કરી $ - ₹ (USD/INR) Candle Chart જુઓ">
+                        <span class="index-label" style="color:#34d399;"><i class="fa-solid fa-dollar-sign" style="font-size:0.6rem;"></i> - <i class="fa-solid fa-indian-rupee-sign" style="font-size:0.6rem;margin-right:2px;"></i> USD / INR</span>
+                        <span class="index-val" id="usdinr-val">—</span>
+                        <span class="index-chg" id="usdinr-chg">-</span>
+                    </div>
+                </div>
+                <div class="cloud-sync-badge" id="cloud-sync-status">
+                    <i class="fa-solid fa-cloud-arrow-up sync-icon"></i>
+                    <span id="cloud-sync-text">Cloud Ready</span>
+                </div>
+                <button id="pwa-install-btn" class="btn" style="display: none; align-items: center; gap: 0.35rem; font-size: 0.78rem; padding: 0.4rem 0.75rem; background: linear-gradient(135deg, var(--accent-color) 0%, #b89626 100%); border: none; color: #000; font-weight: bold; border-radius: 6px; cursor: pointer; box-shadow: 0 4px 10px rgba(212,175,55,0.25); margin-right: 0.5rem;">
+                    <i class="fa-solid fa-download"></i> Install App
+                </button>
+                <button id="change-password-btn" class="btn btn-secondary no-print" style="display: flex; align-items: center; gap: 0.35rem; font-size: 0.78rem; padding: 0.4rem 0.75rem; border: 1px solid var(--card-border); background: rgba(59,130,246,0.1); color: #fff; border-radius: 6px; cursor: pointer; margin-right: 0.5rem;">
+                    <i class="fa-solid fa-key"></i> Change Password
+                </button>
+            </div>
+            <p class="subtitle">Upload your Master Excel file and daily Bhavcopy (CSV) files to process and update stock prices in real-time.</p>
+        </header>
+
+        <nav class="app-nav">
+            <button class="nav-btn active" id="tab-research">
+                <i class="fa-solid fa-chart-line"></i> Stock Research
+            </button>
+            <button class="nav-btn" id="tab-portfolio">
+                <i class="fa-solid fa-briefcase"></i> My Portfolio
+            </button>
+            <button class="nav-btn" id="tab-watchlist">
+                <i class="fa-solid fa-star"></i> Watchlist
+            </button>
+            <button class="nav-btn" id="tab-morning-picks">
+                <i class="fa-solid fa-sun"></i> Morning Picks
+            </button>
+            <button class="nav-btn" id="tab-investor-advice">
+                <i class="fa-solid fa-lightbulb"></i> Investor Advice
+            </button>
+            <button class="nav-btn" id="tab-results">
+                <i class="fa-solid fa-calendar-days"></i> Results &amp; Dividends
+            </button>
+            <button class="nav-btn" id="tab-volume-promoter">
+                <i class="fa-solid fa-fire"></i> Vol &amp; Promoter
+            </button>
+            <button class="nav-btn" id="tab-circuits">
+                <i class="fa-solid fa-bolt"></i> Circuits
+            </button>
+            <button class="nav-btn" id="tab-global-indices">
+                <i class="fa-solid fa-globe"></i> Global Indices
+            </button>
+            <button class="nav-btn" id="tab-intraday">
+                <i class="fa-solid fa-gauge-high"></i> Intraday
+            </button>
+            <button class="nav-btn" id="tab-master-piece" style="border-color: #ec4899; color: #ec4899; font-weight: bold;">
+                <i class="fa-solid fa-gem"></i> MASTER PIECE
+            </button>
+            <button class="nav-btn" id="tab-call-put" style="border-color: #06b6d4; color: #22d3ee; font-weight: bold;">
+                <i class="fa-solid fa-layer-group"></i> કોલ પુટ (Call Put)
+            </button>
+            <button class="nav-btn" id="tab-option-tips" style="border-color: #818cf8; color: #a5b4fc; font-weight: bold;">
+                <i class="fa-solid fa-bolt"></i> OPTION TIPS
+            </button>
+            <button class="nav-btn" id="tab-candle-chart" style="border-color: #f59e0b; color: #fbbf24; font-weight: bold;">
+                <i class="fa-solid fa-chart-column"></i> Candle Chart
+            </button>
+            <button class="nav-btn" id="tab-samco-web" style="border-color: #10b981; color: #34d399; font-weight: bold;">
+                <i class="fa-solid fa-arrow-up-right-dots"></i> SAMCO Web
+            </button>
+        </nav>
+
+        <!-- Tab 1: Stock Research Content -->
+        <div id="research-tab-content">
+            <!-- Step 1 & 2: File Uploads -->
+            <main class="dashboard-grid">
+            <!-- Upload Card 1: Master Excel File -->
+            <div class="card upload-card" id="master-card">
+                <div class="card-header">
+                    <span class="step-badge">Step 1</span>
+                    <h2>Master Excel File</h2>
+                </div>
+                <p class="card-desc">Upload your Master Excel file containing company symbols. This file will be saved in browser storage.</p>
+                
+                <div class="drop-zone" id="master-dropzone">
+                    <div class="drop-zone-content">
+                        <i class="fa-regular fa-file-excel drop-icon"></i>
+                        <p class="drop-text">Drag & drop Master file here or <span>Browse</span></p>
+                        <p class="file-limit">Max size: 25MB</p>
+                    </div>
+                    <input type="file" id="master-file" accept=".xlsx, .xls" class="file-input">
+                </div>
+
+                <div class="file-status hidden" id="master-status">
+                    <div class="file-info">
+                        <i class="fa-solid fa-circle-check success-icon" id="master-status-icon"></i>
+                        <div class="file-details">
+                            <span class="file-name" id="master-filename">Master.xlsx</span>
+                            <span class="file-size" id="master-filesize">2.4 MB</span>
+                            <span class="storage-badge" id="master-storage-status">Saved in Storage</span>
+                        </div>
+                    </div>
+                    <button class="remove-btn" id="master-remove" title="Remove Master File from storage"><i class="fa-solid fa-trash"></i></button>
+                </div>
+
+                <div class="data-preview hidden" id="master-preview-container">
+                    <h3>Master File Data (Preview - EQ Series)</h3>
+                    <div class="table-wrapper">
+                        <table id="master-table">
+                            <thead>
+                                <!-- Dynamic headers -->
+                            </thead>
+                            <tbody>
+                                <!-- Dynamic rows -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="row-count" id="master-row-count">Total Rows: 0</div>
+                </div>
+            </div>
+
+            <!-- Upload Card 2: Daily Bhavcopy CSV -->
+            <div class="card upload-card" id="csv-card">
+                <div class="card-header" style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <span class="step-badge">Step 2</span>
+                        <h2>Daily Bhavcopy (CSV)</h2>
+                    </div>
+                    <button class="btn btn-secondary" id="btn-auto-fetch-trigger" style="padding: 0.35rem 0.65rem; font-size: 0.75rem; font-weight: 600; border-radius: 6px; border: 1px solid var(--accent-color); background: rgba(6, 182, 212, 0.15); color: #fff; cursor: pointer; display: flex; align-items: center; gap: 0.3rem;">
+                        <i class="fa-solid fa-cloud-arrow-down"></i> Auto Fetch
+                    </button>
+                </div>
+                <p class="card-desc">Upload one or more daily Bhavcopy CSV files downloaded from BSE or NSE.</p>
+                
+                <div class="drop-zone" id="csv-dropzone">
+                    <div class="drop-zone-content">
+                        <i class="fa-solid fa-file-csv drop-icon"></i>
+                        <p class="drop-text">Drag & drop CSV files here or <span>Browse</span></p>
+                        <p class="file-limit">Max size: 25MB per file</p>
+                    </div>
+                    <input type="file" id="csv-file" accept=".csv" class="file-input" multiple>
+                </div>
+
+                <div class="file-status hidden" id="csv-status">
+                    <div class="file-info">
+                        <i class="fa-solid fa-circle-check success-icon"></i>
+                        <div class="file-details">
+                            <span class="file-name" id="csv-filename">Bhavcopy.csv</span>
+                            <span class="file-size" id="csv-filesize">1.8 MB</span>
+                        </div>
+                    </div>
+                    <button class="remove-btn" id="csv-remove" title="Remove uploaded CSV files"><i class="fa-solid fa-trash"></i></button>
+                </div>
+
+                <div class="data-preview hidden" id="csv-preview-container">
+                    <h3>Bhavcopy File Data (Sample Preview - EQ Series)</h3>
+                    <div class="table-wrapper">
+                        <table id="csv-table">
+                            <thead>
+                                <!-- Dynamic headers -->
+                            </thead>
+                            <tbody>
+                                <!-- Dynamic rows -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="row-count" id="csv-row-count">Total Rows: 0</div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Actions Section -->
+        <section class="actions-section">
+            <div class="card actions-card">
+                <h2>Data Processing & Updates</h2>
+                <p>After uploading both files, click the button below to update the Master file with CLOSE prices and compute differences (DIFF = CLOSE - PREVCLOSE) dynamically.</p>
+                
+                <div class="actions-btn-group">
+                    <button class="btn btn-primary" id="process-btn" disabled>
+                        <i class="fa-solid fa-arrows-rotate"></i> Process Data
+                    </button>
+                    <button class="btn btn-success" id="download-btn" disabled>
+                        <i class="fa-solid fa-file-arrow-download"></i> Download Updated Master
+                    </button>
+                    <button class="btn btn-danger" id="clear-storage-btn" style="margin-left: auto;">
+                        <i class="fa-solid fa-circle-xmark"></i> Clear Local Storage
+                    </button>
+                </div>
+
+                <div class="process-log hidden" id="process-log-container">
+                    <h3>Processing Log Messages</h3>
+                    <div class="log-console" id="log-console">
+                        <!-- Log messages go here -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Interactive Research & Search Filters (Visible only after processing) -->
+        <section class="research-section hidden" id="research-section">
+            <div class="card filters-card">
+                <div class="filters-header">
+                    <i class="fa-solid fa-sliders filter-icon"></i>
+                    <h2>Search Filters & Advanced Research</h2>
+                </div>
+                <p class="card-desc">Filter processed stock list by symbol, closing price range, or net difference values.</p>
+
+                <div class="filters-grid">
+                    <div class="filter-group">
+                        <label for="search-company"><i class="fa-solid fa-search"></i> Company Symbol (SYMBOL)</label>
+                        <input type="text" id="search-company" placeholder="e.g. RELIANCE">
+                    </div>
+                    <div class="filter-group">
+                        <label><i class="fa-solid fa-indian-rupee-sign"></i> Latest Price Range</label>
+                        <div class="range-inputs">
+                            <input type="number" id="price-min" placeholder="Min Price">
+                            <span class="range-separator">to</span>
+                            <input type="number" id="price-max" placeholder="Max Price">
+                        </div>
+                    </div>
+                    <div class="filter-group" id="diff-filter-group">
+                        <label><i class="fa-solid fa-arrows-left-right"></i> Net Change (DIFF) Range</label>
+                        <div class="range-inputs">
+                            <input type="number" id="diff-min" step="0.01" placeholder="Min Change">
+                            <span class="range-separator">to</span>
+                            <input type="number" id="diff-max" step="0.01" placeholder="Max Change">
+                        </div>
+                    </div>
+                </div>
+                <div class="filter-actions">
+                    <button class="btn btn-secondary" id="reset-filters-btn">
+                        <i class="fa-solid fa-rotate-left"></i> Reset Filters
+                    </button>
+                </div>
+            </div>
+
+            <!-- Results Grid: Filtered Table + Volatility Highlights -->
+            <div class="results-grid">
+                <!-- Filtered Table -->
+                <div class="card results-table-card">
+                    <div class="results-table-header">
+                        <h2>Updated Master File Data (All EQ Series Companies)</h2>
+                        <span class="results-badge" id="results-count">Found Stocks: 0 / 0</span>
+                    </div>
+                    <div class="table-wrapper results-table-wrapper">
+                        <table id="results-table">
+                            <thead>
+                                <!-- Dynamic -->
+                            </thead>
+                            <tbody>
+                                <!-- Dynamic -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div id="results-pagination-bar" class="hidden" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.5rem; margin-top:0.65rem; padding-top:0.55rem; border-top:1px solid var(--card-border);">
+                        <span id="results-showing-info" style="font-size:0.78rem; color:var(--text-secondary);"></span>
+                        <div style="display:flex; gap:0.5rem;">
+                            <button type="button" class="btn btn-secondary" id="results-load-more-btn" style="font-size:0.78rem; padding:0.35rem 0.75rem;">Show More (+100)</button>
+                            <button type="button" class="btn btn-secondary" id="results-show-all-btn" style="font-size:0.78rem; padding:0.35rem 0.75rem;">Show All</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Side: Top Performer + Gainers List -->
+                <div class="movement-column-wrapper">
+                    <!-- Market Cap Segment Analyzer Card -->
+                    <div class="card segment-analyzer-card" id="segment-analyzer-card" style="display: none; margin-bottom: 1.25rem;">
+                        <div class="movement-header" style="margin-bottom: 0.5rem;">
+                            <i class="fa-solid fa-chart-pie movement-icon" style="color: var(--accent-color);"></i>
+                            <h2 style="color: var(--text-primary); font-size: 1.1rem;">સેગમેન્ટ પર્ફોર્મન્સ (Large, Mid &amp; Small Cap)</h2>
+                        </div>
+                        <p class="card-desc" style="margin-bottom: 1rem;">આજે ક્યો સેગમેન્ટ (લાર્જકેપ, મિડકેપ કે સ્મોલકેપ) બજારમાં વધુ મજબૂત છે તેનું રીઅલ-ટાઇમ વિશ્લેષણ.</p>
+                        
+                        <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                            <!-- Large Cap Row -->
+                            <div class="segment-row" id="seg-large" style="display: flex; align-items: center; justify-content: space-between; padding: 0.65rem 0.85rem; background: rgba(255,255,255,0.03); border: 1px solid var(--card-border); border-radius: 8px;">
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <span class="badge" style="background: rgba(59,130,246,0.15); color: #3b82f6; font-size: 0.72rem; padding: 0.2rem 0.5rem; font-weight: 700; border-radius: 4px;">LARGE CAP</span>
+                                    <span style="font-weight: 600; font-size: 0.88rem; color: #fff;">NIFTY 100</span>
+                                </div>
+                                <div style="text-align: right;">
+                                    <div id="seg-large-val" style="font-weight: 700; font-size: 0.95rem; color: #fff;">—</div>
+                                    <div id="seg-large-chg" style="font-size: 0.78rem; font-weight: 600; color: var(--text-secondary);">-</div>
+                                </div>
+                            </div>
+
+                            <!-- Mid Cap Row -->
+                            <div class="segment-row" id="seg-mid" style="display: flex; align-items: center; justify-content: space-between; padding: 0.65rem 0.85rem; background: rgba(255,255,255,0.03); border: 1px solid var(--card-border); border-radius: 8px;">
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <span class="badge" style="background: rgba(168,85,247,0.15); color: #a855f7; font-size: 0.72rem; padding: 0.2rem 0.5rem; font-weight: 700; border-radius: 4px;">MID CAP</span>
+                                    <span style="font-weight: 600; font-size: 0.88rem; color: #fff;">NIFTY MID 100</span>
+                                </div>
+                                <div style="text-align: right;">
+                                    <div id="seg-mid-val" style="font-weight: 700; font-size: 0.95rem; color: #fff;">—</div>
+                                    <div id="seg-mid-chg" style="font-size: 0.78rem; font-weight: 600; color: var(--text-secondary);">-</div>
+                                </div>
+                            </div>
+
+                            <!-- Small Cap Row -->
+                            <div class="segment-row" id="seg-small" style="display: flex; align-items: center; justify-content: space-between; padding: 0.65rem 0.85rem; background: rgba(255,255,255,0.03); border: 1px solid var(--card-border); border-radius: 8px;">
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <span class="badge" style="background: rgba(236,72,153,0.15); color: #ec4899; font-size: 0.72rem; padding: 0.2rem 0.5rem; font-weight: 700; border-radius: 4px;">SMALL CAP</span>
+                                    <span style="font-weight: 600; font-size: 0.88rem; color: #fff;">NIFTY SMALL 100</span>
+                                </div>
+                                <div style="text-align: right;">
+                                    <div id="seg-small-val" style="font-weight: 700; font-size: 0.95rem; color: #fff;">—</div>
+                                    <div id="seg-small-chg" style="font-size: 0.78rem; font-weight: 600; color: var(--text-secondary);">-</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Leaderboard Badge -->
+                        <div id="segment-leader-container" style="margin-top: 1rem; padding: 0.65rem 0.85rem; background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.25); border-radius: 8px; display: flex; align-items: center; justify-content: space-between; font-size: 0.85rem;">
+                            <span style="color: var(--text-secondary); font-weight: 500;">સૌથી મજબૂત સેગમેન્ટ:</span>
+                            <span id="segment-leader-badge" style="font-weight: 700; color: #10b981; text-transform: uppercase;">—</span>
+                        </div>
+                    </div>
+
+                    <!-- Top Performer Widget -->
+                    <div class="card top-performer-card hidden" id="top-performer-card">
+                        <div class="performer-header">
+                            <i class="fa-solid fa-trophy gold-trophy"></i>
+                            <h2>30-Day Leader</h2>
+                        </div>
+                        <div class="performer-body">
+                            <div class="performer-symbol" id="performer-symbol">-</div>
+                            <div class="performer-stats">
+                                <div>Latest Price: <span id="performer-today-price">₹0.00</span></div>
+                                <div>Old Price (30d): <span id="performer-old-price">₹0.00</span></div>
+                                <div>Net Gain: <span id="performer-gain-val" style="color:var(--success-color); font-weight:bold;">+₹0.00</span></div>
+                                <div>Gain Percentage: <span id="performer-gain-pct" class="volatility-pct">+0.00%</span></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Top Gainers Highlight -->
+                    <div class="card movement-card">
+                        <div class="movement-header">
+                            <i class="fa-solid fa-chart-line movement-icon"></i>
+                            <h2 id="gainer-card-title">Top 50 Gainers (5 Days)</h2>
+                            <div class="gainer-toggle-group">
+                                <button class="toggle-btn" id="gainer-toggle-1">1-Day</button>
+                                <button class="toggle-btn" id="gainer-toggle-2">2-Day</button>
+                                <button class="toggle-btn" id="gainer-toggle-3">3-Day</button>
+                                <button class="toggle-btn active" id="gainer-toggle-5">5-Day</button>
+                                <button class="toggle-btn" id="gainer-toggle-30">30-Day</button>
+                                <button class="toggle-btn" id="gainer-toggle-common" style="border-color: var(--success-color); color: var(--success-color);"><i class="fa-solid fa-arrows-spin"></i> Common</button>
+                            </div>
+                        </div>
+                        <p class="card-desc" id="gainer-card-desc">Companies showing the highest net positive close-to-close change over the last 5 active trading days.</p>
+                        <div class="table-wrapper movement-table-wrapper">
+                            <table id="movement-table">
+                                <thead>
+                                    <tr>
+                                        <th>Symbol</th>
+                                        <th id="gainer-table-old-price-header">Price (5d)</th>
+                                        <th>Latest Price</th>
+                                        <th>Live Price</th>
+                                        <th>Net Gain (₹)</th>
+                                        <th>Gain (%)</th>
+                                        <th style="text-align:center;">Watchlist</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- Dynamic -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab 2: My Portfolio Content (Hidden by default) -->
+        <div id="portfolio-tab-content" class="hidden">
+            <!-- Portfolio Summary Grid -->
+            <div class="portfolio-summary-grid">
+                <div class="card summary-card">
+                    <span class="summary-label">Total Invested</span>
+                    <span class="summary-value" id="portfolio-total-invested">₹0.00</span>
+                </div>
+                <div class="card summary-card">
+                    <span class="summary-label">Total Realized Profit/Loss</span>
+                    <span class="summary-value" id="portfolio-total-profit">₹0.00</span>
+                </div>
+                <div class="card summary-card">
+                    <span class="summary-label">Active Holdings</span>
+                    <span class="summary-value" id="portfolio-active-holdings">0</span>
+                </div>
+                <div class="card summary-card">
+                    <span class="summary-label">Sold Holdings</span>
+                    <span class="summary-value" id="portfolio-sold-holdings">0</span>
+                </div>
+            </div>
+
+            <div class="portfolio-grid">
+                <!-- Portfolio Entry Form Card -->
+                <div class="card portfolio-form-card">
+                    <div class="card-header">
+                        <h2>Add/Edit Share Transaction</h2>
+                    </div>
+                    <form id="portfolio-form">
+                        <input type="hidden" id="portfolio-edit-id">
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="port-company"><i class="fa-solid fa-search"></i> Company Name / Symbol</label>
+                                <input type="text" id="port-company" list="company-suggestions" placeholder="e.g. RELIANCE" required>
+                                <datalist id="company-suggestions">
+                                    <!-- Populated dynamically from Master symbols -->
+                                </datalist>
+                            </div>
+                            <div class="form-group">
+                                <label for="port-buy-date"><i class="fa-regular fa-calendar"></i> Buy Date</label>
+                                <input type="date" id="port-buy-date" required>
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="port-qty"><i class="fa-solid fa-calculator"></i> Quantity</label>
+                                <input type="number" id="port-qty" min="1" placeholder="e.g. 10" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="port-buy-rate"><i class="fa-solid fa-indian-rupee-sign"></i> Buy Rate</label>
+                                <input type="number" id="port-buy-rate" step="0.01" min="0.01" placeholder="e.g. 2400" required>
+                            </div>
+                        </div>
+
+                        <div class="form-row optional-row">
+                            <div class="form-group">
+                                <label for="port-sell-date"><i class="fa-regular fa-calendar-check"></i> Sell Date (Optional)</label>
+                                <input type="date" id="port-sell-date">
+                            </div>
+                            <div class="form-group">
+                                <label for="port-sell-rate"><i class="fa-solid fa-indian-rupee-sign"></i> Sell Rate (Optional)</label>
+                                <input type="number" id="port-sell-rate" step="0.01" min="0.01" placeholder="e.g. 2600">
+                            </div>
+                        </div>
+
+                        <!-- Auto-calculated previews -->
+                        <div class="form-calculations">
+                            <div class="calc-box">
+                                <span class="calc-label">Buy Amount</span>
+                                <span class="calc-value" id="calc-buy-amount">₹0.00</span>
+                            </div>
+                            <div class="calc-box">
+                                <span class="calc-label">Sell Amount</span>
+                                <span class="calc-value" id="calc-sell-amount">₹0.00</span>
+                            </div>
+                            <div class="calc-box">
+                                <span class="calc-label">Profit/Loss</span>
+                                <span class="calc-value" id="calc-profit-amount">₹0.00</span>
+                            </div>
+                            <div class="calc-box">
+                                <span class="calc-label">Profit Ratio (%)</span>
+                                <span class="calc-value" id="calc-profit-ratio">0.00%</span>
+                            </div>
+                            <div class="calc-box">
+                                <span class="calc-label">Days Held</span>
+                                <span class="calc-value" id="calc-days">0 Days</span>
+                            </div>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary" id="port-submit-btn">
+                                <i class="fa-solid fa-plus"></i> Add Transaction
+                            </button>
+                            <button type="button" class="btn btn-secondary hidden" id="port-cancel-btn">
+                                Cancel Edit
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Portfolio Entries List Card -->
+                <div class="card portfolio-list-card">
+                    <div class="portfolio-list-header" style="flex-wrap: wrap; gap: 0.5rem; align-items: center;">
+                        <h2>Logged Transactions</h2>
+                        <input type="text" id="portfolio-search-input" placeholder="Search Symbol..." oninput="renderPortfolioTable()" style="padding:0.4rem 0.75rem; border:1px solid rgba(255,255,255,0.15); border-radius:6px; background:rgba(0,0,0,0.2); color:#fff; font-size:0.8rem; width:180px; margin-left: auto; margin-right: 0.5rem;">
+                        <span class="results-badge" id="portfolio-count">Active Holdings: 0</span>
+                    </div>
+                    
+                    <div class="table-wrapper portfolio-table-wrapper">
+                        <table id="portfolio-table">
+                            <thead>
+                                <tr>
+                                    <th>Company</th>
+                                    <th>Buy Date</th>
+                                    <th>Qty</th>
+                                    <th>Buy Rate</th>
+                                    <th>Buy Amt</th>
+                                    <th>Sell Date</th>
+                                    <th>Sell Rate</th>
+                                    <th>Sell Amt</th>
+                                    <th>Live Price</th>
+                                    <th>Profit/Loss</th>
+                                    <th>Days</th>
+                                    <th>Ratio</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Loaded dynamically from Firestore when portfolio tab opens -->
+                                <tr>
+                                    <td colspan="13" style="text-align:center; padding: 2rem; color: var(--text-secondary);">
+                                        Select My Portfolio to view transactions.
+                                    </td>
+                                </tr>
+                            </tbody>
+                            <tfoot>
+                                <!-- Populated dynamically from JS -->
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Tab: Morning Picks (Hidden by default) -->
+        <div id="morning-picks-tab-content" class="hidden">
+            <div class="card" style="margin-bottom:0;">
+                <div class="movement-header" style="margin-bottom:0.75rem; flex-wrap:wrap; gap:0.5rem;">
+                    <i class="fa-solid fa-sun movement-icon" style="color:#f59e0b;"></i>
+                    <h2 style="color:var(--text-primary);">Morning Buy Picks <span class="results-badge" id="picks-count-badge" style="background:rgba(245,158,11,0.15);color:#f59e0b;border-color:rgba(245,158,11,0.3);">25 Scripts</span></h2>
+                    <input type="text" id="morning-search-input" placeholder="Search Symbol..." oninput="renderMorningPicks()" style="padding:0.4rem 0.75rem; border:1px solid rgba(255,255,255,0.15); border-radius:6px; background:rgba(0,0,0,0.2); color:#fff; font-size:0.8rem; width:180px; margin-left: auto; margin-right: 0.5rem;">
+                    <button onclick="renderMorningPicks()" class="btn" style="margin-left:auto;font-size:0.78rem;padding:0.35rem 0.9rem;background:linear-gradient(135deg,#f59e0b,#d97706);border:none;color:#000;font-weight:700;border-radius:6px;cursor:pointer;">
+                        <i class="fa-solid fa-rotate"></i> Refresh Analysis
+                    </button>
+                </div>
+                <div style="background:rgba(245,158,11,0.07);border:1px solid rgba(245,158,11,0.2);border-radius:8px;padding:0.65rem 1rem;margin-bottom:0.9rem;">
+                    <p style="font-size:0.82rem;color:var(--text-secondary);margin:0;">
+                        <i class="fa-solid fa-circle-info" style="color:#f59e0b;margin-right:5px;"></i>
+                        <strong style="color:#f59e0b;">આજ સવારે 9:30 સુધીમાં ખરીદવા લાયક Top 25 Stocks</strong> — Master File ના ડેટા આધારિત Technical Scoring (Momentum + Trend Consistency + Price Position). <strong>NOTE:</strong> આ માત્ર technical analysis છે, investment advice નથી.
+                    </p>
+                </div>
+
+                <!-- No-data state -->
+                <div id="picks-empty-state" style="text-align:center;padding:2.5rem 1rem;color:var(--text-secondary);">
+                    <i class="fa-solid fa-database" style="font-size:2.2rem;opacity:0.35;display:block;margin-bottom:0.75rem;"></i>
+                    <p style="font-size:0.9rem;">Master File લોડ નથી.</p>
+                    <p style="font-size:0.8rem;margin-top:0.2rem;">Stock Research tab માં Master Excel File અને Bhavcopy ફાઇલ Upload/Process કરો.</p>
+                </div>
+
+                <!-- Scoring Table -->
+                <div class="table-wrapper movement-table-wrapper" id="picks-table-wrapper" style="display:none;">
+                    <table id="picks-table" style="min-width:560px;">
+                        <thead>
+                            <tr>
+                                <th>Rank</th>
+                                <th>Symbol</th>
+                                <th>હાલનો લાઇવ બજારનો ભાવ</th>
+                                <th>3-Day %</th>
+                                <th>5-Day %</th>
+                                <th>Trend</th>
+                                <th>Score</th>
+                                <th>Suggestion</th>
+                                <th style="text-align:center;">ઍક્શન (Action)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="picks-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: Investor Advice (Hidden by default) -->
+        <div id="investor-advice-tab-content" class="hidden">
+            <div class="card" style="margin-bottom:0;">
+                <div class="movement-header" style="margin-bottom:0.75rem; flex-wrap:wrap; gap:0.5rem;">
+                    <i class="fa-solid fa-lightbulb movement-icon" style="color:#22c55e;"></i>
+                    <h2 style="color:var(--text-primary);">Super Investor Advice <span class="results-badge" id="advice-count-badge" style="background:rgba(34,197,94,0.15);color:#22c55e;border-color:rgba(34,197,94,0.3);">0 Scripts</span></h2>
+                    
+                    <div style="margin-left:auto; display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">
+                        <input type="text" id="advice-search-input" placeholder="Search Symbol..." style="padding:0.4rem 0.75rem; border:1px solid rgba(255,255,255,0.15); border-radius:6px; background:rgba(0,0,0,0.2); color:#fff; font-size:0.8rem; width:150px;" oninput="debouncedRenderInvestorAdvice()">
+                        <select id="advice-model-select" style="padding:0.4rem 0.75rem; border:1px solid rgba(255,255,255,0.15); border-radius:6px; background:#1e293b; color:#fff; font-size:0.8rem; cursor:pointer;" onchange="renderInvestorAdvice()">
+                            <option value="ALL">All Models</option>
+                            <option value="BUFFETT">Warren Buffett (Value/Quality)</option>
+                            <option value="JHUNJHUNWALA">Rakesh Jhunjhunwala (Aggressive Growth)</option>
+                            <option value="KEDIA">Vijay Kedia (High Volatility/Breakout)</option>
+                        </select>
+                        <button onclick="renderInvestorAdvice()" class="btn btn-secondary" style="font-size:0.78rem; padding:0.4rem 0.8rem;">
+                            <i class="fa-solid fa-rotate-right"></i> Recalculate
+                        </button>
+                    </div>
+                </div>
+                
+                <p class="card-desc" style="margin-bottom:1rem;">Apply top legendary investors' models (Buffett, Jhunjhunwala, Kedia) on all your master stocks to find the best opportunities.</p>
+
+                <!-- No-data state -->
+                <div id="advice-empty-state" style="text-align:center;padding:2.5rem 1rem;color:var(--text-secondary);">
+                    <i class="fa-solid fa-file-invoice-dollar" style="font-size:2.2rem;opacity:0.35;display:block;margin-bottom:0.75rem;"></i>
+                    <p style="font-size:0.9rem;">Master File ડેટા લોડ થયેલ નથી.</p>
+                    <p style="font-size:0.8rem;margin-top:0.2rem;">સૌપ્રથમ Stock Research tab માં જઈ Master Excel File અને daily Bhavcopy ફાઇલો પ્રોસેસ કરો.</p>
+                </div>
+
+                <!-- Advice Table -->
+                <div class="table-wrapper movement-table-wrapper" id="advice-table-wrapper" style="display:none;">
+                    <table id="advice-table" style="min-width:700px;">
+                        <thead>
+                            <tr>
+                                <th>Symbol</th>
+                                <th>Latest Price</th>
+                                <th>Best Fit Model</th>
+                                <th style="text-align:center;">Score</th>
+                                <th>Advice Decision</th>
+                                <th>Reasoning Check</th>
+                                <th style="text-align:center;">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="advice-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: Watchlist (Hidden by default) -->
+        <div id="watchlist-tab-content" class="hidden">
+            <div class="card" style="margin-bottom: 0;">
+                <div class="movement-header" style="margin-bottom: 0.75rem; flex-wrap: wrap; gap: 0.5rem;">
+                    <i class="fa-solid fa-star movement-icon" style="color: #f59e0b;"></i>
+                    <h2 style="color: var(--text-primary);">My Watchlist <span class="results-badge" id="watchlist-count-badge" style="background: rgba(245,158,11,0.15); color:#f59e0b; border-color:rgba(245,158,11,0.3);">0 Scripts</span></h2>
+                    <input type="text" id="watchlist-search-input" placeholder="Search Symbol..." oninput="renderWatchlist()" style="padding:0.4rem 0.75rem; border:1px solid rgba(255,255,255,0.15); border-radius:6px; background:rgba(0,0,0,0.2); color:#fff; font-size:0.8rem; width:180px; margin-left: auto; margin-right: 0.5rem;">
+                    <button onclick="clearWatchlist()" class="btn btn-secondary" style="font-size:0.78rem; padding:0.35rem 0.75rem; color: var(--danger-color); border-color: var(--danger-color);">
+                        <i class="fa-solid fa-trash"></i> Clear All
+                    </button>
+                </div>
+                <p class="card-desc" style="margin-bottom: 0.75rem;">Stocks you are tracking. Click any row to see the chart &amp; research details. Add stocks from the Top Gainers list using the ★ button.</p>
+
+                <!-- Empty State -->
+                <div id="watchlist-empty-state" style="text-align:center; padding: 2.5rem 1rem; color: var(--text-secondary);">
+                    <i class="fa-regular fa-star" style="font-size: 2.5rem; margin-bottom: 0.75rem; display:block; opacity:0.4;"></i>
+                    <p style="font-size: 0.9rem;">તમારી Watchlist ખાલી છે.</p>
+                    <p style="font-size: 0.8rem; margin-top: 0.25rem;">Top Gainers માં ★ બટન ક્લિક કરીને Watchlist ઉમેરો.</p>
+                </div>
+
+                <!-- Watchlist Table -->
+                <div class="table-wrapper movement-table-wrapper" id="watchlist-table-wrapper" style="display:none;">
+                    <table id="watchlist-table" style="min-width: 520px;">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Symbol</th>
+                                <th>Added Price (₹)</th>
+                                <th>Live Price</th>
+                                <th>Change</th>
+                                <th style="text-align:center;">Research</th>
+                                <th style="text-align:center;">Remove</th>
+                            </tr>
+                        </thead>
+                        <tbody id="watchlist-tbody">
+                            <!-- Dynamic -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab 3: Upcoming Results & Dividend Analysis (Hidden by default) -->
+        <div id="results-tab-content" class="hidden">
+            <!-- Results & Dividends Dashboard Card -->
+            <div class="card results-dashboard-card">
+                <div class="dashboard-header" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 0.75rem;">
+                    <div>
+                        <h2 style="color: var(--accent-color); font-size: 1.35rem; display: flex; align-items: center; gap: 0.5rem;">
+                            <i class="fa-solid fa-award"></i> પરિણામો અને ડિવિડન્ડ વિશ્લેષણ (Upcoming Results & Dividend)
+                        </h2>
+                        <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.25rem;">આગામી બોર્ડ મીટિંગ્સ, પરિણામો અને ડિવિડન્ડ અંગેની એક્સચેન્જ જાહેરાતોની વિગતો.</p>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 0.5rem; margin-left: auto; flex-wrap: wrap;">
+                        <input type="text" id="results-search-input" placeholder="Search Symbol..." oninput="renderResultsAndDividendsTable()" style="padding:0.4rem 0.75rem; border:1px solid rgba(255,255,255,0.15); border-radius:6px; background:rgba(0,0,0,0.2); color:#fff; font-size:0.8rem; width:180px;">
+                        <span id="results-source-badge" class="results-badge" style="background: rgba(34,197,94,0.12); border-color: var(--success-color); color: var(--success-color); font-weight: bold; font-size: 0.8rem; padding: 0.25rem 0.6rem; border-radius: 6px; border: 1px solid;">
+                            Exchange Live Feed
+                        </span>
+                        <button id="results-retry-btn" onclick="fetchCorporateResults(true)" class="btn btn-secondary" style="font-size:0.78rem; padding:0.35rem 0.85rem;">
+                            <i class="fa-solid fa-rotate"></i> Refresh
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="table-wrapper" style="max-height: 650px;">
+                    <table id="upcoming-results-table">
+                        <thead>
+                            <tr>
+                                <th>કંપની (Symbol)</th>
+                                <th>હાલનો ભાવ (Bhavcopy Rate)</th>
+                                <th>લાઇવ ભાવ (Live Price)</th>
+                                <th>તારીખ (Event / Ex-Date)</th>
+                                <th>પ્રકાર (Event Type)</th>
+                                <th>વિગત (Purpose / Details)</th>
+                                <th>સ્થિતિ (Status)</th>
+                                <th>ડિવિડન્ડ આપે છે?</th>
+                                <th style="text-align: center;">ઍક્શન (Action)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Dynamically loaded rows from /api/corporate -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Tab: High Volume & Promoter Analysis (Hidden by default) -->
+        <div id="volume-promoter-tab-content" class="hidden">
+            <div class="card" style="margin-bottom:0;">
+                <div class="movement-header" style="margin-bottom:0.75rem; flex-wrap:wrap; gap:0.5rem;">
+                    <i class="fa-solid fa-fire movement-icon" style="color:#ef4444;"></i>
+                    <h2 style="color:var(--text-primary);">High Volume &amp; Promoter Stocks <span class="results-badge" id="vol-promoter-count-badge" style="background:rgba(239,68,68,0.15);color:#ef4444;border-color:rgba(239,68,68,0.3);">0 Stocks</span></h2>
+                    
+                    <input type="text" id="vol-promoter-search-input" placeholder="Search Symbol..." oninput="renderVolumePromoterPicks()" style="padding:0.4rem 0.75rem; border:1px solid rgba(255,255,255,0.15); border-radius:6px; background:rgba(0,0,0,0.2); color:#fff; font-size:0.8rem; width:180px; margin-left: auto; margin-right: 0.5rem;">
+
+                    <button onclick="renderVolumePromoterPicks(true)" class="btn" style="font-size:0.78rem;padding:0.35rem 0.9rem;background:linear-gradient(135deg,#ef4444,#dc2626);border:none;color:#fff;font-weight:700;border-radius:6px;cursor:pointer;">
+                        <i class="fa-solid fa-rotate"></i> Refresh
+                    </button>
+                </div>
+                <div style="background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.2);border-radius:8px;padding:0.65rem 1rem;margin-bottom:0.9rem;">
+                    <p style="font-size:0.82rem;color:var(--text-secondary);margin:0;">
+                        <i class="fa-solid fa-circle-info" style="color:#ef4444;margin-right:5px;"></i>
+                        <strong style="color:#ef4444;">નિયમો:</strong> ૧) છેલ્લા ૫ દિવસથી ભાવ સતત વધતો હોય, ૨) પ્રમોટરનો હિસ્સો ૭૦% થી વધુ હોય, ૩) સૌથી વધુ વોલ્યુમ વાળા શેર્સ ઉપર આવશે. **Global Mode** માં ૫૦+ કી કંપનીઓના લાઈવ ડેટા યાહુ ફાયનાન્સથી ડાયરેક્ટ ઓપન થાય છે.
+                    </p>
+                </div>
+
+                <!-- No-data state -->
+                <div id="vol-promoter-empty-state" style="text-align:center;padding:2.5rem 1rem;color:var(--text-secondary);">
+                    <i class="fa-solid fa-database" style="font-size:2.2rem;opacity:0.35;display:block;margin-bottom:0.75rem;"></i>
+                    <p style="font-size:0.9rem;">કોઈ ડેટા મેચ થતો નથી અથવા માસ્ટર ફાઇલ લોડ નથી.</p>
+                    <p style="font-size:0.8rem;margin-top:0.2rem;">ખાતરી કરો કે માસ્ટર ફાઇલમાં Promoter holding નો કોલમ છે અને daily Bhavcopy અપલોડ કરેલ છે.</p>
+                </div>
+
+                <!-- Volume & Promoter Table -->
+                <div class="table-wrapper movement-table-wrapper" id="vol-promoter-table-wrapper" style="display:none;">
+                    <table id="vol-promoter-table" style="min-width:600px;">
+                        <thead>
+                            <tr>
+                                <th>ક્રમ (Rank)</th>
+                                <th>કંપની (Symbol)</th>
+                                <th>હાલનો ભાવ (Latest Close)</th>
+                                <th>વોલ્યુમ (Volume)</th>
+                                <th>પ્રમોટર હિસ્સો (Promoter %)</th>
+                                <th>૫ દિવસનો ટ્રેન્ડ (5-Day Trend)</th>
+                                <th style="text-align:center;">ઍક્શન (Action)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="vol-promoter-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: Circuits Analysis (Hidden by default) -->
+        <div id="circuits-tab-content" class="hidden">
+            <div class="card" style="margin-bottom:0;">
+                <div class="movement-header" style="margin-bottom:0.75rem; flex-wrap:wrap; gap:0.5rem;">
+                    <i class="fa-solid fa-bolt movement-icon" style="color:#eab308;"></i>
+                    <h2 style="color:var(--text-primary);">Circuits (સર્કિટ્સ) <span class="results-badge" id="circuits-count-badge" style="background:rgba(234,179,8,0.15);color:#eab308;border-color:rgba(234,179,8,0.3);">0 Stocks</span></h2>
+                    <input type="text" id="circuits-search-input" placeholder="Search Symbol..." oninput="renderCircuits()" style="padding:0.4rem 0.75rem; border:1px solid rgba(255,255,255,0.15); border-radius:6px; background:rgba(0,0,0,0.2); color:#fff; font-size:0.8rem; width:180px; margin-left: auto; margin-right: 0.5rem;">
+                    <button onclick="renderCircuits(true)" class="btn" style="font-size:0.78rem;padding:0.35rem 0.9rem;background:linear-gradient(135deg,#eab308,#ca8a04);border:none;color:#000;font-weight:700;border-radius:6px;cursor:pointer;">
+                        <i class="fa-solid fa-rotate"></i> Refresh
+                    </button>
+                </div>
+                <div style="background:rgba(234,179,8,0.07);border:1px solid rgba(234,179,8,0.2);border-radius:8px;padding:0.65rem 1rem;margin-bottom:0.9rem;">
+                    <p style="font-size:0.82rem;color:var(--text-secondary);margin:0;">
+                        <i class="fa-solid fa-circle-info" style="color:#eab308;margin-right:5px;"></i>
+                        <strong style="color:#eab308;">નિયમો:</strong> ૧) આજે સૌથી વધુ વોલ્યુમ ધરાવતી કંપનીઓ પહેલા આવશે, ૨) જે કંપનીઓ અપર સર્કિટ (20%, 10% અથવા 5%) ની નજીક અથવા ટચ થયેલ હોય તેને અલગ તારવવામાં આવે છે.
+                    </p>
+                </div>
+
+                <!-- No-data state -->
+                <div id="circuits-empty-state" style="text-align:center;padding:2.5rem 1rem;color:var(--text-secondary);">
+                    <i class="fa-solid fa-database" style="font-size:2.2rem;opacity:0.35;display:block;margin-bottom:0.75rem;"></i>
+                    <p style="font-size:0.9rem;">કોઈ ડેટા મેચ થતો નથી અથવા માસ્ટર ફાઇલ લોડ નથી.</p>
+                </div>
+
+                <!-- Circuits Table -->
+                <div class="table-wrapper movement-table-wrapper" id="circuits-table-wrapper" style="display:none;">
+                    <table id="circuits-table" style="min-width:600px;">
+                        <thead>
+                            <tr>
+                                <th>ક્રમ (Rank)</th>
+                                <th>કંપની (Symbol)</th>
+                                <th>હાલનો ભાવ (Latest Close)</th>
+                                <th>લાઇવ ભાવ (Live Price)</th>
+                                <th>વોલ્યુમ (Volume)</th>
+                                <th>સર્કિટ લિમિટ (Circuit Limit)</th>
+                                <th>આજનો બદલાવ (%)</th>
+                                <th style="text-align:center;">ઍક્શન (Action)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="circuits-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: Global Indices (Hidden by default) -->
+        <div id="global-indices-tab-content" class="hidden">
+            <div class="card" style="margin-bottom:0;">
+                <div class="movement-header" style="margin-bottom:0.75rem; flex-wrap:wrap; gap:0.5rem;">
+                    <i class="fa-solid fa-globe movement-icon" style="color:#3b82f6;"></i>
+                    <h2 style="color:var(--text-primary);">Global Stock Market Indices (ગ્લોબલ ઇન્ડેક્સ)</h2>
+                    
+                    <button onclick="fetchGlobalIndices(true)" class="btn" style="margin-left:auto;font-size:0.78rem;padding:0.35rem 0.9rem;background:linear-gradient(135deg,#3b82f6,#2563eb);border:none;color:#fff;font-weight:700;border-radius:6px;cursor:pointer;">
+                        <i class="fa-solid fa-rotate"></i> Refresh
+                    </button>
+                </div>
+                <div style="background:rgba(59,130,246,0.07);border:1px solid rgba(59,130,246,0.2);border-radius:8px;padding:0.65rem 1rem;margin-bottom:0.9rem;">
+                    <p style="font-size:0.82rem;color:var(--text-secondary);margin:0;">
+                        <i class="fa-solid fa-circle-info" style="color:#3b82f6;margin-right:5px;"></i>
+                        વિશ્વભરના મુખ્ય બજાર સૂચકાંકો (Global Indices) ના રીઅલ-ટાઇમ લાઈવ ભાવ અને માર્કેટ સ્થિતિ (ઓપન/ક્લોઝ).
+                    </p>
+                </div>
+
+                <!-- Global Indices Table -->
+                <div class="table-wrapper movement-table-wrapper" id="global-indices-table-wrapper" style="margin-top:1rem;">
+                    <table id="global-indices-table" style="min-width:700px;">
+                        <thead>
+                            <tr>
+                                <th>ઇન્ડેક્ષનું નામ</th>
+                                <th>કરંટ ઇન્ડેક્ષ</th>
+                                <th>વધારો-ઘટાડો (પોઇન્ટમાં)</th>
+                                <th>વધારો-ઘટાડો (ટકાવારીમાં)</th>
+                                <th>હાલમાં ઓપન કે કલોઝ</th>
+                            </tr>
+                        </thead>
+                        <tbody id="global-indices-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: Intraday Analysis (Hidden by default) -->
+        <div id="intraday-tab-content" class="hidden">
+            <div class="card" style="margin-bottom:0;">
+                <div class="movement-header" style="margin-bottom:0.75rem; flex-wrap:wrap; gap:0.5rem;">
+                    <i class="fa-solid fa-gauge-high movement-icon" style="color:#10b981;"></i>
+                    <h2 style="color:var(--text-primary);">Intraday Scanner (ઇન્ટ્રાડે સ્કેનર) <span class="results-badge" id="intraday-count-badge" style="background:rgba(16,185,129,0.15);color:#10b981;border-color:rgba(16,185,129,0.3);">0 Stocks</span></h2>
+                    <input type="text" id="intraday-search-input" placeholder="Search Symbol..." oninput="renderIntraday()" style="padding:0.4rem 0.75rem; border:1px solid rgba(255,255,255,0.15); border-radius:6px; background:rgba(0,0,0,0.2); color:#fff; font-size:0.8rem; width:180px; margin-left: auto; margin-right: 0.5rem;">
+                    <button onclick="renderIntraday(true)" class="btn" style="font-size:0.78rem;padding:0.35rem 0.9rem;background:linear-gradient(135deg,#10b981,#059669);border:none;color:#fff;font-weight:700;border-radius:6px;cursor:pointer;">
+                        <i class="fa-solid fa-rotate"></i> Refresh
+                    </button>
+                </div>
+                <div style="background:rgba(16,185,129,0.07);border:1px solid rgba(16,185,129,0.2);border-radius:8px;padding:0.65rem 1rem;margin-bottom:0.9rem;">
+                    <p style="font-size:0.82rem;color:var(--text-secondary);margin:0;">
+                        <i class="fa-solid fa-circle-info" style="color:#10b981;margin-right:5px;"></i>
+                        <strong style="color:#10b981;">ઇન્ટ્રાડે ગણતરી પદ્ધતિ:</strong> ૧) **લિક્વિડિટી:** હાઈ વોલ્યુમ ધરાવતા શેર્સ, ૨) **વોલેટિલિટી:** આજના દિવસની યોગ્ય વધઘટ ધરાવતા શેર્સ, ૩) **સ્ટોપ-લોસ (SL) & ટાર્ગેટ:** પિવોટ પોઈન્ટ્સ (Pivot Points) ના આધારે ગણતરી કરેલ સપોર્ટ અને રઝીસ્ટન્સ સ્તરો.
+                    </p>
+                </div>
+
+                <!-- No-data state -->
+                <div id="intraday-empty-state" style="text-align:center;padding:2.5rem 1rem;color:var(--text-secondary);">
+                    <i class="fa-solid fa-database" style="font-size:2.2rem;opacity:0.35;display:block;margin-bottom:0.75rem;"></i>
+                    <p style="font-size:0.9rem;">કોઈ ડેટા મેચ થતો નથી અથવા માસ્ટર ફાઇલ લોડ નથી.</p>
+                </div>
+
+                <!-- Intraday Table -->
+                <div class="table-wrapper movement-table-wrapper" id="intraday-table-wrapper" style="display:none;">
+                    <table id="intraday-table" style="min-width:700px;">
+                        <thead>
+                            <tr>
+                                <th>ક્રમ</th>
+                                <th>કંપનીનું નામ</th>
+                                <th>ગઇકાલનો બંઘ ભાવ</th>
+                                <th>હાલનો લાઇવ ભાવ</th>
+                                <th>આજનો લાઇવ હાઇ</th>
+                                <th>આજનો લાઇવ લો</th>
+                                <th>લાઇવ વોલ્યુમ</th>
+                                <th>લાઇવ વોલેટિલીટી</th>
+                                <th>લાઇવ ટ્રેન્ડ</th>
+                                <th>લાઇવ સ્ટોપ લોસ</th>
+                                <th>લાઇવ ટાર્ગેટ</th>
+                                <th>લાઇવ ટેકનિકલ રેટીંગ</th>
+                                <th style="text-align:center;">એકશન</th>
+                            </tr>
+                        </thead>
+                        <tbody id="intraday-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: MASTER PIECE (Hidden by default) -->
+        <div id="master-piece-tab-content" class="hidden">
+            <div class="card" style="margin-bottom:0; border: 1px solid rgba(236,72,153,0.3); background: radial-gradient(circle at top right, rgba(236,72,153,0.05), transparent 60%);">
+                <div class="movement-header" style="margin-bottom:0.75rem; flex-wrap:wrap; gap:0.5rem;">
+                    <i class="fa-solid fa-gem movement-icon" style="color:#ec4899; text-shadow: 0 0 10px rgba(236,72,153,0.4);"></i>
+                    <h2 style="color:var(--text-primary); background: linear-gradient(90deg, #ec4899, #f43f5e); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">MASTER PIECE (મહામૂલા ૫ મોતી)</h2>
+                    
+                    <button onclick="renderMasterPiece(true)" class="btn" style="margin-left:auto;font-size:0.78rem;padding:0.35rem 0.9rem;background:linear-gradient(135deg,#ec4899,#e11d48);border:none;color:#fff;font-weight:700;border-radius:6px;cursor:pointer;box-shadow: 0 4px 12px rgba(236,72,153,0.3);">
+                        <i class="fa-solid fa-rotate"></i> Refresh
+                    </button>
+                </div>
+                <div style="background:rgba(236,72,153,0.07);border:1px solid rgba(236,72,153,0.2);border-radius:8px;padding:0.65rem 1rem;margin-bottom:0.9rem;">
+                    <p style="font-size:0.82rem;color:var(--text-secondary);margin:0;">
+                        <i class="fa-solid fa-circle-info" style="color:#ec4899;margin-right:5px;"></i>
+                        <strong style="color:#ec4899;">માસ્ટર પીસ નિયમ:</strong> આ ટેબમાં ચાલુ દિવસના સૌથી મજબૂત ચાલવાની શક્યતા ધરાવતા **માત્ર ૫ ખાસ શેરો** આવશે. આ શેર્સ આપણી **Investor Advice, Circuits અને Intraday** ટેબમાં સૌથી કોમન/કોન્સિલિડેટેડ હોય તેમાંથી પસંદ થાય છે. જો આ ૫ શેરોના લાઈવ ભાવમાં અચાનક **૧.૫% કે તેથી વધુ ફેરફાર (વધારો/ઘટાડો)** થશે, તો સિસ્ટમ તુરંત જ સ્ક્રીન પર પોપ-અપ નોટિફિકેશન આપશે!
+                    </p>
+                </div>
+
+                <!-- No-data state -->
+                <div id="master-piece-empty-state" style="text-align:center;padding:2.5rem 1rem;color:var(--text-secondary);">
+                    <i class="fa-solid fa-gem" style="font-size:2.5rem;opacity:0.25;display:block;margin-bottom:0.75rem;color:#ec4899;"></i>
+                    <p style="font-size:0.9rem;">કોઈ ડેટા મેચ થતો નથી અથવા માસ્ટર ફાઇલ લોડ નથી.</p>
+                </div>
+
+                <!-- Master Piece Table -->
+                <div class="table-wrapper movement-table-wrapper" id="master-piece-table-wrapper" style="display:none;">
+                    <table id="master-piece-table" style="min-width:700px;">
+                        <thead>
+                            <tr>
+                                <th>ક્રમ (Rank)</th>
+                                <th>કંપની (Symbol)</th>
+                                <th>હાલનો ભાવ</th>
+                                <th>લાઇવ ભાવ</th>
+                                <th>આજનો બદલાવ (%)</th>
+                                <th>વોલ્યુમ</th>
+                                <th>સ્ટોપ-લોસ (SL)</th>
+                                <th>ટાર્ગેટ (Target)</th>
+                                <th>એનાલિસિસ સ્રોત / કારણ</th>
+                                <th style="text-align:center;">ઍક્શન (Action)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="master-piece-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab 12: કોલ પુટ (Call Put - 5 Level ITM/OTM Volume & Market Mood Index - 1s Live) -->
+        <div id="call-put-tab-content" class="hidden">
+            <div class="card call-put-card">
+                <div class="card-header cp-header-row">
+                    <div>
+                        <h2 style="color: #22d3ee;">
+                            <i class="fa-solid fa-layer-group"></i> કોલ પુટ (Call / Put) – 5 સ્તર ITM &amp; OTM વોલ્યુમ
+                        </h2>
+                        <p class="card-desc" style="margin-bottom: 0; margin-top: 0.25rem;">
+                            ચાલુ Market ATM Strike થી ઉપર-નીચે 5-5 સ્તરના Call (CE) અને Put (PE) વોલ્યુમનો અલગ સરવાળો + Tickertape Market Mood Index (દર 1 સેકન્ડે લાઇવ અપડેટ).
+                        </p>
+                    </div>
+                    <div class="cp-controls">
+                        <select id="cp-symbol-select" class="cp-select" aria-label="Select Index">
+                            <option value="NIFTY">NIFTY 50</option>
+                            <option value="BANKNIFTY">BANKNIFTY</option>
+                            <option value="FINNIFTY">FINNIFTY</option>
+                            <option value="MIDCPNIFTY">MIDCPNIFTY</option>
+                            <option value="SENSEX">SENSEX</option>
+                        </select>
+                        <select id="cp-expiry-select" class="cp-select" aria-label="Select Expiry">
+                            <option value="">ચાલુ Expiry (Auto)</option>
+                        </select>
+                        <span id="cp-live-badge" class="cp-live-pill">
+                            <span class="cp-live-dot"></span>
+                            <span id="cp-last-updated">1s Live...</span>
+                        </span>
+                        <button type="button" id="cp-refresh-btn" class="btn btn-secondary cp-refresh-btn">
+                            <i class="fa-solid fa-rotate"></i> Refresh
+                        </button>
+                    </div>
+                </div>
+
+                <div id="cp-status-msg" class="cp-status-banner hidden"></div>
+
+                <!-- Live Strip: NIFTY 50, SENSEX, GOLD (INR & USD), SILVER (INR & USD), NASDAQ, HANG SENG (Double-Click to open Chart) -->
+                <div class="cp-live-strip-grid" id="cp-market-ticker-grid">
+                    <div class="cp-live-card live-chart-trigger" data-chart-symbol="^NSEI" title="ડબલ-ક્લિક કરી NIFTY 50 Chart જુઓ">
+                        <span class="cp-live-title">NIFTY 50 <small id="cp-live-nifty-src">LIVE 2x/s</small></span>
+                        <strong class="cp-live-val" id="cp-live-nifty-val">--</strong>
+                        <span class="cp-live-chg" id="cp-live-nifty-chg">--</span>
+                    </div>
+                    <div class="cp-live-card live-chart-trigger" data-chart-symbol="^BSESN" title="ડબલ-ક્લિક કરી SENSEX Chart જુઓ">
+                        <span class="cp-live-title">SENSEX <small id="cp-live-sensex-src">LIVE 2x/s</small></span>
+                        <strong class="cp-live-val" id="cp-live-sensex-val">--</strong>
+                        <span class="cp-live-chg" id="cp-live-sensex-chg">--</span>
+                    </div>
+                    <div class="cp-live-card cp-gold-card live-chart-trigger" data-chart-symbol="GOLD_INR" title="ડબલ-ક્લિક કરી GOLD (₹ INR) Chart જુઓ">
+                        <span class="cp-live-title" style="color:#f59e0b;">GOLD / 10g (₹) <small id="cp-live-gold-src">MCX</small></span>
+                        <strong class="cp-live-val" id="cp-live-gold-val">--</strong>
+                        <span class="cp-live-chg" id="cp-live-gold-chg">--</span>
+                    </div>
+                    <div class="cp-live-card cp-silver-card live-chart-trigger" data-chart-symbol="SILVER_INR" title="ડબલ-ક્લિક કરી SILVER (₹ INR) Chart જુઓ">
+                        <span class="cp-live-title" style="color:#cbd5e1;">SILVER / 1kg (₹) <small id="cp-live-silver-src">MCX</small></span>
+                        <strong class="cp-live-val" id="cp-live-silver-val">--</strong>
+                        <span class="cp-live-chg" id="cp-live-silver-chg">--</span>
+                    </div>
+                    <div class="cp-live-card cp-global-card live-chart-trigger" data-chart-symbol="GC=F" title="ડબલ-ક્લિક કરી GOLD ($ USD) Chart જુઓ">
+                        <span class="cp-live-title" style="color:#fbbf24;">GOLD ($ USD) <small id="cp-live-gold-usd-src">XAU/USD</small></span>
+                        <strong class="cp-live-val" id="cp-live-gold-usd-val">--</strong>
+                        <span class="cp-live-chg" id="cp-live-gold-usd-chg">--</span>
+                    </div>
+                    <div class="cp-live-card cp-global-card live-chart-trigger" data-chart-symbol="SI=F" title="ડબલ-ક્લિક કરી SILVER ($ USD) Chart જુઓ">
+                        <span class="cp-live-title" style="color:#7dd3fc;">SILVER ($ USD) <small id="cp-live-silver-usd-src">XAG/USD</small></span>
+                        <strong class="cp-live-val" id="cp-live-silver-usd-val">--</strong>
+                        <span class="cp-live-chg" id="cp-live-silver-usd-chg">--</span>
+                    </div>
+                    <div class="cp-live-card cp-global-card live-chart-trigger" data-chart-symbol="^IXIC" title="ડબલ-ક્લિક કરી NASDAQ Chart જુઓ">
+                        <span class="cp-live-title" style="color:#38bdf8;">NASDAQ <small>^IXIC</small></span>
+                        <strong class="cp-live-val" id="cp-live-nasdaq-val">--</strong>
+                        <span class="cp-live-chg" id="cp-live-nasdaq-chg">--</span>
+                    </div>
+                    <div class="cp-live-card cp-global-card live-chart-trigger" data-chart-symbol="^HSI" title="ડબલ-ક્લિક કરી HANG SENG Chart જુઓ">
+                        <span class="cp-live-title" style="color:#f472b6;">HANG SENG <small>^HSI</small></span>
+                        <strong class="cp-live-val" id="cp-live-hangseng-val">--</strong>
+                        <span class="cp-live-chg" id="cp-live-hangseng-chg">--</span>
+                    </div>
+                </div>
+
+                <!-- SENSEX & NSE Advance / Decline (nseindia.com/market-data/decline) - 1s Live -->
+                <div class="cp-breadth-grid">
+                    <div class="cp-panel cp-breadth-card">
+                        <div class="cp-panel-header">
+                            <div>
+                                <span class="cp-kicker">SENSEX 30 ADVANCE &amp; DECLINE</span>
+                                <div class="cp-breadth-nums">
+                                    <span class="cp-adv-pill">Advance: <strong id="cp-sensex-adv">--</strong></span>
+                                    <span class="cp-dec-pill">Decline: <strong id="cp-sensex-dec">--</strong></span>
+                                </div>
+                            </div>
+                            <span class="cp-breadth-ratio" id="cp-sensex-adv-pct">--</span>
+                        </div>
+                        <div class="cp-ad-bar-track">
+                            <div class="cp-ad-bar-adv" id="cp-sensex-ad-bar" style="width: 50%;"></div>
+                        </div>
+                    </div>
+
+                    <div class="cp-panel cp-breadth-card">
+                        <div class="cp-panel-header">
+                            <div>
+                                <span class="cp-kicker">MARKET ADVANCE &amp; DECLINE (NSEINDIA.COM/MARKET-DATA/DECLINE)</span>
+                                <div class="cp-breadth-nums">
+                                    <span class="cp-adv-pill">Advances: <strong id="cp-nse-adv">--</strong></span>
+                                    <span class="cp-dec-pill">Declines: <strong id="cp-nse-dec">--</strong></span>
+                                    <span class="cp-unch-pill">Unch: <strong id="cp-nse-unch">--</strong></span>
+                                    <span class="cp-unch-pill">Total: <strong id="cp-nse-total">--</strong></span>
+                                </div>
+                            </div>
+                            <a href="https://www.nseindia.com/market-data/decline" target="_blank" rel="noopener noreferrer" class="cp-source-link">
+                                nseindia.com <i class="fa-solid fa-arrow-up-right-from-square"></i>
+                            </a>
+                        </div>
+                        <div class="cp-ad-bar-track">
+                            <div class="cp-ad-bar-adv" id="cp-nse-ad-bar" style="width: 50%;"></div>
+                        </div>
+                        <div class="cp-mmi-footer" id="cp-breadth-time">Source: nseindia.com/market-data/decline</div>
+                    </div>
+                </div>
+
+                <!-- Row 1: Market Mood Index & Live Spot / ATM Summary -->
+                <div class="cp-top-grid">
+                    <!-- Tickertape Market Mood Index Card -->
+                    <div class="cp-panel cp-mmi-panel">
+                        <div class="cp-panel-header">
+                            <div>
+                                <span class="cp-kicker">MARKET MOOD INDEX (MMI)</span>
+                                <div class="cp-mmi-headline" style="margin-top:0.25rem;">
+                                    <span id="cp-mmi-zone" class="cp-mmi-zone-badge">Loading...</span>
+                                    <span id="cp-mmi-change" class="cp-mmi-chg">--</span>
+                                </div>
+                            </div>
+                            <a href="https://www.tickertape.in/market-mood-index" target="_blank" rel="noopener noreferrer" class="cp-source-link">
+                                tickertape.in <i class="fa-solid fa-arrow-up-right-from-square"></i>
+                            </a>
+                        </div>
+
+                        <div class="mmi-radial-wrap">
+                            <svg id="cp-mmi-svg" viewBox="0 0 320 262" class="mmi-radial-svg" role="img" aria-label="Tickertape Market Mood Index Gauge">
+                                <defs>
+                                    <path id="mmi-arc-ef" d="" />
+                                    <path id="mmi-arc-f" d="" />
+                                    <path id="mmi-arc-g" d="" />
+                                    <path id="mmi-arc-eg" d="" />
+                                </defs>
+                                <!-- Active zone pie wedge shading + base track + active arc populated cleanly by renderMmiPanel -->
+                                <g id="cp-mmi-sectors"></g>
+                                <g id="cp-mmi-needle" style="transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1); transform-origin: 160px 146px;">
+                                    <path d="M 155.5 146 L 158.6 74 A 1.4 1.4 0 0 1 161.4 74 L 164.5 146 A 4.8 4.8 0 0 1 155.5 146 Z" fill="#f97316" id="cp-mmi-needle-shape" />
+                                </g>
+                                <text x="160" y="232" text-anchor="middle" id="cp-mmi-value" class="mmi-svg-value" fill="#f8fafc">--</text>
+                                <text x="160" y="250" text-anchor="middle" id="cp-mmi-updated-sub" class="mmi-svg-sub" fill="#94a3b8">Updated from tickertape.in</text>
+                            </svg>
+                        </div>
+
+                        <div class="cp-mmi-baselines">
+                            <div class="cp-mini-stat">
+                                <span>ગઈકાલ (Yesterday)</span>
+                                <strong id="cp-mmi-prev">--</strong>
+                            </div>
+                            <div class="cp-mini-stat">
+                                <span>1 અઠવાડિયું (1W)</span>
+                                <strong id="cp-mmi-week">--</strong>
+                            </div>
+                            <div class="cp-mini-stat">
+                                <span>1 મહિનો (1M)</span>
+                                <strong id="cp-mmi-month">--</strong>
+                            </div>
+                            <div class="cp-mini-stat">
+                                <span>1 વર્ષ (1Y)</span>
+                                <strong id="cp-mmi-year">--</strong>
+                            </div>
+                        </div>
+                        <div class="cp-mmi-footer" id="cp-mmi-date">Source: tickertape.in/market-mood-index</div>
+                    </div>
+
+                    <!-- Live Spot, ATM Strike & Combined 5-Level ITM vs OTM -->
+                    <div class="cp-panel cp-spot-panel">
+                        <div class="cp-panel-header">
+                            <div>
+                                <span class="cp-kicker">ચાલુ બજાર ભાવ &amp; ATM STRIKE PRICE</span>
+                                <div class="cp-spot-headline">
+                                    <span id="cp-spot-price" class="cp-spot-number">--</span>
+                                    <span id="cp-spot-change" class="cp-spot-chg">--</span>
+                                </div>
+                            </div>
+                            <div class="cp-atm-pill-box">
+                                <span class="cp-atm-pill-label">ATM STRIKE</span>
+                                <strong id="cp-atm-strike" class="cp-atm-pill-val">--</strong>
+                            </div>
+                        </div>
+
+                        <div class="cp-spot-meta">
+                            <span>Expiry: <strong id="cp-active-expiry">--</strong></span>
+                            <span>Feed: <strong id="cp-feed-source">--</strong></span>
+                        </div>
+
+                        <div class="cp-combined-grid">
+                            <div class="cp-combined-box cp-itm-accent">
+                                <span class="cp-combined-label">કુલ ITM 5-સ્તર વોલ્યુમ (Call + Put ITM)</span>
+                                <strong id="cp-total-itm-vol" class="cp-combined-val">--</strong>
+                            </div>
+                            <div class="cp-combined-box cp-otm-accent">
+                                <span class="cp-combined-label">કુલ OTM 5-સ્તર વોલ્યુમ (Call + Put OTM)</span>
+                                <strong id="cp-total-otm-vol" class="cp-combined-val">--</strong>
+                            </div>
+                            <div class="cp-combined-box">
+                                <span class="cp-combined-label">ATM Call (CE) વોલ્યુમ</span>
+                                <strong id="cp-atm-ce-vol" class="cp-combined-val" style="color: #60a5fa;">--</strong>
+                            </div>
+                            <div class="cp-combined-box">
+                                <span class="cp-combined-label">ATM Put (PE) વોલ્યુમ</span>
+                                <strong id="cp-atm-pe-vol" class="cp-combined-val" style="color: #c084fc;">--</strong>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Row 2: Separate 5-Level Volume Totals for Call ITM, Call OTM, Put ITM, Put OTM -->
+                <div class="cp-summary-grid">
+                    <div class="cp-vol-card cp-vol-call-itm">
+                        <div class="cp-vol-title">
+                            <span>CALL (CE) – ITM 5 સ્તર સરવાળો</span>
+                            <span class="cp-side-tag cp-tag-itm">ATM થી નીચે</span>
+                        </div>
+                        <div id="cp-call-itm-vol" class="cp-vol-value">--</div>
+                        <div class="cp-vol-sub">
+                            <span>Strikes: <strong id="cp-call-itm-range">--</strong></span>
+                            <span>OI: <strong id="cp-call-itm-oi">--</strong></span>
+                        </div>
+                    </div>
+
+                    <div class="cp-vol-card cp-vol-call-otm">
+                        <div class="cp-vol-title">
+                            <span>CALL (CE) – OTM 5 સ્તર સરવાળો</span>
+                            <span class="cp-side-tag cp-tag-otm">ATM થી ઉપર</span>
+                        </div>
+                        <div id="cp-call-otm-vol" class="cp-vol-value">--</div>
+                        <div class="cp-vol-sub">
+                            <span>Strikes: <strong id="cp-call-otm-range">--</strong></span>
+                            <span>OI: <strong id="cp-call-otm-oi">--</strong></span>
+                        </div>
+                    </div>
+
+                    <div class="cp-vol-card cp-vol-put-itm">
+                        <div class="cp-vol-title">
+                            <span>PUT (PE) – ITM 5 સ્તર સરવાળો</span>
+                            <span class="cp-side-tag cp-tag-itm">ATM થી ઉપર</span>
+                        </div>
+                        <div id="cp-put-itm-vol" class="cp-vol-value">--</div>
+                        <div class="cp-vol-sub">
+                            <span>Strikes: <strong id="cp-put-itm-range">--</strong></span>
+                            <span>OI: <strong id="cp-put-itm-oi">--</strong></span>
+                        </div>
+                    </div>
+
+                    <div class="cp-vol-card cp-vol-put-otm">
+                        <div class="cp-vol-title">
+                            <span>PUT (PE) – OTM 5 સ્તર સરવાળો</span>
+                            <span class="cp-side-tag cp-tag-otm">ATM થી નીચે</span>
+                        </div>
+                        <div id="cp-put-otm-vol" class="cp-vol-value">--</div>
+                        <div class="cp-vol-sub">
+                            <span>Strikes: <strong id="cp-put-otm-range">--</strong></span>
+                            <span>OI: <strong id="cp-put-otm-oi">--</strong></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Row 3: 11-Row Option Chain Strike Breakdown -->
+                <div class="table-wrapper" style="margin-top: 1.25rem;">
+                    <table id="call-put-table" style="min-width: 780px;">
+                        <thead>
+                            <tr>
+                                <th style="text-align:center;">સ્તર</th>
+                                <th>CE ઝોન</th>
+                                <th style="text-align:right;">CALL OI</th>
+                                <th style="text-align:right;">CALL LTP</th>
+                                <th style="text-align:right;">CALL VOLUME</th>
+                                <th style="text-align:center; background: #1e293b; color: #22d3ee;">STRIKE PRICE</th>
+                                <th style="text-align:right;">PUT VOLUME</th>
+                                <th style="text-align:right;">PUT LTP</th>
+                                <th style="text-align:right;">PUT OI</th>
+                                <th>PE ઝોન</th>
+                            </tr>
+                        </thead>
+                        <tbody id="call-put-tbody">
+                            <tr>
+                                <td colspan="10" style="text-align:center; padding: 2rem; color: var(--text-secondary);">
+                                    કોલ પુટ ડેટા લોડ થઈ રહ્યો છે...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab 12B: OPTION TIPS (1-Second Live Call/Put, Index & 12-Brokerage Tips) -->
+        <div id="option-tips-tab-content" class="hidden">
+            <div class="card ot-card">
+                <div class="ot-header-row">
+                    <div class="ot-title-wrap">
+                        <h2 class="ot-heading">
+                            <i class="fa-solid fa-bolt"></i> OPTION TIPS &mdash; 1s Live Call / Put &amp; Brokerage Calls
+                        </h2>
+                        <p class="ot-subtitle">
+                            NIFTY 50, BANK NIFTY, SENSEX (CE / PE) &bull; Gold &amp; Silver (₹ / $) &bull; All NSE Scripts &bull; 12 SEBI-registered brokerages &bull; Double-click any row for Candle Chart
+                        </p>
+                    </div>
+                    <div class="ot-status-actions">
+                        <span class="ot-live-indicator" id="ot-live-badge">
+                            <span class="live-dot-green"></span>
+                            <span id="ot-live-time">1s Live</span>
+                        </span>
+                        <button type="button" id="ot-refresh-btn" class="ot-refresh-btn" title="Refresh Option &amp; Brokerage Tips">
+                            <i class="fa-solid fa-rotate"></i> Refresh
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Single-line Filter Bar -->
+                <div class="ot-controls-bar">
+                    <div class="ot-seg-group" id="ot-segment-group" role="tablist" aria-label="Segment Filter">
+                        <button type="button" class="ot-seg-btn active" data-seg="all">All Tips</button>
+                        <button type="button" class="ot-seg-btn" data-seg="OPTION">Options (CE / PE)</button>
+                        <button type="button" class="ot-seg-btn" data-seg="INDEX">Index</button>
+                        <button type="button" class="ot-seg-btn" data-seg="COMMODITY">Gold / Silver</button>
+                        <button type="button" class="ot-seg-btn" data-seg="NSE_ALL">All NSE Scripts</button>
+                        <button type="button" class="ot-seg-btn" data-seg="EQUITY">Brokerage Calls</button>
+                    </div>
+                    <div class="ot-filter-right">
+                        <select id="ot-broker-select" class="ot-select" aria-label="Filter by Brokerage or Feed">
+                            <option value="all">All Sources (Options + Gold/Silver + NSE + 12 Brokers)</option>
+                            <option value="live-option-chain">Live Option Chain &amp; Index Tech (CE / PE)</option>
+                            <option value="live-commodity">Gold &amp; Silver Live (MCX ₹ / Spot $)</option>
+                            <option value="nse-all-live">NSE Live Screener (All NSE Scripts)</option>
+                            <option value="5paisa">5paisa Capital Limited (INH000025188)</option>
+                            <option value="motilal-oswal">Motilal Oswal Financial Services</option>
+                            <option value="icici-direct">ICICI Direct</option>
+                            <option value="kotak-neo">Kotak Securities (Kotak Neo)</option>
+                            <option value="angel-one">Angel One</option>
+                            <option value="hdfc-sec">HDFC Securities</option>
+                            <option value="axis-sec">Axis Securities</option>
+                            <option value="sharekhan">Sharekhan</option>
+                            <option value="stockboxtech">StockBoxTech</option>
+                            <option value="mangal-keshav">Mangal Keshav Financial Services</option>
+                            <option value="finkuber">FinKuber Capital</option>
+                            <option value="abj-finstocks">ABJ Finstocks</option>
+                        </select>
+                        <div class="ot-search-wrap">
+                            <i class="fa-solid fa-magnifying-glass ot-search-icon"></i>
+                            <input type="text" id="ot-search-input" class="ot-search-input" placeholder="Search Gold, Silver, Any NSE..." aria-label="Search Option Tips">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Summary Metrics Strip (Tabular Nums) -->
+                <div class="ot-summary-grid">
+                    <div class="ot-metric-card">
+                        <span class="ot-metric-label">Total Live Universe</span>
+                        <strong class="ot-metric-value" id="ot-stat-total">--</strong>
+                    </div>
+                    <div class="ot-metric-card">
+                        <span class="ot-metric-label">Options + Gold / Silver</span>
+                        <strong class="ot-metric-value ot-accent-cyan" id="ot-stat-options">--</strong>
+                    </div>
+                    <div class="ot-metric-card">
+                        <span class="ot-metric-label">Public Brokerage Calls</span>
+                        <strong class="ot-metric-value ot-accent-indigo" id="ot-stat-brokers">--</strong>
+                    </div>
+                    <div class="ot-metric-card">
+                        <span class="ot-metric-label">NSE Live Scripts</span>
+                        <strong class="ot-metric-value ot-accent-green" id="ot-stat-hits">--</strong>
+                    </div>
+                </div>
+
+                <!-- Short Format Live Tips Table -->
+                <div class="table-wrapper ot-table-wrapper">
+                    <table id="option-tips-table" class="ot-table">
+                        <thead>
+                            <tr>
+                                <th>SCRIPT NAME</th>
+                                <th class="ot-th-center">BUY / SELL</th>
+                                <th class="ot-th-right">ENTRY</th>
+                                <th class="ot-th-right">LIVE CMP</th>
+                                <th class="ot-th-right">TARGET</th>
+                                <th class="ot-th-right">STOPLOSS</th>
+                                <th>BROKER / SOURCE</th>
+                                <th class="ot-th-center">STATUS</th>
+                            </tr>
+                        </thead>
+                        <tbody id="option-tips-tbody">
+                            <tr>
+                                <td colspan="8" class="ot-loading-cell">
+                                    Loading 1-second live Option, Gold/Silver &amp; All NSE Tips...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div id="ot-pagination-bar" class="ot-pagination-bar hidden">
+                    <span id="ot-showing-info" class="ot-showing-info">Showing 0 of 0</span>
+                    <div class="ot-page-actions">
+                        <button type="button" id="ot-load-more-btn" class="ot-refresh-btn">
+                            <i class="fa-solid fa-plus"></i> Show More (+150 NSE)
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 12 Brokerage & Advisory Coverage Directory -->
+                <div class="ot-directory-section">
+                    <div class="ot-directory-head">
+                        <h3><i class="fa-solid fa-building-columns"></i> Covered Brokerages &amp; Advisory Desks (12 Firms)</h3>
+                        <span class="ot-directory-note">Click any firm to filter its calls &bull; Client-only F&amp;O tips link directly to official research desk</span>
+                    </div>
+                    <div id="ot-broker-directory" class="ot-broker-grid"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab 13: Candle Chart (Candlestick + Bollinger Bands + Volume + Trusted Pattern Guidance) -->
+        <div id="candle-chart-tab-content" class="hidden">
+            <div class="card candle-chart-card">
+                <div class="card-header cc-header-row">
+                    <div>
+                        <h2 style="color: #fbbf24;">
+                            <i class="fa-solid fa-chart-column"></i> Candle Chart – કેન્ડલસ્ટિક, બોલિંગર બેન્ડ &amp; વોલ્યુમ પેટર્ન ગાઇડ
+                        </h2>
+                        <p class="card-desc" style="margin-bottom: 0; margin-top: 0.25rem;">
+                            ડિફોલ્ટ NIFTY 50 (10 મિનિટ) + 1/3/5/10 મિનિટ, 1D/5D/1W/1M/1Y કેન્ડલસ્ટિક (સેકન્ડે 2-3 વખત Live અપડેટ) + Bollinger Bands, MA, RSI, MACD, Volume, VWAP. ચાર્ટ પર ડબલ-ક્લિક કરી નવી ટેબમાં ફુલ સ્ક્રીન જુઓ.
+                        </p>
+                    </div>
+                    <div class="cc-controls">
+                        <div class="cc-search-wrap">
+                            <input type="text" id="cc-symbol-input" list="cc-symbol-datalist" value="NIFTY 50" placeholder="Symbol (e.g. NIFTY 50, SENSEX, BANK NIFTY, RELIANCE)" aria-label="Stock Symbol">
+                            <datalist id="cc-symbol-datalist"></datalist>
+                            <button type="button" id="cc-load-btn" class="btn btn-primary cc-load-btn">
+                                <i class="fa-solid fa-magnifying-glass-chart"></i> Chart જુઓ
+                            </button>
+                        </div>
+                        <div class="cc-timeframe-group" id="cc-timeframe-group">
+                            <button type="button" class="cc-tf-btn" data-tf="1m" title="1 Minute">1 M</button>
+                            <button type="button" class="cc-tf-btn" data-tf="3m" title="3 Minutes">3 M</button>
+                            <button type="button" class="cc-tf-btn" data-tf="5m" title="5 Minutes">5 M</button>
+                            <button type="button" class="cc-tf-btn active" data-tf="10m" title="10 Minutes">10 M</button>
+                            <button type="button" class="cc-tf-btn" data-tf="15m" title="15 Minutes">15 M</button>
+                            <button type="button" class="cc-tf-btn" data-tf="1h" title="1 Hour">1 H</button>
+                            <button type="button" class="cc-tf-btn" data-tf="4h" title="4 Hours">4 H</button>
+                            <button type="button" class="cc-tf-btn" data-tf="1d" title="1 Day">1 D</button>
+                            <button type="button" class="cc-tf-btn" data-tf="5d" title="5 Days">5 D</button>
+                            <button type="button" class="cc-tf-btn" data-tf="1w" title="1 Week">1 W</button>
+                            <button type="button" class="cc-tf-btn" data-tf="1mo" title="1 Month">1 M</button>
+                            <button type="button" class="cc-tf-btn" data-tf="1y" title="1 Year">1 Y</button>
+                            <button type="button" class="cc-tf-btn" data-tf="5y" title="5 Years">5 Y</button>
+                        </div>
+                        <span class="cp-live-pill" id="cc-live-badge"><span class="live-dot-green"></span> <span id="cc-live-time">Live 3x/s</span></span>
+                    </div>
+                </div>
+
+                <!-- Indicator Toggles Bar (All 6 Indicators) -->
+                <div class="cc-indicator-bar" id="cc-indicator-bar">
+                    <span class="cc-ind-bar-label"><i class="fa-solid fa-sliders"></i> ઇન્ડિકેટર્સ:</span>
+                    <label class="cc-bb-label cc-ind-chk" style="color:#f472b6; border-color:rgba(244,114,182,0.35); background:rgba(244,114,182,0.08);">
+                        <input type="checkbox" id="cc-ind-ma" checked>
+                        <span>Moving Averages (EMA 9/21 &amp; SMA 50)</span>
+                    </label>
+                    <label class="cc-bb-label cc-ind-chk" style="color:#c084fc; border-color:rgba(192,132,252,0.35); background:rgba(192,132,252,0.08);">
+                        <input type="checkbox" id="cc-ind-rsi" checked>
+                        <span>RSI (14)</span>
+                    </label>
+                    <label class="cc-bb-label cc-ind-chk" style="color:#2dd4bf; border-color:rgba(45,212,191,0.35); background:rgba(45,212,191,0.08);">
+                        <input type="checkbox" id="cc-ind-macd" checked>
+                        <span>MACD (12,26,9)</span>
+                    </label>
+                    <label class="cc-bb-label cc-ind-chk">
+                        <input type="checkbox" id="cc-bb-toggle" checked>
+                        <span>Bollinger Bands (20,2)</span>
+                    </label>
+                    <label class="cc-bb-label cc-ind-chk" style="color:#a855f7; border-color:rgba(168,85,247,0.35); background:rgba(168,85,247,0.08);">
+                        <input type="checkbox" id="cc-ind-vol" checked>
+                        <span>Volume (વોલ્યુમ)</span>
+                    </label>
+                    <label class="cc-bb-label cc-ind-chk" style="color:#facc15; border-color:rgba(250,204,21,0.35); background:rgba(250,204,21,0.08);">
+                        <input type="checkbox" id="cc-ind-vwap" checked>
+                        <span>VWAP</span>
+                    </label>
+                </div>
+
+                <!-- Quick Stock / Index Picks -->
+                <div class="cc-quick-picks" id="cc-quick-picks">
+                    <span class="cc-quick-label">ઝડપી પસંદગી:</span>
+                    <button type="button" class="cc-quick-btn active" data-sym="^NSEI">NIFTY 50</button>
+                    <button type="button" class="cc-quick-btn" data-sym="^BSESN">SENSEX</button>
+                    <button type="button" class="cc-quick-btn" data-sym="^NSEBANK">BANK NIFTY</button>
+                    <button type="button" class="cc-quick-btn" data-sym="GOLD_INR" style="border-color:rgba(245,158,11,0.45);color:#fbbf24;">GOLD (₹)</button>
+                    <button type="button" class="cc-quick-btn" data-sym="SILVER_INR" style="border-color:rgba(148,163,184,0.45);color:#e2e8f0;">SILVER (₹)</button>
+                    <button type="button" class="cc-quick-btn" data-sym="GC=F" style="border-color:rgba(56,189,248,0.45);color:#38bdf8;">GOLD ($)</button>
+                    <button type="button" class="cc-quick-btn" data-sym="SI=F" style="border-color:rgba(56,189,248,0.45);color:#7dd3fc;">SILVER ($)</button>
+                    <button type="button" class="cc-quick-btn" data-sym="RELIANCE">RELIANCE</button>
+                    <button type="button" class="cc-quick-btn" data-sym="TCS">TCS</button>
+                    <button type="button" class="cc-quick-btn" data-sym="HDFCBANK">HDFCBANK</button>
+                    <button type="button" class="cc-quick-btn" data-sym="SBIN">SBIN</button>
+                    <button type="button" class="cc-quick-btn" data-sym="INFY">INFY</button>
+                    <button type="button" class="cc-quick-btn" data-sym="ICICIBANK">ICICIBANK</button>
+                </div>
+
+                <!-- Live Technical Buy/Sell + Target + Stop Loss Guidance Card -->
+                <div class="cc-trade-signal-card" id="cc-trade-signal-card">
+                    <div class="cc-signal-left">
+                        <div class="cc-signal-kicker-row">
+                            <span class="cp-kicker">ટેકનિકલ બાય / સેલ, ટાર્ગેટ અને સ્ટોપ લોસ માર્ગદર્શન (ALL 6 INDICATORS LIVE)</span>
+                            <span id="cc-signal-score-pill" class="cc-signal-score-pill">Score: --</span>
+                        </div>
+                        <div class="cc-signal-headline">
+                            <span id="cc-signal-action-badge" class="cc-signal-action-badge cc-sig-wait">વિશ્લેષણ ચાલુ...</span>
+                            <strong id="cc-signal-subhead" class="cc-signal-subhead">ચાર્ટ ઇન્ડિકેટર્સ ગણતરી થઈ રહી છે...</strong>
+                        </div>
+                        <div id="cc-signal-reasons" class="cc-signal-reasons"></div>
+                    </div>
+                    <div class="cc-signal-levels-grid">
+                        <div class="cc-level-box cc-level-entry">
+                            <span>પ્રવેશ ભાવ (Entry / Live)</span>
+                            <strong id="cc-signal-entry">--</strong>
+                        </div>
+                        <div class="cc-level-box cc-level-target">
+                            <span>🎯 ટાર્ગેટ 1 / ટાર્ગેટ 2</span>
+                            <strong id="cc-signal-target">--</strong>
+                            <small id="cc-signal-target2">T2: --</small>
+                        </div>
+                        <div class="cc-level-box cc-level-sl">
+                            <span>🛑 સ્ટોપ લોસ (Stop Loss)</span>
+                            <strong id="cc-signal-sl">--</strong>
+                            <small id="cc-signal-sl-pct">Risk: --</small>
+                        </div>
+                        <div class="cc-level-box cc-level-rr">
+                            <span>Risk : Reward &amp; ATR</span>
+                            <strong id="cc-signal-rr">--</strong>
+                            <small id="cc-signal-atr">ATR(14): --</small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Standalone 10-Minute Last 3 Completed Candles Technical Signal Card -->
+                <div class="cc-ten-min-3c-card" id="cc-ten-min-3c-card">
+                    <div class="cc-3c-header">
+                        <div class="cc-3c-title-wrap">
+                            <span class="cp-kicker" style="color:#38bdf8;">૧૦ મિનિટ ટાઇમફ્રેમ — છેલ્લી ૩ પૂર્ણ થયેલી કેન્ડલ્સનું અલગ ટેકનિકલ પરિણામ (10M LAST 3 CANDLES INDICATOR)</span>
+                            <div class="cc-3c-headline">
+                                <span id="cc-3c-action-badge" class="cc-signal-action-badge cc-sig-wait">વિશ્લેષણ ચાલુ...</span>
+                                <strong id="cc-3c-pattern-title" class="cc-3c-pattern-title">૧૦ મિનિટની છેલ્લી ૩ કેન્ડલ તપાસી રહ્યા છીએ...</strong>
+                            </div>
+                        </div>
+                        <span id="cc-3c-status-pill" class="cc-3c-status-pill">10M Live Sync</span>
+                    </div>
+                    <p id="cc-3c-summary" class="cc-3c-summary">છેલ્લી ૩ પૂર્ણ થયેલી ૧૦-મિનિટની કેન્ડલ્સ (C1 → C2 → C3), વોલ્યુમ અને EMA/RSI/MACD/VWAP આધારે ખરીદી (BUY), વેચાણ (SELL) કે રાહ જોવી (WAIT) નો સ્પષ્ટ નિર્ણય અહીં દેખાશે.</p>
+                    <div id="cc-3c-candles-row" class="cc-3c-candles-row"></div>
+                    <div id="cc-3c-indicators-strip" class="cc-3c-indicators-strip"></div>
+                </div>
+
+                <!-- Future Price Direction Verdict (Bullish / Bearish + Volume + BB) -->
+                <div class="cc-verdict-card" id="cc-verdict-card">
+                    <div class="cc-verdict-left">
+                        <span class="cp-kicker">VOLUME + CANDLE + BOLLINGER BANDS ભાવ અનુમાન</span>
+                        <div class="cc-verdict-headline">
+                            <span id="cc-verdict-badge" class="cc-verdict-badge">Loading...</span>
+                            <strong id="cc-verdict-pattern" class="cc-verdict-pattern">ડેટા લોડ થઈ રહ્યો છે...</strong>
+                        </div>
+                        <p id="cc-verdict-desc" class="cc-verdict-desc">કેન્ડલસ્ટિક અને વોલ્યુમ પેટર્નનું વિશ્લેષણ ચાલુ છે...</p>
+                    </div>
+                    <div class="cc-verdict-metrics">
+                        <div class="cc-metric-box">
+                            <span>છેલ્લો ભાવ (Close)</span>
+                            <strong id="cc-stat-close">--</strong>
+                        </div>
+                        <div class="cc-metric-box">
+                            <span>RSI (14) / MACD</span>
+                            <strong id="cc-stat-vol">--</strong>
+                        </div>
+                        <div class="cc-metric-box">
+                            <span>BB Upper / Mid / Lower</span>
+                            <strong id="cc-stat-bb">--</strong>
+                        </div>
+                        <div class="cc-metric-box">
+                            <span>ટાઇમફ્રેમ / સ્રોત</span>
+                            <strong id="cc-stat-meta">10m</strong>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Main Interactive Candlestick + Indicators Canvas -->
+                <div class="cc-chart-shell">
+                    <div class="cc-chart-company-bar" id="cc-company-banner">
+                        <div class="cc-company-title-group">
+                            <span class="cc-company-symbol-pill" id="cc-banner-symbol">^NSEI</span>
+                            <strong class="cc-company-full-name" id="cc-banner-name">NIFTY 50</strong>
+                        </div>
+                        <div class="cc-banner-actions">
+                            <span class="cc-company-tf-note" id="cc-banner-tf">10M • Live 3x/s</span>
+                            <span class="cc-dblclick-hint" title="ચાર્ટ પર ડબલ-ક્લિક કરો"><i class="fa-solid fa-up-right-from-square"></i> Double-Click: Full Screen</span>
+                            <a id="cc-open-fullscreen-link" href="?fullscreenChart=1&symbol=%5ENSEI&interval=10m" target="_blank" rel="noopener noreferrer" class="cc-fullscreen-btn" title="નવી ટેબમાં ફુલ સ્ક્રીન ચાર્ટ ખોલો">
+                                <i class="fa-solid fa-expand"></i> Full Screen Tab
+                            </a>
+                        </div>
+                    </div>
+                    <div class="cc-legend-bar">
+                        <span><i class="fa-solid fa-square" style="color:#22c55e;"></i> Bullish</span>
+                        <span><i class="fa-solid fa-square" style="color:#ef4444;"></i> Bearish</span>
+                        <span><i class="fa-solid fa-minus" style="color:#38bdf8;"></i> Bollinger Bands (20,2)</span>
+                        <span><i class="fa-solid fa-minus" style="color:#f472b6;"></i> EMA 9 / <span style="color:#2dd4bf;">EMA 21</span> / <span style="color:#a78bfa;">SMA 50</span></span>
+                        <span><i class="fa-solid fa-minus" style="color:#facc15;"></i> VWAP</span>
+                        <span><i class="fa-solid fa-chart-simple" style="color:#a855f7;"></i> Volume</span>
+                        <span><i class="fa-solid fa-wave-square" style="color:#c084fc;"></i> RSI(14)</span>
+                        <span><i class="fa-solid fa-chart-line" style="color:#38bdf8;"></i> MACD(12,26,9)</span>
+                        <span style="color:#4ade80;font-weight:700;">— Target (🎯)</span>
+                        <span style="color:#f87171;font-weight:700;">— Stop Loss (🛑)</span>
+                        <div class="cc-zoom-controls" data-target-canvas="candle-main-canvas">
+                            <button type="button" class="cc-zoom-btn" data-action="pan-left" title="Scroll Left (પાછળ જુઓ)"><i class="fa-solid fa-chevron-left"></i></button>
+                            <button type="button" class="cc-zoom-btn" data-action="pan-right" title="Scroll Right (આગળ જુઓ)"><i class="fa-solid fa-chevron-right"></i></button>
+                            <button type="button" class="cc-zoom-btn" data-action="zoom-in" title="Zoom In"><i class="fa-solid fa-plus"></i></button>
+                            <button type="button" class="cc-zoom-btn" data-action="zoom-out" title="Zoom Out"><i class="fa-solid fa-minus"></i></button>
+                            <button type="button" class="cc-zoom-btn" data-action="reset" title="Reset Zoom & Scroll">Reset</button>
+                        </div>
+                        <span id="cc-hover-readout" class="cc-hover-readout">માઉસ/ટચ દ્વારા કેન્ડલ જુઓ (ડબલ-ક્લિક = નવી ટેબમાં ફુલ સ્ક્રીન)</span>
+                    </div>
+                    <div class="cc-canvas-wrap">
+                        <canvas id="candle-main-canvas" title="ડબલ-ક્લિક કરવાથી ચાર્ટ નવી ટેબમાં ફુલ સ્ક્રીનમાં ખૂલશે"></canvas>
+                    </div>
+                </div>
+
+                <!-- Indicator Explanation & Live Reading Table -->
+                <div class="cc-indicators-table-section" id="cc-indicators-guide-section">
+                    <h3 style="color:#fbbf24; margin-bottom:0.65rem; font-size:1rem;">
+                        <i class="fa-solid fa-sliders"></i> ચાર્ટ ઇન્ડિકેટર્સની સંપૂર્ણ માહિતી અને હાલની લાઇવ સ્થિતિ
+                    </h3>
+                    <div class="table-wrapper">
+                        <table class="cc-ind-info-table">
+                            <thead>
+                                <tr>
+                                    <th>ઇન્ડિકેટરનું નામ</th>
+                                    <th>મુખ્ય પ્રકાર</th>
+                                    <th>તે શું દર્શાવે છે? (કામગીરી)</th>
+                                    <th>હાલની લાઇવ સ્થિતિ</th>
+                                </tr>
+                            </thead>
+                            <tbody id="cc-ind-info-tbody">
+                                <tr>
+                                    <td><strong style="color:#f472b6;">Moving Averages (SMA / EMA)</strong><div style="font-size:0.72rem;color:#94a3b8;">EMA 9, EMA 21, SMA 50</div></td>
+                                    <td><span class="cc-ind-type-pill">ટ્રેન્ડ (Trend)</span></td>
+                                    <td>બજારની મુખ્ય દિશા (Up-trend કે Down-trend) અને ડાયનેમિક સપોર્ટ/રેઝિસ્ટન્સ.</td>
+                                    <td id="cc-ind-live-ma">--</td>
+                                </tr>
+                                <tr>
+                                    <td><strong style="color:#c084fc;">RSI (Relative Strength Index)</strong><div style="font-size:0.72rem;color:#94a3b8;">RSI (14 Period)</div></td>
+                                    <td><span class="cc-ind-type-pill">મોમેન્ટમ (Momentum)</span></td>
+                                    <td>શેર 'Overbought' (વધુ પડતી ખરીદી) છે કે 'Oversold' (વધુ પડતી વેચવાલી).</td>
+                                    <td id="cc-ind-live-rsi">--</td>
+                                </tr>
+                                <tr>
+                                    <td><strong style="color:#38bdf8;">MACD</strong><div style="font-size:0.72rem;color:#94a3b8;">MACD (12, 26, 9)</div></td>
+                                    <td><span class="cc-ind-type-pill">ટ્રેન્ડ અને મોમેન્ટમ</span></td>
+                                    <td>ટ્રેન્ડમાં થતા ફેરફાર અને ખરીદી/વેચાણના સિગ્નલ (Crossovers).</td>
+                                    <td id="cc-ind-live-macd">--</td>
+                                </tr>
+                                <tr>
+                                    <td><strong style="color:#38bdf8;">Bollinger Bands</strong><div style="font-size:0.72rem;color:#94a3b8;">BB (20, 2)</div></td>
+                                    <td><span class="cc-ind-type-pill">વોલેટિલિટી (Volatility)</span></td>
+                                    <td>ભાવમાં થતી વધઘટની રેન્જ અને સંભવિત બ્રેકઆઉટ (Breakout).</td>
+                                    <td id="cc-ind-live-bb">--</td>
+                                </tr>
+                                <tr>
+                                    <td><strong style="color:#a855f7;">Volume (વોલ્યુમ)</strong><div style="font-size:0.72rem;color:#94a3b8;">Volume + 20-Bar Avg</div></td>
+                                    <td><span class="cc-ind-type-pill">પુષ્ટિ (Confirmation)</span></td>
+                                    <td>કોઈ પણ કેન્ડલ પેટર્ન પાછળ ખરીદદારો કે વેચવાલની કેટલી તાકાત છે.</td>
+                                    <td id="cc-ind-live-vol">--</td>
+                                </tr>
+                                <tr>
+                                    <td><strong style="color:#facc15;">VWAP</strong><div style="font-size:0.72rem;color:#94a3b8;">Session Anchored (09:15–15:30)</div></td>
+                                    <td><span class="cc-ind-type-pill">ઇન્ટ્રાડે (Intraday)</span></td>
+                                    <td>દિવસ દરમિયાન શેરનો સરેરાશ ભાવ (ખાસ કરીને ઇન્ટ્રાડે ટ્રેડર્સ માટે ખૂબ ઉપયોગી).</td>
+                                    <td id="cc-ind-live-vwap">--</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Recently Detected Patterns on This Chart -->
+                <div class="cc-detected-section">
+                    <h3 style="color:#38bdf8; margin-bottom:0.65rem; font-size:0.95rem;">
+                        <i class="fa-solid fa-radar"></i> આ ચાર્ટમાં તાજેતરમાં દેખાયેલી કેન્ડલ &amp; વોલ્યુમ પેટર્ન્સ (<span id="cc-detected-symbol">RELIANCE</span>)
+                    </h3>
+                    <div id="cc-detected-list" class="cc-detected-grid">
+                        <div class="cc-empty-note">ચાર્ટ લોડ થયા બાદ અહીં મળેલી પેટર્ન દેખાશે...</div>
+                    </div>
+                </div>
+
+                <!-- Trusted Website Pattern Guidance Library -->
+                <div class="cc-guide-section">
+                    <div class="cc-guide-header">
+                        <div>
+                            <h3 style="color:#fbbf24; margin:0; font-size:1.05rem;">
+                                <i class="fa-solid fa-book-open"></i> વિશ્વાસપાત્ર વેબસાઇટ્સ પરથી કેન્ડલ અને વોલ્યુમ પેટર્ન માર્ગદર્શિકા
+                            </h3>
+                            <p style="font-size:0.8rem; color:var(--text-secondary); margin:0.25rem 0 0;">
+                                સ્રોત: <strong>Zerodha Varsity</strong>, <strong>Investopedia</strong> અને <strong>TradingView Technical Guide</strong> – કઈ કેન્ડલ + વોલ્યુમથી ભાવ વધશે (Bullish) કે ઘટશે (Bearish)?
+                            </p>
+                        </div>
+                        <div class="cc-guide-filters" id="cc-guide-filters">
+                            <button type="button" class="cc-filter-btn active" data-filter="all">બધી પેટર્ન (All)</button>
+                            <button type="button" class="cc-filter-btn" data-filter="bullish">વધશે (Bullish)</button>
+                            <button type="button" class="cc-filter-btn" data-filter="bearish">ઘટશે (Bearish)</button>
+                            <button type="button" class="cc-filter-btn" data-filter="volume">Volume &amp; BB નિયમ</button>
+                        </div>
+                    </div>
+
+                    <div id="cc-guide-grid" class="cc-guide-grid"></div>
+
+                    <div class="cc-trusted-links">
+                        <span>સંદર્ભ વેબસાઇટ્સ:</span>
+                        <a href="https://zerodha.com/varsity/module/technical-analysis/" target="_blank" rel="noopener noreferrer">Zerodha Varsity (Technical Analysis) <i class="fa-solid fa-arrow-up-right-from-square"></i></a>
+                        <a href="https://www.investopedia.com/trading/candlestick-charting-what-is-it/" target="_blank" rel="noopener noreferrer">Investopedia Candlestick Guide <i class="fa-solid fa-arrow-up-right-from-square"></i></a>
+                        <a href="https://www.tradingview.com/support/solutions/43000502253-bollinger-bands-bb/" target="_blank" rel="noopener noreferrer">TradingView Bollinger Bands <i class="fa-solid fa-arrow-up-right-from-square"></i></a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab 14: SAMCO Web Embedded Portal (https://web.samco.in/) -->
+        <div id="samco-web-tab-content" class="hidden">
+            <div class="card samco-web-card" id="samco-web-card">
+                <div class="samco-toolbar">
+                    <div class="samco-title-wrap">
+                        <h2 style="color:#34d399; margin:0; font-size:1.05rem; display:flex; align-items:center; gap:0.45rem;">
+                            <i class="fa-solid fa-arrow-up-right-dots"></i> SAMCO Web (web.samco.in)
+                            <span id="samco-mode-badge" class="samco-mode-pill">Server Proxy: ON</span>
+                        </h2>
+                        <p class="samco-subtitle">
+                            <strong>Full Screen Fit</strong> &bull; <strong>Minimize</strong> દબાવી લોગીન ચાલુ રાખી અમારું સોફ્ટવેર વાપરી શકો છો.
+                        </p>
+                    </div>
+                    <div class="samco-actions">
+                        <button type="button" id="samco-minimize-btn" class="btn samco-minimize-btn" title="SAMCO ને Minimize કરી સોફ્ટવેરના અન્ય ટેબ વાપરો (લૉગિન ચાલુ રહેશે)">
+                            <i class="fa-solid fa-window-minimize"></i> Minimize (સોફ્ટવેર વાપરો)
+                        </button>
+                        <button type="button" id="samco-back-app-btn" class="btn samco-back-btn" title="Rahul Finance ના ટેબ મેનૂ પર પાછા જાઓ">
+                            <i class="fa-solid fa-arrow-left"></i> Rahul Finance (Tabs)
+                        </button>
+                        <button type="button" id="samco-open-cc-btn" class="btn btn-secondary samco-btn" title="સીધું Candle Chart ટેબ ખોલો">
+                            <i class="fa-solid fa-chart-column"></i> Candle Chart
+                        </button>
+                        <button type="button" id="samco-home-btn" class="btn btn-secondary samco-btn" title="Login / Home Page પર જાઓ">
+                            <i class="fa-solid fa-right-to-bracket"></i> Web Login / Home
+                        </button>
+                        <button type="button" id="samco-reload-btn" class="btn btn-secondary samco-btn" title="SAMCO પેજ રિલોડ કરો">
+                            <i class="fa-solid fa-rotate"></i> Reload
+                        </button>
+                        <button type="button" id="samco-proxy-btn" class="btn btn-secondary samco-btn" title="જો કોમ્પ્યુટરમાં web.samco.in બ્લોક હોય તો સર્વર Proxy દ્વારા ખોલો">
+                            <i class="fa-solid fa-shield-halved"></i> Server Proxy: ON
+                        </button>
+                        <button type="button" id="samco-expand-btn" class="btn btn-secondary samco-btn" title="Full Screen / Normal View બદલો">
+                            <i class="fa-solid fa-compress"></i> Exit Full Screen
+                        </button>
+                        <a href="https://web.samco.in/" target="_blank" rel="noopener noreferrer" class="samco-ext-link" title="નવી ટેબમાં web.samco.in ખોલો">
+                            <i class="fa-solid fa-arrow-up-right-from-square"></i> New Tab
+                        </a>
+                    </div>
+                </div>
+                <div class="samco-login-tip" id="samco-login-tip">
+                    <i class="fa-solid fa-circle-info" style="color:#38bdf8;"></i>
+                    <span>
+                        <strong>Banned/Blocked PC ઉપાય:</strong> ડિફોલ્ટ <strong>Server Proxy Mode (/api/samco-proxy)</strong> દ્વારા તમારા કોમ્પ્યુટર/ઓફિસ નેટવર્ક પર <code>web.samco.in</code> બ્લોક હોય તો પણ લોગીન અને ટ્રેડિંગ ચાલુ રહે છે.
+                    </span>
+                </div>
+                <div class="samco-iframe-wrap" id="samco-iframe-wrap">
+                    <iframe
+                        id="samco-web-iframe"
+                        data-src="https://web.samco.in/"
+                        title="SAMCO Web Trading Portal"
+                        allow="clipboard-read; clipboard-write; fullscreen"
+                        referrerpolicy="no-referrer-when-downgrade">
+                    </iframe>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Auto Fetch Modal -->
+    <div class="modal-overlay hidden" id="fetch-modal">
+        <div class="modal-card" style="max-width: 500px;">
+            <div class="modal-header">
+                <div>
+                    <h2>Automated Daily Bhavcopy Fetch</h2>
+                    <span style="font-size: 0.8rem; color: var(--text-secondary);">Direct NSE archives download or cloud proxy fetch</span>
+                </div>
+                <button class="modal-close" id="fetch-modal-close">&times;</button>
+            </div>
+            <div class="modal-body" style="display: flex; flex-direction: column; gap: 1.2rem; padding: 1.5rem 0;">
+                <div class="form-group">
+                    <label for="fetch-date" style="font-weight: 600; margin-bottom: 0.5rem; display: block;">Select Trading Date</label>
+                    <input type="date" id="fetch-date" style="width: 100%; padding: 0.65rem; background: rgba(15,23,42,0.6); border: 1px solid var(--card-border); border-radius: 6px; color: #fff; font-family: var(--font-family);">
+                    <small style="color: var(--text-secondary); margin-top: 0.35rem; display: block;">Bhavcopy is typically published on trading days after 6:30 PM.</small>
+                </div>
+
+                <div style="border-top: 1px solid var(--card-border); padding-top: 1.2rem; display: flex; flex-direction: column; gap: 0.5rem;">
+                    <h3 style="display: flex; align-items: center; justify-content: space-between;">
+                        <span>Option A: Auto Cloud Fetch</span>
+                        <span style="font-size: 0.7rem; color: var(--danger-color); background: rgba(239,68,68,0.1); padding: 0.15rem 0.4rem; border-radius: 4px;">May Block</span>
+                    </h3>
+                    <p style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.4;">Attempts to fetch and parse the ZIP dynamically via a public proxy. <span style="color: var(--danger-color);">Note: Often fails because NSE/Cloudflare blocks foreign cloud IPs.</span></p>
+                    <button class="btn btn-primary" id="btn-cloud-fetch" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 0.5rem; background: rgba(6, 182, 212, 0.1); border-color: var(--accent-color); color: #fff;">
+                        <i class="fa-solid fa-cloud-arrow-down"></i> Try Cloud Fetch
+                    </button>
+                </div>
+
+                <div style="border-top: 1px solid var(--card-border); padding-top: 1.2rem; display: flex; flex-direction: column; gap: 0.5rem;">
+                    <h3 style="display: flex; align-items: center; justify-content: space-between;">
+                        <span>Option B: Direct Samco Download</span>
+                        <span style="font-size: 0.7rem; color: var(--success-color); background: rgba(16,185,129,0.15); padding: 0.15rem 0.4rem; border-radius: 4px; font-weight: bold;">100% Working</span>
+                    </h3>
+                    <p style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.4;">Downloads the ZIP directly using your browser's local connection (bypassing CORS/IP firewalls). Once downloaded, **simply drag the ZIP file** into the uploader. Our app will unzip and process it in 1 second!</p>
+                    <button class="btn btn-secondary" id="btn-direct-download" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 0.5rem; background: linear-gradient(135deg, var(--success-color) 0%, #059669 100%); border: none; color: #fff; font-weight: bold;">
+                        <i class="fa-solid fa-download"></i> Download Zip & Drag-Drop
+                    </button>
+                </div>
+                
+                <div id="fetch-status" class="hidden" style="margin-top: 0.5rem;">
+                    <!-- Status message injected here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Company Research Modal -->
+    <div class="modal-overlay hidden" id="research-modal">
+        <div class="modal-card" style="max-width: 650px;">
+            <div class="modal-header">
+                <div>
+                    <h2 id="research-company-title">COMPANY RESEARCH</h2>
+                    <span style="font-size: 0.8rem; color: var(--text-secondary);">Business summary & expert investment analysis</span>
+                </div>
+                <button class="modal-close" id="research-modal-close">&times;</button>
+            </div>
+            <div class="modal-body" style="display: flex; flex-direction: column; gap: 0.8rem; padding: 0.8rem 0; max-height: 80vh; overflow-y: auto; padding-right: 0.3rem;">
+                
+                <!-- Section 0: Candlestick + Bollinger Bands Chart -->
+                <div class="card" style="background: rgba(13,21,38,0.6); padding: 1rem; border: 1px solid var(--card-border); margin: 0;">
+                    <div style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:0.5rem; margin-bottom: 0.55rem;">
+                        <h3 style="color: var(--accent-color); margin:0; display: flex; align-items: center; gap: 0.5rem; font-size: 0.92rem;">
+                            <i class="fa-solid fa-chart-column"></i> કેન્ડલસ્ટિક + Bollinger Bands ચાર્ટ
+                            <button type="button" id="rm-open-candle-tab-btn" class="cc-modal-launch-btn" title="Candle Chart ટેબમાં સંપૂર્ણ ઇન્ડિકેટર્સ સાથે ખોલો">
+                                <i class="fa-solid fa-up-right-from-square"></i> Candle Chart ટેબમાં ખોલો
+                            </button>
+                        </h3>
+                        <div style="display:flex; flex-wrap:wrap; align-items:center; gap:0.35rem;">
+                            <div class="cc-timeframe-group cc-modal-tf-group" id="rm-tf-group">
+                                <button type="button" class="cc-tf-btn" data-tf="1m" title="1 Minute">1 M</button>
+                                <button type="button" class="cc-tf-btn" data-tf="3m" title="3 Minutes">3 M</button>
+                                <button type="button" class="cc-tf-btn active" data-tf="5m" title="5 Minutes">5 M</button>
+                                <button type="button" class="cc-tf-btn" data-tf="10m" title="10 Minutes">10 M</button>
+                                <button type="button" class="cc-tf-btn" data-tf="15m" title="15 Minutes">15 M</button>
+                                <button type="button" class="cc-tf-btn" data-tf="1h" title="1 Hour">1 H</button>
+                                <button type="button" class="cc-tf-btn" data-tf="4h" title="4 Hours">4 H</button>
+                                <button type="button" class="cc-tf-btn" data-tf="1d" title="1 Day">1 D</button>
+                                <button type="button" class="cc-tf-btn" data-tf="5d" title="5 Days">5 D</button>
+                                <button type="button" class="cc-tf-btn" data-tf="1w" title="1 Week">1 W</button>
+                                <button type="button" class="cc-tf-btn" data-tf="1mo" title="1 Month">1 M</button>
+                                <button type="button" class="cc-tf-btn" data-tf="1y" title="1 Year">1 Y</button>
+                                <button type="button" class="cc-tf-btn" data-tf="5y" title="5 Years">5 Y</button>
+                            </div>
+                            <label class="cc-bb-label cc-bb-mini">
+                                <input type="checkbox" id="rm-bb-toggle" checked>
+                                <span>BB</span>
+                            </label>
+                            <div class="cc-zoom-controls cc-zoom-mini" data-target-canvas="research-price-chart">
+                                <button type="button" class="cc-zoom-btn" data-action="pan-left" title="Scroll Left"><i class="fa-solid fa-chevron-left"></i></button>
+                                <button type="button" class="cc-zoom-btn" data-action="pan-right" title="Scroll Right"><i class="fa-solid fa-chevron-right"></i></button>
+                                <button type="button" class="cc-zoom-btn" data-action="zoom-in" title="Zoom In"><i class="fa-solid fa-plus"></i></button>
+                                <button type="button" class="cc-zoom-btn" data-action="zoom-out" title="Zoom Out"><i class="fa-solid fa-minus"></i></button>
+                                <button type="button" class="cc-zoom-btn" data-action="reset" title="Reset">R</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:0.4rem; margin-bottom:0.35rem;">
+                        <div id="rm-hover-readout" style="font-size:0.72rem; color:#94a3b8;">Candlestick + Bollinger Bands (20,2) + Volume</div>
+                        <span style="font-size:0.7rem; color:#fbbf24; font-weight:600;"><i class="fa-solid fa-computer-mouse"></i> ચાર્ટ પર ડબલ-ક્લિક કરતા Candle Chart ટેબમાં ખૂલશે</span>
+                    </div>
+                    <div class="chart-container" style="height: 220px; position: relative;">
+                        <canvas id="research-price-chart" title="ડબલ-ક્લિક કરવાથી આ શેર Candle Chart ટેબમાં સંપૂર્ણ માહિતી સાથે ખૂલશે"></canvas>
+                    </div>
+                    <!-- Live Price / Data High / Data Low stats strip -->
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin-top: 0.65rem;">
+                        <div style="background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.2); border-radius: 6px; padding: 0.4rem 0.6rem; text-align: center;">
+                            <div style="font-size: 0.65rem; color: var(--text-secondary); margin-bottom: 0.15rem;">Live Price</div>
+                            <div id="chart-live-price" style="font-size: 0.95rem; font-weight: 700; color: #60a5fa;">-</div>
+                        </div>
+                        <div style="background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.2); border-radius: 6px; padding: 0.4rem 0.6rem; text-align: center;">
+                            <div style="font-size: 0.65rem; color: var(--text-secondary); margin-bottom: 0.15rem;">Data Highest</div>
+                            <div id="chart-data-high" style="font-size: 0.95rem; font-weight: 700; color: var(--success-color);">-</div>
+                        </div>
+                        <div style="background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.2); border-radius: 6px; padding: 0.4rem 0.6rem; text-align: center;">
+                            <div style="font-size: 0.65rem; color: var(--text-secondary); margin-bottom: 0.15rem;">Data Lowest</div>
+                            <div id="chart-data-low" style="font-size: 0.95rem; font-weight: 700; color: var(--danger-color);">-</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Section 1: Company Profile (Gujarati) -->
+                <div class="card" style="background: rgba(13,21,38,0.6); padding: 1rem; border: 1px solid var(--card-border); margin: 0;">
+                    <h3 style="color: var(--accent-color); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem; font-size: 0.92rem;">
+                        <i class="fa-solid fa-building"></i> કંપની વિશે માહિતી (Gujarati)
+                    </h3>
+                    <p id="research-description" style="font-size: 0.82rem; line-height: 1.45; color: #cbd5e1; min-height: 40px; margin: 0;">કંપનીની માહિતી મેળવી રહ્યા છીએ...</p>
+                </div>
+                
+                <!-- Side-by-Side Sections: Technical Sentiment & External Links -->
+                <div class="modal-sidebar-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem;">
+                    
+                    <!-- Section 2: Technical Sentiment & Advice -->
+                    <div class="card" style="background: rgba(13,21,38,0.6); padding: 1rem; border: 1px solid var(--card-border); margin: 0;">
+                        <h3 style="color: var(--accent-color); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem; font-size: 0.92rem;">
+                            <i class="fa-solid fa-chart-line"></i> રોકાણ વિશ્લેષણ (Technical Sentiment)
+                        </h3>
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem; margin-bottom: 0.6rem;">
+                            <div class="modal-stat-box" style="padding: 0.4rem 0.6rem; border-radius: 4px; background: rgba(13,21,38,0.6); border: 1px solid var(--card-border); display: flex; flex-direction: column;">
+                                <span class="stat-label" style="font-size: 0.65rem; color: var(--text-secondary);">52W High</span>
+                                <span class="stat-value" id="research-52w-high" style="font-size: 0.95rem; color: #ffffff; font-weight: bold; margin-top: 0.15rem;">₹0.00</span>
+                            </div>
+                            <div class="modal-stat-box" style="padding: 0.4rem 0.6rem; border-radius: 4px; background: rgba(13,21,38,0.6); border: 1px solid var(--card-border); display: flex; flex-direction: column;">
+                                <span class="stat-label" style="font-size: 0.65rem; color: var(--text-secondary);">52W Low</span>
+                                <span class="stat-value" id="research-52w-low" style="font-size: 0.95rem; color: #ffffff; font-weight: bold; margin-top: 0.15rem;">₹0.00</span>
+                            </div>
+                        </div>
+                        <div style="padding: 0.6rem; border-radius: 4px; background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(255,255,255,0.05);">
+                            <div style="font-weight: 600; font-size: 0.78rem; margin-bottom: 0.25rem;">
+                                સલાહ: <span id="research-sentiment-badge" style="padding: 0.1rem 0.3rem; border-radius: 3px; font-size: 0.7rem; font-weight: bold;">Calculating...</span>
+                            </div>
+                            <p id="research-sentiment-text" style="font-size: 0.78rem; line-height: 1.4; color: #cbd5e1; margin: 0;">ગણતરી કરી રહ્યા છીએ...</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Section 3: Expert Advice External Links -->
+                    <div class="card" style="background: rgba(13,21,38,0.6); padding: 1rem; border: 1px solid var(--card-border); margin: 0; display: flex; flex-direction: column; justify-content: space-between;">
+                        <div>
+                            <h3 style="color: var(--accent-color); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem; font-size: 0.92rem;">
+                                <i class="fa-solid fa-users"></i> બાહ્ય નિષ્ણાત સલાહ (Links)
+                            </h3>
+                            <p style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.6rem; line-height: 1.35; margin-top: 0;">વિગતો અને એનાલિસિસ જોવા માટે ક્લિક કરો:</p>
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 0.4rem;">
+                            <a id="link-screener" href="#" target="_blank" class="btn btn-secondary" style="font-size: 0.78rem; padding: 0.4rem; text-align: center; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 0.3rem; background: rgba(59,130,246,0.08); border-color: rgba(59,130,246,0.2); color: #93c5fd; border-radius: 4px;">
+                                <i class="fa-solid fa-square-poll-vertical"></i> Screener.in
+                            </a>
+                            <a id="link-tickertape" href="#" target="_blank" class="btn btn-secondary" style="font-size: 0.78rem; padding: 0.4rem; text-align: center; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 0.3rem; background: rgba(59,130,246,0.08); border-color: rgba(59,130,246,0.2); color: #93c5fd; border-radius: 4px;">
+                                <i class="fa-solid fa-chart-pie"></i> Tickertape
+                            </a>
+                            <a id="link-moneycontrol" href="#" target="_blank" class="btn btn-secondary" style="font-size: 0.78rem; padding: 0.4rem; text-align: center; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 0.3rem; background: rgba(59,130,246,0.08); border-color: rgba(59,130,246,0.2); color: #93c5fd; border-radius: 4px;">
+                                <i class="fa-solid fa-newspaper"></i> Moneycontrol
+                            </a>
+                        </div>
+                    </div>
+                    
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification system -->
+    <div class="notification-container" id="notification-container"></div>
+
+    <!-- Price History Chart Modal -->
+    <div class="modal-overlay hidden" id="chart-modal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <div>
+                    <h2 id="modal-company-title">COMPANY</h2>
+                    <span id="modal-company-isin">ISIN</span>
+                </div>
+                <button class="modal-close" id="modal-close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:0.5rem; margin-bottom:0.5rem;">
+                    <div style="display:flex; flex-wrap:wrap; align-items:center; gap:0.45rem;">
+                        <span id="cm-hover-readout" style="font-size:0.74rem; color:#94a3b8;">Candlestick + Bollinger Bands (20,2) + Volume</span>
+                        <button type="button" id="cm-open-candle-tab-btn" class="cc-modal-launch-btn" title="Candle Chart ટેબમાં સંપૂર્ણ ઇન્ડિકેટર્સ સાથે ખોલો">
+                            <i class="fa-solid fa-up-right-from-square"></i> Candle Chart ટેબમાં ખોલો
+                        </button>
+                        <span style="font-size:0.7rem; color:#fbbf24; font-weight:600;">(ચાર્ટ પર ડબલ-ક્લિક = Candle Chart ટેબ)</span>
+                    </div>
+                    <div style="display:flex; flex-wrap:wrap; align-items:center; gap:0.35rem;">
+                        <div class="cc-timeframe-group cc-modal-tf-group" id="cm-tf-group">
+                            <button type="button" class="cc-tf-btn" data-tf="1m" title="1 Minute">1 M</button>
+                            <button type="button" class="cc-tf-btn" data-tf="3m" title="3 Minutes">3 M</button>
+                            <button type="button" class="cc-tf-btn active" data-tf="5m" title="5 Minutes">5 M</button>
+                            <button type="button" class="cc-tf-btn" data-tf="10m" title="10 Minutes">10 M</button>
+                            <button type="button" class="cc-tf-btn" data-tf="15m" title="15 Minutes">15 M</button>
+                            <button type="button" class="cc-tf-btn" data-tf="1h" title="1 Hour">1 H</button>
+                            <button type="button" class="cc-tf-btn" data-tf="4h" title="4 Hours">4 H</button>
+                            <button type="button" class="cc-tf-btn" data-tf="1d" title="1 Day">1 D</button>
+                            <button type="button" class="cc-tf-btn" data-tf="5d" title="5 Days">5 D</button>
+                            <button type="button" class="cc-tf-btn" data-tf="1w" title="1 Week">1 W</button>
+                            <button type="button" class="cc-tf-btn" data-tf="1mo" title="1 Month">1 M</button>
+                            <button type="button" class="cc-tf-btn" data-tf="1y" title="1 Year">1 Y</button>
+                            <button type="button" class="cc-tf-btn" data-tf="5y" title="5 Years">5 Y</button>
+                        </div>
+                        <label class="cc-bb-label cc-bb-mini">
+                            <input type="checkbox" id="cm-bb-toggle" checked>
+                            <span>BB</span>
+                        </label>
+                        <div class="cc-zoom-controls cc-zoom-mini" data-target-canvas="price-chart">
+                            <button type="button" class="cc-zoom-btn" data-action="pan-left" title="Scroll Left"><i class="fa-solid fa-chevron-left"></i></button>
+                            <button type="button" class="cc-zoom-btn" data-action="pan-right" title="Scroll Right"><i class="fa-solid fa-chevron-right"></i></button>
+                            <button type="button" class="cc-zoom-btn" data-action="zoom-in" title="Zoom In"><i class="fa-solid fa-plus"></i></button>
+                            <button type="button" class="cc-zoom-btn" data-action="zoom-out" title="Zoom Out"><i class="fa-solid fa-minus"></i></button>
+                            <button type="button" class="cc-zoom-btn" data-action="reset" title="Reset">R</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="chart-container" style="height: 280px; position: relative;">
+                    <canvas id="price-chart" title="ડબલ-ક્લિક કરવાથી આ શેર Candle Chart ટેબમાં સંપૂર્ણ માહિતી સાથે ખૂલશે"></canvas>
+                </div>
+                <div class="modal-stats-grid">
+                    <div class="modal-stat-box">
+                        <span class="stat-label">Highest Price (HIGH)</span>
+                        <span class="stat-value" id="modal-high-price">₹0.00</span>
+                    </div>
+                    <div class="modal-stat-box">
+                        <span class="stat-label">Latest Close Price</span>
+                        <span class="stat-value" id="modal-latest-price">₹0.00</span>
+                    </div>
+                    <div class="modal-stat-box">
+                        <span class="stat-label">Price 30 Days Ago</span>
+                        <span class="stat-value" id="modal-old-price">₹0.00</span>
+                    </div>
+                    <div class="modal-stat-box" style="border: 1px solid var(--accent-color); background: rgba(6, 182, 212, 0.05);">
+                        <span class="stat-label" style="color: var(--accent-color); font-weight: bold; display: flex; align-items: center; gap: 0.35rem;">
+                            <span class="live-pulse"></span> Live Price (Real-Time)
+                        </span>
+                        <span class="stat-value" id="modal-live-price" style="color: #ffffff;">Fetching...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Investor Advice Details Modal -->
+    <div class="modal-overlay hidden" id="advice-details-modal">
+        <div class="modal-card" style="max-width: 600px;">
+            <div class="modal-header">
+                <div>
+                    <h2 id="advice-details-title" style="color: var(--accent-color);">Investor Analysis Details</h2>
+                    <span id="advice-details-subtitle" style="color: var(--text-secondary); font-size: 0.85rem;">Stock analysis breakdown</span>
+                </div>
+                <button class="modal-close" id="advice-details-close">&times;</button>
+            </div>
+            <div class="modal-body" id="advice-details-body" style="color: var(--text-primary); font-size: 0.9rem; display: flex; flex-direction: column; gap: 1.2rem; padding: 1rem 0; max-height: 80vh; overflow-y: auto;">
+                <!-- Filled dynamically by JavaScript -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Change Password Modal -->
+    <div class="modal-overlay hidden" id="password-modal">
+        <div class="modal-card" style="max-width: 400px;">
+            <div class="modal-header">
+                <div>
+                    <h2 style="color: var(--accent-color);"><i class="fa-solid fa-key"></i> Change Password</h2>
+                    <span style="color: var(--text-secondary); font-size: 0.85rem;">Update your account credentials</span>
+                </div>
+                <button class="modal-close" id="password-modal-close-btn">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 1rem 0;">
+                <form id="change-password-form" style="display: flex; flex-direction: column; gap: 1rem;">
+                    <div class="form-group" style="display: flex; flex-direction: column; gap: 0.4rem;">
+                        <label for="current-password-input" style="font-weight: 500; color: var(--text-secondary);">Current Password</label>
+                        <div class="input-wrapper">
+                            <i class="fa-solid fa-lock" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: var(--text-secondary);"></i>
+                            <input type="password" id="current-password-input" required placeholder="Enter current password..." style="width: 100%; padding: 0.65rem 1rem 0.65rem 2.5rem; background: rgba(3, 7, 18, 0.5); border: 1px solid var(--card-border); border-radius: 8px; color: #ffffff;">
+                        </div>
+                    </div>
+                    <div class="form-group" style="display: flex; flex-direction: column; gap: 0.4rem;">
+                        <label for="new-password-input" style="font-weight: 500; color: var(--text-secondary);">New Password</label>
+                        <div class="input-wrapper">
+                            <i class="fa-solid fa-key" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: var(--text-secondary);"></i>
+                            <input type="password" id="new-password-input" required placeholder="Enter new password..." style="width: 100%; padding: 0.65rem 1rem 0.65rem 2.5rem; background: rgba(3, 7, 18, 0.5); border: 1px solid var(--card-border); border-radius: 8px; color: #ffffff;">
+                        </div>
+                    </div>
+                    <div class="form-group" style="display: flex; flex-direction: column; gap: 0.4rem;">
+                        <label for="confirm-password-input" style="font-weight: 500; color: var(--text-secondary);">Confirm New Password</label>
+                        <div class="input-wrapper">
+                            <i class="fa-solid fa-key" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: var(--text-secondary);"></i>
+                            <input type="password" id="confirm-password-input" required placeholder="Confirm new password..." style="width: 100%; padding: 0.65rem 1rem 0.65rem 2.5rem; background: rgba(3, 7, 18, 0.5); border: 1px solid var(--card-border); border-radius: 8px; color: #ffffff;">
+                        </div>
+                    </div>
+                    <div id="change-password-error" class="login-error hidden" style="margin-top: 0.5rem;">
+                        <i class="fa-solid fa-triangle-exclamation"></i> <span></span>
+                    </div>
+                    <button type="submit" class="btn btn-primary login-btn" style="margin-top: 0.5rem; justify-content: center;">Update Password</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- FIX: Bhavcopy Date Confirmation Modal (used when date cannot be auto-detected) -->
+    <div class="modal-overlay hidden" id="date-confirm-modal">
+        <div class="modal-card" style="max-width: 420px;">
+            <div class="modal-header">
+                <div>
+                    <h2 style="color: var(--accent-color);"><i class="fa-regular fa-calendar"></i> Confirm Trading Date</h2>
+                    <span id="date-confirm-filename" style="color: var(--text-secondary); font-size: 0.8rem; word-break: break-all;">filename.csv</span>
+                </div>
+                <button class="modal-close" id="date-confirm-close-btn">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 0.75rem 0; display: flex; flex-direction: column; gap: 0.9rem;">
+                <p style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.4;">
+                    Could not automatically detect a valid trading date (DD-MM-YYYY) from this Bhavcopy CSV. Please confirm or select the trading date before processing:
+                </p>
+                <div class="form-group">
+                    <label for="date-confirm-input">Trading Date (DD-MM-YYYY)</label>
+                    <input type="text" id="date-confirm-input" placeholder="DD-MM-YYYY" style="width: 100%; padding: 0.65rem 0.9rem; background: rgba(3, 7, 18, 0.6); border: 1px solid var(--card-border); border-radius: 8px; color: #ffffff; font-size: 0.95rem;">
+                </div>
+                <div id="date-confirm-error" class="login-error hidden">
+                    <i class="fa-solid fa-triangle-exclamation"></i> <span>Please enter a valid date in DD-MM-YYYY format.</span>
+                </div>
+                <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+                    <button type="button" class="btn btn-secondary" id="date-confirm-cancel-btn">Skip File</button>
+                    <button type="button" class="btn btn-primary" id="date-confirm-ok-btn">Confirm Date</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Login Screen Overlay -->
+    <div id="login-screen" class="login-overlay">
+        <div class="login-card">
+            <div class="login-header">
+                <i class="fa-solid fa-shield-halved login-icon"></i>
+                <h2>Security Login</h2>
+                <p>Please enter your credentials to access the dashboard.</p>
+            </div>
+            <form id="login-form">
+                <div class="form-group">
+                    <label for="username">Username (ID)</label>
+                    <div class="input-wrapper">
+                        <i class="fa-solid fa-user"></i>
+                        <input type="text" id="username" placeholder="Enter username..." required autocomplete="username">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <div class="input-wrapper">
+                        <i class="fa-solid fa-lock"></i>
+                        <input type="password" id="password" placeholder="Enter password..." required autocomplete="current-password">
+                    </div>
+                </div>
+                <div id="login-error" class="login-error hidden">
+                    <i class="fa-solid fa-triangle-exclamation"></i> Invalid username or password!
+                </div>
+                <button type="submit" class="login-btn">
+                    Log In <i class="fa-solid fa-arrow-right-to-bracket"></i>
+                </button>
+            </form>
+            <div class="login-footer">
+                Created By : Rahul Popat
+            </div>
+        </div>
+    </div>
+
+    <!-- Floating Minimized SAMCO Dock (keeps SAMCO Web session active while using other tabs) -->
+    <div id="samco-minimized-dock" class="samco-minimized-dock hidden">
+        <div class="samco-dock-info">
+            <span class="live-dot-green"></span>
+            <div>
+                <strong>SAMCO Web (Minimized)</strong>
+                <small>લૉગિન સેશન ચાલુ છે</small>
+            </div>
+        </div>
+        <div class="samco-dock-actions">
+            <button type="button" id="samco-dock-maximize-btn" class="samco-dock-btn samco-dock-max" title="SAMCO ફરી Full Screen માં ખોલો">
+                <i class="fa-solid fa-window-maximize"></i> Maximize
+            </button>
+            <button type="button" id="samco-dock-close-btn" class="samco-dock-btn samco-dock-close" title="Dock છુપાવો">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+    </div>
+
+    <script src="app.js" defer></script>
+</body>
+</html>

@@ -113,14 +113,22 @@ const CORE_LIVE_TTL_MS = 450;
 const SPOT_CANDLES_TTL_MS = 10 * 1000;
 const QUOTE_TTL_MS = 850;
 const ANCHOR_TTL_MS = 4 * 60 * 60 * 1000;
+const EXIT_RETENTION_MS = 6 * 60 * 60 * 1000;
+const MAX_RECENT_EXITS = 30;
 
 let brokerFeedCache = { ts: 0, tips: [], inFlight: null };
 let nseAllCache = { ts: 0, tips: [], inFlight: null };
 let coreCache = { ts: 0, optionTips: [], commodityTips: [], brokerTips: [], nseAllTips: [] };
+let nseInitialBootDone = false;
+const nseBootTs = Date.now();
 const spotTechCache = new Map();
 const symbolResolveCache = new Map();
 const liveQuoteCache = new Map();
 const optionAnchorCache = new Map();
+const signalTimelineMap = new Map();
+const exitHistoryMap = new Map();
+const recentExitsMap = new Map();
+const nseSignalStateMap = new Map();
 const mcxExpiryCache = {
     GOLD: { expiry: '2026-12-04' },
     SILVER: { expiry: '2026-12-04' }
@@ -129,6 +137,68 @@ const mcxParityState = {
     GOLD: { basePrice: null, lastUpd: '', baseFactor: null },
     SILVER: { basePrice: null, lastUpd: '', baseFactor: null }
 };
+
+function formatIstDateTime(ms) {
+    const ts = Number(ms);
+    if (!Number.isFinite(ts) || ts <= 0) {
+        return { dateStr: '--', timeStr: '--', iso: '' };
+    }
+    const d = new Date(ts);
+    const dateStr = new Intl.DateTimeFormat('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric'
+    }).format(d);
+    const timeStr = new Intl.DateTimeFormat('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true
+    }).format(d).toUpperCase();
+    return { dateStr, timeStr, iso: d.toISOString() };
+}
+
+function parseIstDateTimeString(raw) {
+    const clean = String(raw || '').replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
+    const m = clean.match(/^([A-Za-z]+)\s+(\d{1,2})\s+(\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?\s*(?:IST)?$/i);
+    if (!m) return NaN;
+    const months = {
+        jan: 0, january: 0, feb: 1, february: 1, mar: 2, march: 2,
+        apr: 3, april: 3, may: 4, jun: 5, june: 5, jul: 6, july: 6,
+        aug: 7, august: 7, sep: 8, sept: 8, september: 8,
+        oct: 9, october: 9, nov: 10, november: 10, dec: 11, december: 11
+    };
+    const monthIdx = months[m[1].toLowerCase()];
+    if (monthIdx === undefined) return NaN;
+    const day = parseInt(m[2], 10);
+    const year = parseInt(m[3], 10);
+    let hour = parseInt(m[4], 10);
+    const minute = parseInt(m[5], 10);
+    const second = m[6] ? parseInt(m[6], 10) : 0;
+    const ampm = (m[7] || '').toUpperCase();
+    if (ampm === 'PM' && hour < 12) hour += 12;
+    if (ampm === 'AM' && hour === 12) hour = 0;
+    // IST is UTC +05:30 (330 minutes)
+    return Date.UTC(year, monthIdx, day, hour, minute, second) - (330 * 60 * 1000);
+}
+
+function parsePubDateMs(rawPub) {
+    if (!rawPub) return NaN;
+    const istParsed = parseIstDateTimeString(rawPub);
+    if (Number.isFinite(istParsed)) return istParsed;
+    const ms = Date.parse(String(rawPub).trim());
+    return Number.isFinite(ms) ? ms : NaN;
+}
+
+function formatPriceForMsg(val, currency = 'INR') {
+    const n = Number(val);
+    if (!Number.isFinite(n) || n <= 0) return '--';
+    const isUsd = String(currency).toUpperCase() === 'USD';
+    const dec = isUsd && n < 150 ? 3 : 2;
+    return (isUsd ? '$' : '₹') + n.toLocaleString('en-IN', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+}
 
 function toNum(val) {
     if (val === null || val === undefined || val === '') return NaN;
@@ -273,9 +343,65 @@ async function fetchLiveYahooQuote(symbol) {
     }
 }
 
-// =========================================================================
-// Layer A: Real Brokerage Feeds (5paisa, Moneycontrol, ET Recos, Google News)
-// =========================================================================
+function registerObservedTipTime(sigKey, tipSnapshot, now) {
+    const prev = signalTimelineMap.get(sigKey);
+    if (!prev) {
+        if (signalTimelineMap.size > 1500) signalTimelineMap.clear();
+        signalTimelineMap.set(sigKey, {
+            issuedAtMs: now,
+            action: tipSnapshot.action,
+            signature: `${tipSnapshot.action}:${tipSnapshot.entry || ''}:${tipSnapshot.target || ''}:${tipSnapshot.stoploss || ''}`,
+            snapshot: tipSnapshot
+        });
+        return now;
+    }
+
+    const nextSignature = `${tipSnapshot.action}:${tipSnapshot.entry || ''}:${tipSnapshot.target || ''}:${tipSnapshot.stoploss || ''}`;
+    if (prev.action !== tipSnapshot.action) {
+        // Record previous active call into recentExitsMap as a real signal reversal EXIT message
+        const old = prev.snapshot;
+        if (old && old.scriptName) {
+            const exitId = `exit-rev-${sigKey}-${now}`;
+            const curCmp = tipSnapshot.cmp || old.cmp;
+            recentExitsMap.set(exitId, {
+                ...old,
+                id: exitId,
+                cmp: curCmp,
+                exitFlag: true,
+                exitType: 'REVERSAL_EXIT',
+                exitMessage: `EXIT (${old.action} CLOSED): Signal reversed to ${tipSnapshot.action} @ ${formatPriceForMsg(curCmp, old.currency)}`,
+                issuedAtMs: prev.issuedAtMs,
+                exitAtMs: now,
+                lastEventMs: now
+            });
+            while (recentExitsMap.size > MAX_RECENT_EXITS) {
+                const firstKey = recentExitsMap.keys().next().value;
+                recentExitsMap.delete(firstKey);
+            }
+        }
+        signalTimelineMap.set(sigKey, {
+            issuedAtMs: now,
+            action: tipSnapshot.action,
+            signature: nextSignature,
+            snapshot: tipSnapshot
+        });
+        return now;
+    }
+
+    if (prev.signature !== nextSignature && prev.snapshot?.brokerId === '5paisa') {
+        signalTimelineMap.set(sigKey, {
+            issuedAtMs: now,
+            action: tipSnapshot.action,
+            signature: nextSignature,
+            snapshot: tipSnapshot
+        });
+        return now;
+    }
+
+    prev.snapshot = tipSnapshot;
+    return prev.issuedAtMs;
+}
+
 async function fetch5paisaTips() {
     const tips = [];
     try {
@@ -285,6 +411,7 @@ async function fetch5paisaTips() {
         if (!res.ok) return tips;
         const html = await res.text();
         const rows = [...html.matchAll(/<tr[\s\S]*?<\/tr>/gi)];
+        const now = Date.now();
         for (const r of rows) {
             const cells = [...r[0].matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi)].map(c => decodeEntities(c[1]));
             if (cells.length < 6) continue;
@@ -298,8 +425,9 @@ async function fetch5paisaTips() {
             const action = /sell/i.test(actionRaw) ? 'SELL' : (/buy/i.test(actionRaw) ? 'BUY' : null);
             if (!action || !Number.isFinite(target)) continue;
 
-            tips.push({
-                id: `5paisa-${scriptRaw.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+            const id = `5paisa-${scriptRaw.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+            const tipObj = {
+                id,
                 scriptName: scriptRaw.replace(/\s+Ltd\.?$/i, '').trim(),
                 segment: 'EQUITY',
                 currency: 'INR',
@@ -314,7 +442,9 @@ async function fetch5paisaTips() {
                 sourceUrl: 'https://www.5paisa.com/share-market-today/stocks-to-buy-or-sell-today',
                 publishedAt: 'Daily Desk',
                 chartSymbolHint: scriptRaw
-            });
+            };
+            tipObj.issuedAtMs = registerObservedTipTime(id, tipObj, now);
+            tips.push(tipObj);
         }
     } catch (err) {
         console.warn('[OptionTips] 5paisa fetch warning:', err.message);
@@ -330,17 +460,23 @@ async function fetchMoneycontrolBrokerCalls() {
         }, 4500);
         if (!res.ok) return tips;
         const html = await res.text();
-        const anchorRegex = /<a[^>]+href="(https:\/\/www\.moneycontrol\.com\/news\/business\/stocks\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+        const listItems = [...html.matchAll(/<li class="clearfix"[^>]*>([\s\S]*?)<\/li>/gi)];
         const seen = new Set();
-        let match;
-        while ((match = anchorRegex.exec(html)) !== null) {
-            const href = sanitizeSafeUrl(match[1], 'https://www.moneycontrol.com/news/tags/recommendations.html');
-            const text = decodeEntities(match[2]);
-            const parsed = text.match(/^(Buy|Sell|Accumulate|Reduce)\s+([^;]{2,60});\s*target\s+of\s+Rs\s*([\d,.]+)\s*:\s*([^<]{2,45})$/i);
+
+        for (const li of listItems) {
+            const block = li[1];
+            const linkMatch = block.match(/<a[^>]+href="(https:\/\/www\.moneycontrol\.com\/news\/business\/stocks\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/i);
+            if (!linkMatch) continue;
+            const href = sanitizeSafeUrl(linkMatch[1], 'https://www.moneycontrol.com/news/tags/recommendations.html');
+            const spanDate = decodeEntities((block.match(/<span[^>]*>([\s\S]*?IST)<\/span>/i) || [])[1] || '');
+            let text = decodeEntities(linkMatch[2]).replace(/^[A-Za-z]+\s+\d{1,2},\s+\d{4}\s+\d{1,2}:\d{2}\s*(?:AM|PM)\s*IST\s*-->\s*/i, '').trim();
+
+            const parsed = text.match(/^(Buy|Sell|Accumulate|Reduce|Hold|Exit|Book Profit)\s+([^;]{2,60});\s*target\s+of\s+Rs\s*([\d,.]+)\s*:\s*([^<]{2,45})$/i);
             if (!parsed) continue;
 
             const verb = parsed[1].toUpperCase();
-            const action = (verb === 'SELL' || verb === 'REDUCE') ? 'SELL' : 'BUY';
+            const isBrokerExit = verb === 'EXIT' || verb === 'BOOK PROFIT';
+            const action = isBrokerExit ? 'EXIT' : ((verb === 'SELL' || verb === 'REDUCE') ? 'SELL' : 'BUY');
             const scriptName = parsed[2].trim();
             const target = toNum(parsed[3]);
             const brokerRaw = parsed[4].trim();
@@ -351,6 +487,9 @@ async function fetchMoneycontrolBrokerCalls() {
             seen.add(key);
 
             const matchedBroker = matchBrokerInfo(brokerRaw);
+            const parsedMs = parsePubDateMs(spanDate);
+            const issuedAtMs = Number.isFinite(parsedMs) ? parsedMs : Date.now();
+
             tips.push({
                 id: `mc-${key.replace(/[^a-z0-9]+/g, '-')}`,
                 scriptName,
@@ -365,10 +504,15 @@ async function fetchMoneycontrolBrokerCalls() {
                 brokerId: matchedBroker ? matchedBroker.id : 'sebi-broker',
                 broker: matchedBroker ? matchedBroker.shortName : brokerRaw,
                 sourceUrl: href,
-                publishedAt: 'Research Call',
+                publishedAt: spanDate || 'Research Call',
+                issuedAtMs,
+                exitFlag: isBrokerExit,
+                exitType: isBrokerExit ? 'BROKER_EXIT' : null,
+                exitMessage: isBrokerExit ? `EXIT — ${verb} @ ${formatPriceForMsg(target, 'INR')}` : '',
+                exitAtMs: isBrokerExit ? issuedAtMs : null,
                 chartSymbolHint: scriptName
             });
-            if (tips.length >= 24) break;
+            if (tips.length >= 28) break;
         }
     } catch (err) {
         console.warn('[OptionTips] Moneycontrol fetch warning:', err.message);
@@ -381,10 +525,12 @@ function parseHeadlineTip(title, link, pubDate) {
     const matchedBroker = matchBrokerInfo(clean);
     if (!matchedBroker) return null;
 
+    const isCorporateNonCall = /\b(ceo|md|chief|marketing head|president|director|iref|alts|fund|resigns|quits|steps down)\b/i.test(clean);
+    const hasExitPhrase = !isCorporateNonCall && /\b(book\s*(?:partial\s*)?profit|target\s*(?:achieved|hit|met)|stop\s*loss\s*(?:hit|triggered)|sl\s*(?:hit|triggered)|square\s*off|close\s*(?:the\s*)?call|exit\s+(?:call|position|trade|stock|long|short))\b/i.test(clean);
     const hasSell = /\b(sell|bearish|short|reduce|underweight)\b/i.test(clean);
     const hasBuy = /\b(buy|bullish|long|accumulate|outperform|upside|top picks?)\b/i.test(clean);
-    if (!hasBuy && !hasSell) return null;
-    const action = hasSell && !hasBuy ? 'SELL' : 'BUY';
+    if (!hasBuy && !hasSell && !hasExitPhrase) return null;
+    const action = hasExitPhrase ? 'EXIT' : (hasSell && !hasBuy ? 'SELL' : 'BUY');
 
     const targetMatch = clean.match(/target(?:\s+price)?(?:\s+of|\s+at)?\s*(?:Rs\.?|₹)?\s*([\d,]+(?:\.\d+)?)/i);
     const slMatch = clean.match(/(?:stop\s*loss|stoploss|sl)\s*(?:of|at|:)?\s*(?:Rs\.?|₹)?\s*([\d,]+(?:\.\d+)?)/i);
@@ -396,16 +542,27 @@ function parseHeadlineTip(title, link, pubDate) {
     else if (/\bnifty(?:\s*50)?\b/i.test(clean)) scriptName = 'NIFTY 50';
     else if (/\bsensex\b/i.test(clean)) scriptName = 'SENSEX';
     else {
-        const mcStyle = clean.match(/\b(?:Buy|Sell|Accumulate|Reduce)\s+([A-Z][A-Za-z0-9 &.\-]{2,40}?)(?:;|,|:|\s+shares|\s+stock|\s+target)/i);
+        const mcStyle = clean.match(/\b(?:Buy|Sell|Accumulate|Reduce|Exit|Book Profit)\s+([A-Z][A-Za-z0-9 &.\-]{2,42}?)(?:;|,|:|\s+Ltd\s+For|\s+shares|\s+stock|\s+target)/i);
         const targetStyle = clean.match(/^([A-Z][A-Za-z0-9 &.\-]{2,35}?)\s+(?:Share Price\s+)?Target(?:\s+at|\s+of)?\s+(?:Rs|₹)/i);
-        scriptName = (mcStyle?.[1] || targetStyle?.[1] || '').trim();
+        scriptName = (mcStyle?.[1] || targetStyle?.[1] || '').replace(/\s+Ltd\.?\s+For$/i, '').replace(/\s+For$/i, '').trim();
     }
 
-    if (!scriptName || (!Number.isFinite(target) && !/(NIFTY|SENSEX)/i.test(scriptName))) {
+    if (!scriptName || (!Number.isFinite(target) && !hasExitPhrase && !/(NIFTY|SENSEX)/i.test(scriptName))) {
         return null;
     }
 
+    const parsedMs = parsePubDateMs(pubDate);
+    const issuedAtMs = Number.isFinite(parsedMs) ? parsedMs : (Date.now() - 3600 * 1000);
     const isIndex = /^(NIFTY 50|BANK NIFTY|SENSEX)$/i.test(scriptName);
+
+    let exitMessage = '';
+    if (hasExitPhrase) {
+        if (/book\s*(?:partial\s*)?profit/i.test(clean)) exitMessage = 'EXIT — Brokerage Book Profit Alert';
+        else if (/target\s*(?:achieved|hit|met)/i.test(clean)) exitMessage = 'EXIT — Target Achieved (Brokerage Call)';
+        else if (/(?:stop\s*loss|sl)\s*(?:hit|triggered)/i.test(clean)) exitMessage = 'EXIT — Stoploss Hit (Brokerage Alert)';
+        else exitMessage = 'EXIT — Brokerage Exit / Square Off';
+    }
+
     return {
         id: `rss-${matchedBroker.id}-${scriptName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
         scriptName,
@@ -420,7 +577,12 @@ function parseHeadlineTip(title, link, pubDate) {
         brokerId: matchedBroker.id,
         broker: matchedBroker.shortName,
         sourceUrl: sanitizeSafeUrl(link, matchedBroker.researchUrl),
-        publishedAt: pubDate ? String(pubDate).replace(/\s*\+\d{4}$/, '').slice(0, 16) : 'Advisory Feed',
+        publishedAt: pubDate ? String(pubDate).trim() : 'Advisory Feed',
+        issuedAtMs,
+        exitFlag: hasExitPhrase,
+        exitType: hasExitPhrase ? 'BROKER_EXIT' : null,
+        exitMessage,
+        exitAtMs: hasExitPhrase ? issuedAtMs : null,
         headline: clean,
         chartSymbolHint: scriptName
     };
@@ -429,8 +591,8 @@ function parseHeadlineTip(title, link, pubDate) {
 async function fetchBrokerageNewsTips() {
     const tips = [];
     const queries = [
-        '("Motilal Oswal" OR "ICICI Direct" OR "Kotak Securities" OR "Angel One") ("target" OR "stop loss" OR "Buy" OR "Sell") (Nifty OR "Bank Nifty" OR Sensex OR Gold OR Silver OR Rs) when:10d',
-        '("HDFC Securities" OR "Axis Securities" OR "Sharekhan" OR "5paisa" OR "StockBox" OR "Mangal Keshav" OR "FinKuber" OR "ABJ Finstocks") ("target" OR "stop loss" OR "Buy" OR "Sell") (Nifty OR "Bank Nifty" OR Sensex OR Gold OR Silver OR Rs) when:14d'
+        '("Motilal Oswal" OR "ICICI Direct" OR "Kotak Securities" OR "Angel One") ("target" OR "stop loss" OR "Buy" OR "Sell" OR "Book Profit") (Nifty OR "Bank Nifty" OR Sensex OR Gold OR Silver OR Rs) when:10d',
+        '("HDFC Securities" OR "Axis Securities" OR "Sharekhan" OR "5paisa" OR "StockBox" OR "Mangal Keshav" OR "FinKuber" OR "ABJ Finstocks") ("target" OR "stop loss" OR "Buy" OR "Sell" OR "Book Profit") (Nifty OR "Bank Nifty" OR Sensex OR Gold OR Silver OR Rs) when:14d'
     ];
     const rssUrls = [
         'https://economictimes.indiatimes.com/markets/stocks/recos/rssfeeds/3053611.cms',
@@ -711,6 +873,7 @@ async function fetchIndexOptionTips(cfg) {
         else bullScore -= 1;
     }
 
+    const now = Date.now();
     if (ocRows.length > 0) {
         let atmIdx = 0;
         let bestDiff = Infinity;
@@ -743,7 +906,7 @@ async function fetchIndexOptionTips(cfg) {
         if (cmpOpt > 0) {
             const anchorKey = `${cfg.symbol}:${atmRow.strike}:${optType}:BUY`;
             const entry = getLockedAnchor(anchorKey, cmpOpt);
-            tips.push({
+            const tipObj = {
                 id: `opt-${cfg.symbol.toLowerCase()}-${atmRow.strike}-${optType.toLowerCase()}`,
                 scriptName: `${cfg.display} ${atmRow.strike} ${optType}`,
                 segment: 'OPTION',
@@ -760,7 +923,36 @@ async function fetchIndexOptionTips(cfg) {
                 sourceUrl: '',
                 publishedAt: expiry || '1s Live',
                 chartSymbol: cfg.chartSymbol
-            });
+            };
+            const slotKey = `opt-atm-${cfg.symbol}`;
+            const prevSlot = signalTimelineMap.get(slotKey);
+            if (prevSlot && prevSlot.snapshot && prevSlot.snapshot.scriptName !== tipObj.scriptName && (now - prevSlot.issuedAtMs) >= 5000) {
+                const old = prevSlot.snapshot;
+                const exitId = `exit-opt-${cfg.symbol.toLowerCase()}-${now}`;
+                recentExitsMap.set(exitId, {
+                    ...old,
+                    id: exitId,
+                    exitFlag: true,
+                    exitType: 'REVERSAL_EXIT',
+                    exitMessage: `EXIT (${old.scriptName}): Strike/Bias shifted to ${tipObj.scriptName}`,
+                    issuedAtMs: prevSlot.issuedAtMs,
+                    exitAtMs: now,
+                    lastEventMs: now
+                });
+                while (recentExitsMap.size > MAX_RECENT_EXITS) {
+                    recentExitsMap.delete(recentExitsMap.keys().next().value);
+                }
+                signalTimelineMap.set(slotKey, {
+                    issuedAtMs: now,
+                    action: tipObj.action,
+                    signature: tipObj.scriptName,
+                    snapshot: tipObj
+                });
+                tipObj.issuedAtMs = now;
+            } else {
+                tipObj.issuedAtMs = registerObservedTipTime(slotKey, tipObj, now);
+            }
+            tips.push(tipObj);
         }
 
         const secRow = isBullish ? nextBullRow : nextBearRow;
@@ -769,7 +961,7 @@ async function fetchIndexOptionTips(cfg) {
         if (secCmp > 0 && secRow.strike !== atmRow.strike) {
             const anchorKey = `${cfg.symbol}:${secRow.strike}:${secType}:OTM`;
             const entry = getLockedAnchor(anchorKey, secCmp);
-            tips.push({
+            const tipObj = {
                 id: `opt-otm-${cfg.symbol.toLowerCase()}-${secRow.strike}-${secType.toLowerCase()}`,
                 scriptName: `${cfg.display} ${secRow.strike} ${secType}`,
                 segment: 'OPTION',
@@ -786,7 +978,9 @@ async function fetchIndexOptionTips(cfg) {
                 sourceUrl: '',
                 publishedAt: expiry || '1s Live',
                 chartSymbol: cfg.chartSymbol
-            });
+            };
+            tipObj.issuedAtMs = registerObservedTipTime(`opt-otm-${cfg.symbol}`, tipObj, now);
+            tips.push(tipObj);
         }
     }
 
@@ -799,7 +993,7 @@ async function fetchIndexOptionTips(cfg) {
         const atr = (Number.isFinite(rawAtr) && rawAtr > 0 && rawAtr < spotPrice * 0.03)
             ? rawAtr
             : spotPrice * 0.004;
-        tips.push({
+        const tipObj = {
             id: `idx-${cfg.symbol.toLowerCase()}`,
             scriptName: cfg.symbol === 'NIFTY' ? 'NIFTY 50' : (cfg.symbol === 'BANKNIFTY' ? 'BANK NIFTY' : cfg.display),
             segment: 'INDEX',
@@ -815,7 +1009,9 @@ async function fetchIndexOptionTips(cfg) {
             sourceUrl: '',
             publishedAt: '1s Live Spot',
             chartSymbol: cfg.chartSymbol
-        });
+        };
+        tipObj.issuedAtMs = registerObservedTipTime(tipObj.id, tipObj, now);
+        tips.push(tipObj);
     }
 
     return tips;
@@ -883,6 +1079,7 @@ async function fetchCommodityGoldSilverTips() {
     const spotGoldUsd = cfdMap.get('TVC:GOLD') || cfdMap.get('OANDA:XAUUSD') || goldTech?.price;
     const spotSilverUsd = cfdMap.get('TVC:SILVER') || cfdMap.get('OANDA:XAGUSD') || silverTech?.price;
 
+    const now = Date.now();
     const buildMetalPair = (symKey, labelInr, labelUsd, mcxRaw, spotUsd, tech, chartInr, chartUsd, decUsd) => {
         if (!Number.isFinite(spotUsd) || spotUsd <= 0) return;
 
@@ -898,7 +1095,7 @@ async function fetchCommodityGoldSilverTips() {
 
         // 1. USD Tip
         const usdEntry = getLockedAnchor(`COM:${symKey}:USD:${action}`, spotUsd, decUsd);
-        tips.push({
+        const usdTip = {
             id: `com-${symKey.toLowerCase()}-usd`,
             scriptName: labelUsd,
             segment: 'COMMODITY',
@@ -914,7 +1111,9 @@ async function fetchCommodityGoldSilverTips() {
             sourceUrl: '',
             publishedAt: '1s Live USD',
             chartSymbol: chartUsd
-        });
+        };
+        usdTip.issuedAtMs = registerObservedTipTime(usdTip.id, usdTip, now);
+        tips.push(usdTip);
 
         // 2. INR MCX Tip (with FX*Spot continuity between MCX edge ticks)
         let inrPrice = mcxRaw?.price || NaN;
@@ -940,7 +1139,7 @@ async function fetchCommodityGoldSilverTips() {
 
         if (Number.isFinite(inrPrice) && inrPrice > 0) {
             const inrEntry = getLockedAnchor(`COM:${symKey}:INR:${action}`, inrPrice, 2);
-            tips.push({
+            const inrTip = {
                 id: `com-${symKey.toLowerCase()}-inr`,
                 scriptName: labelInr,
                 segment: 'COMMODITY',
@@ -956,7 +1155,9 @@ async function fetchCommodityGoldSilverTips() {
                 sourceUrl: '',
                 publishedAt: mcxRaw?.expiry ? `MCX ${mcxRaw.expiry}` : '1s Live INR',
                 chartSymbol: chartInr
-            });
+            };
+            inrTip.issuedAtMs = registerObservedTipTime(inrTip.id, inrTip, now);
+            tips.push(inrTip);
         }
     };
 
@@ -1032,6 +1233,8 @@ async function fetchAllNseScriptsTips(force = false) {
 
             const seen = new Set();
             const parsed = [];
+            const scanNow = Date.now();
+            const baselineTs = nseBootTs - 120000;
             for (const row of rows) {
                 const d = row?.d;
                 if (!Array.isArray(d)) continue;
@@ -1060,9 +1263,57 @@ async function fetchAllNseScriptsTips(force = false) {
                 const entryBase = (Number.isFinite(ema9) && Math.abs(ema9 - close) / close <= 0.025) ? ema9 : close;
                 const entry = roundNseTick(entryBase);
                 const atr = (Number.isFinite(atrRaw) && atrRaw > 0 && atrRaw < close * 0.12) ? atrRaw : close * 0.015;
-                const target = roundNseTick(action === 'BUY' ? entry + atr * 1.7 : Math.max(0.05, entry - atr * 1.7));
-                const stoploss = roundNseTick(action === 'BUY' ? Math.max(0.05, entry - atr * 0.95) : entry + atr * 0.95);
+                let target = roundNseTick(action === 'BUY' ? entry + atr * 1.7 : Math.max(0.05, entry - atr * 1.7));
+                let stoploss = roundNseTick(action === 'BUY' ? Math.max(0.05, entry - atr * 0.95) : entry + atr * 0.95);
+                if (action === 'BUY') {
+                    if (target <= entry) target = roundNseTick(entry + Math.max(0.05, entry * 0.02));
+                    if (stoploss >= entry) stoploss = roundNseTick(Math.max(0.05, entry - Math.max(0.05, entry * 0.015)));
+                } else {
+                    if (target >= entry) target = roundNseTick(Math.max(0.05, entry - Math.max(0.05, entry * 0.02)));
+                    if (stoploss <= entry) stoploss = roundNseTick(entry + Math.max(0.05, entry * 0.015));
+                }
                 const rsiStr = Number.isFinite(rsi) ? rsi.toFixed(1) : '--';
+
+                const prevNse = nseSignalStateMap.get(sym);
+                let issuedAtMs;
+                if (!prevNse) {
+                    issuedAtMs = nseInitialBootDone ? scanNow : baselineTs;
+                    nseSignalStateMap.set(sym, { action, issuedAtMs, entry, cmp: roundTick(close, 2), target, stoploss });
+                } else if (prevNse.action !== action) {
+                    // Record previous NSE call exit upon signal flip
+                    const exitId = `exit-nse-${sym.toLowerCase()}-${scanNow}`;
+                    recentExitsMap.set(exitId, {
+                        id: exitId,
+                        scriptName: sym,
+                        segment: 'NSE_ALL',
+                        currency: 'INR',
+                        action: prevNse.action,
+                        entry: prevNse.entry,
+                        cmp: roundTick(close, 2),
+                        target: prevNse.target,
+                        stoploss: prevNse.stoploss,
+                        stoplossEstimated: false,
+                        brokerId: 'nse-all-live',
+                        broker: `NSE Live Tech (RSI ${rsiStr})`,
+                        sourceUrl: '',
+                        publishedAt: 'NSE Live',
+                        chartSymbol: `${sym}.NS`,
+                        exitFlag: true,
+                        exitType: 'REVERSAL_EXIT',
+                        exitMessage: `EXIT (${prevNse.action} CLOSED): Trend flipped to ${action} @ ${formatPriceForMsg(close, 'INR')}`,
+                        issuedAtMs: prevNse.issuedAtMs,
+                        exitAtMs: scanNow,
+                        lastEventMs: scanNow
+                    });
+                    while (recentExitsMap.size > MAX_RECENT_EXITS) {
+                        recentExitsMap.delete(recentExitsMap.keys().next().value);
+                    }
+                    issuedAtMs = scanNow;
+                    nseSignalStateMap.set(sym, { action, issuedAtMs, entry, cmp: roundTick(close, 2), target, stoploss });
+                } else {
+                    issuedAtMs = prevNse.issuedAtMs;
+                    prevNse.cmp = roundTick(close, 2);
+                }
 
                 parsed.push({
                     id: `nse-${sym.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
@@ -1079,11 +1330,13 @@ async function fetchAllNseScriptsTips(force = false) {
                     broker: `NSE Live Tech (RSI ${rsiStr})`,
                     sourceUrl: '',
                     publishedAt: 'NSE Live',
+                    issuedAtMs,
                     chartSymbol: `${sym}.NS`
                 });
             }
 
             if (parsed.length > 0) {
+                nseInitialBootDone = true;
                 nseAllCache = { ts: Date.now(), tips: parsed, inFlight: null };
                 return parsed;
             }
@@ -1191,11 +1444,91 @@ export default async function handler(req, res) {
             coreCache = { ts: Date.now(), optionTips, commodityTips, brokerTips, nseAllTips };
         }
 
-        const allTips = [...optionTips, ...commodityTips, ...brokerTips, ...nseAllTips];
+        const SEG_PRIORITY = { OPTION: 5, COMMODITY: 4, INDEX: 3, EQUITY: 2, NSE_ALL: 1 };
+        const evalNow = Date.now();
+
+        function finalizeTip(rawTip) {
+            const t = { ...rawTip };
+            const curr = t.currency || 'INR';
+            const cmp = Number(t.cmp);
+            const entry = Number(t.entry);
+            const target = Number(t.target);
+            const sl = Number(t.stoploss);
+            const isSell = t.action === 'SELL';
+            const issuedAtMs = Number(t.issuedAtMs) || evalNow;
+            const validTarget = Number.isFinite(target) && target > 0 && (t.segment !== 'NSE_ALL' || !Number.isFinite(entry) || (isSell ? target < entry : target > entry));
+            const validSl = Number.isFinite(sl) && sl > 0 && (t.segment !== 'NSE_ALL' || !Number.isFinite(entry) || (isSell ? sl > entry : sl < entry));
+
+            if (!t.exitFlag && Number.isFinite(cmp) && cmp > 0) {
+                if (validTarget && ((!isSell && cmp >= target) || (isSell && cmp <= target))) {
+                    const exKey = `${t.id}:${t.action}:TG:${target}`;
+                    const recordedAt = exitHistoryMap.get(exKey) || evalNow;
+                    if (!exitHistoryMap.has(exKey)) {
+                        if (exitHistoryMap.size > 1200) exitHistoryMap.clear();
+                        exitHistoryMap.set(exKey, recordedAt);
+                    }
+                    t.exitFlag = true;
+                    t.exitType = 'TARGET_HIT';
+                    t.exitAtMs = recordedAt;
+                    t.exitMessage = `EXIT — Target ${formatPriceForMsg(target, curr)} Hit (Book Profit)`;
+                } else if (validSl && ((!isSell && cmp <= sl) || (isSell && cmp >= sl))) {
+                    const exKey = `${t.id}:${t.action}:SL:${sl}`;
+                    const recordedAt = exitHistoryMap.get(exKey) || evalNow;
+                    if (!exitHistoryMap.has(exKey)) {
+                        if (exitHistoryMap.size > 1200) exitHistoryMap.clear();
+                        exitHistoryMap.set(exKey, recordedAt);
+                    }
+                    t.exitFlag = true;
+                    t.exitType = 'SL_HIT';
+                    t.exitAtMs = recordedAt;
+                    t.exitMessage = `EXIT — Stoploss ${formatPriceForMsg(sl, curr)} Hit (Close Position)`;
+                }
+            }
+
+            const lastEventMs = Math.max(issuedAtMs, Number(t.exitAtMs) || 0);
+            const issuedFmt = formatIstDateTime(issuedAtMs);
+            const eventFmt = formatIstDateTime(lastEventMs);
+
+            t.issuedAtMs = issuedAtMs;
+            t.lastEventMs = lastEventMs;
+            t.issuedDateStr = issuedFmt.dateStr;
+            t.issuedTimeStr = issuedFmt.timeStr;
+            t.eventDateStr = eventFmt.dateStr;
+            t.eventTimeStr = eventFmt.timeStr;
+            if (t.exitAtMs) {
+                const exFmt = formatIstDateTime(t.exitAtMs);
+                t.exitDateStr = exFmt.dateStr;
+                t.exitTimeStr = exFmt.timeStr;
+            }
+            return t;
+        }
+
+        // Prune stale recent reversal exits older than 6 hours
+        for (const [k, v] of recentExitsMap.entries()) {
+            if ((evalNow - (v.exitAtMs || v.lastEventMs || 0)) > EXIT_RETENTION_MS) {
+                recentExitsMap.delete(k);
+            }
+        }
+
+        const recentExits = Array.from(recentExitsMap.values());
+        const combinedRaw = [...optionTips, ...commodityTips, ...brokerTips, ...nseAllTips, ...recentExits];
+        const allTips = combinedRaw.map(finalizeTip);
+
+        // Sort strictly newest-first (most recently issued tip or latest Exit alert at top)
+        allTips.sort((a, b) => {
+            const diff = (b.lastEventMs || 0) - (a.lastEventMs || 0);
+            if (diff !== 0) return diff;
+            if (Boolean(b.exitFlag) !== Boolean(a.exitFlag)) return b.exitFlag ? 1 : -1;
+            return (SEG_PRIORITY[b.segment] || 0) - (SEG_PRIORITY[a.segment] || 0);
+        });
+
+        const exitTipsAll = allTips.filter(t => Boolean(t.exitFlag));
 
         // Server-side filter so even 3,200+ NSE scripts load & search at 500ms with tiny payload
         const filtered = allTips.filter(t => {
-            if (segFilter !== 'all') {
+            if (segFilter === 'EXIT') {
+                if (!t.exitFlag) return false;
+            } else if (segFilter !== 'all') {
                 if (segFilter === 'EQUITY') {
                     if (t.brokerId === 'live-option-chain' || t.brokerId === 'live-commodity' || t.brokerId === 'nse-all-live') {
                         return false;
@@ -1206,7 +1539,7 @@ export default async function handler(req, res) {
             }
             if (brokerFilter !== 'all' && t.brokerId !== brokerFilter) return false;
             if (searchQuery) {
-                const hay = `${t.scriptName || ''} ${t.broker || ''} ${t.segment || ''} ${t.action || ''}`.toLowerCase();
+                const hay = `${t.scriptName || ''} ${t.broker || ''} ${t.segment || ''} ${t.action || ''} ${t.exitMessage || ''}`.toLowerCase();
                 if (!hay.includes(searchQuery)) return false;
             }
             return true;
@@ -1229,6 +1562,8 @@ export default async function handler(req, res) {
             commodityTipsCount: commodityTips.length,
             brokerTipsCount: brokerTips.length,
             nseAllCount: nseAllTips.length,
+            exitCount: exitTipsAll.length,
+            latestExits: exitTipsAll.slice(0, 4),
             matchedCount: filtered.length,
             hasMore: filtered.length > limitedTips.length,
             brokers: brokerStats,

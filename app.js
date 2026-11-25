@@ -10927,20 +10927,24 @@ window.fetchOptionTipsData = async function(force = false) {
         optionTipsState.brokers = Array.isArray(data.brokers) ? data.brokers : [];
         optionTipsState.matchedCount = Number(data.matchedCount ?? nextTips.length);
         optionTipsState.hasMore = Boolean(data.hasMore);
+        optionTipsState.latestExits = Array.isArray(data.latestExits) ? data.latestExits : [];
+        optionTipsState.exitCount = Number(data.exitCount ?? 0);
         optionTipsState.lastUpdated = data.updatedAt || new Date().toISOString();
 
         const timeEl = document.getElementById('ot-live-time');
         if (timeEl) {
             const nowStr = new Date().toLocaleTimeString('en-IN', {
+                timeZone: 'Asia/Kolkata',
                 hour: '2-digit',
                 minute: '2-digit',
                 second: '2-digit',
                 hour12: false
             });
-            timeEl.textContent = `2x/s Live · ${nowStr}`;
+            timeEl.textContent = `2x/s Live · ${nowStr} IST`;
         }
 
         renderOptionTipsSummary(data);
+        renderOptionTipsExitBanner(data);
         renderOptionTipsTable();
         renderOptionTipsPagination();
         renderOptionTipsBrokerDirectory();
@@ -10957,7 +10961,7 @@ window.fetchOptionTipsData = async function(force = false) {
         if (optionTipsState.tips.length === 0) {
             const tbody = document.getElementById('option-tips-tbody');
             if (tbody) {
-                tbody.innerHTML = `<tr><td colspan="8" class="ot-loading-cell">Unable to load tips (${escapeOtHtml(err.message)}). Retrying...</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="9" class="ot-loading-cell">Unable to load tips (${escapeOtHtml(err.message)}). Retrying...</td></tr>`;
             }
         }
     } finally {
@@ -10972,6 +10976,7 @@ function renderOptionTipsSummary(data) {
     const optEl = document.getElementById('ot-stat-options');
     const brkEl = document.getElementById('ot-stat-brokers');
     const hitEl = document.getElementById('ot-stat-hits');
+    const exitBadge = document.getElementById('ot-exit-btn-count');
 
     if (totalEl) totalEl.textContent = Number(data?.totalTips ?? tips.length).toLocaleString('en-IN');
     if (optEl) {
@@ -10981,6 +10986,68 @@ function renderOptionTipsSummary(data) {
     if (brkEl) brkEl.textContent = Number(data?.brokerTipsCount ?? 0).toLocaleString('en-IN');
     if (hitEl) {
         hitEl.textContent = Number(data?.nseAllCount ?? 0).toLocaleString('en-IN');
+    }
+    if (exitBadge) {
+        const exCount = Number(data?.exitCount ?? 0);
+        if (exCount > 0) {
+            exitBadge.textContent = exCount > 99 ? '99+' : String(exCount);
+            exitBadge.classList.remove('hidden');
+        } else {
+            exitBadge.classList.add('hidden');
+        }
+    }
+}
+
+function renderOptionTipsExitBanner(data) {
+    const banner = document.getElementById('ot-exit-banner');
+    if (!banner) return;
+
+    const exits = Array.isArray(data?.latestExits) ? data.latestExits : [];
+    const totalExits = Number(data?.exitCount ?? exits.length);
+    if (exits.length === 0) {
+        banner.classList.add('hidden');
+        banner.innerHTML = '';
+        return;
+    }
+
+    const itemsHtml = exits.slice(0, 3).map(ex => {
+        const script = escapeOtHtml(ex.scriptName || '--');
+        const msg = escapeOtHtml(ex.exitMessage || 'EXIT ALERT');
+        const dt = escapeOtHtml([ex.exitDateStr || ex.eventDateStr, ex.exitTimeStr || ex.eventTimeStr].filter(Boolean).join(' · '));
+        const chartSym = escapeOtHtml(ex.chartSymbol || ex.scriptName || '');
+        return `
+            <button type="button" class="ot-exit-banner-item" data-chart-symbol="${chartSym}" title="Open ${script} Candle Chart">
+                <strong>${script}</strong>
+                <span>${msg}</span>
+                <span class="ot-exit-banner-time">${dt}</span>
+            </button>
+        `;
+    }).join('');
+
+    banner.innerHTML = `
+        <div class="ot-exit-banner-head">
+            <span><i class="fa-solid fa-bell"></i> LIVE EXIT ALERTS (${totalExits} active) &mdash; Latest Exit / Book Profit Signals</span>
+            <button type="button" class="ot-refresh-btn" id="ot-view-all-exits-btn">View All Exits</button>
+        </div>
+        <div class="ot-exit-banner-list">${itemsHtml}</div>
+    `;
+    banner.classList.remove('hidden');
+
+    if (!banner.dataset.wired) {
+        banner.dataset.wired = '1';
+        banner.addEventListener('click', (e) => {
+            const viewAll = e.target.closest('#ot-view-all-exits-btn');
+            if (viewAll) {
+                const segGroup = document.getElementById('ot-segment-group');
+                const exitBtn = segGroup?.querySelector('.ot-seg-btn[data-seg="EXIT"]');
+                if (exitBtn) exitBtn.click();
+                return;
+            }
+            const item = e.target.closest('.ot-exit-banner-item[data-chart-symbol]');
+            if (item && item.dataset.chartSymbol && typeof window.openSymbolInCandleChart === 'function') {
+                window.openSymbolInCandleChart(item.dataset.chartSymbol);
+            }
+        });
     }
 }
 
@@ -10998,8 +11065,23 @@ function renderOptionTipsPagination() {
     }
 
     bar.classList.remove('hidden');
-    info.textContent = `Showing ${shown.toLocaleString('en-IN')} of ${total.toLocaleString('en-IN')} live tips`;
+    info.textContent = `Showing ${shown.toLocaleString('en-IN')} of ${total.toLocaleString('en-IN')} live tips (Newest First)`;
     btn.style.display = optionTipsState.hasMore ? 'inline-flex' : 'none';
+}
+
+function formatOtDateTimeParts(tip) {
+    if (tip.eventDateStr && tip.eventTimeStr) {
+        return { dateStr: tip.eventDateStr, timeStr: tip.eventTimeStr };
+    }
+    const ts = Number(tip.lastEventMs || tip.issuedAtMs);
+    if (Number.isFinite(ts) && ts > 0) {
+        const d = new Date(ts);
+        return {
+            dateStr: d.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' }),
+            timeStr: d.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }).toUpperCase()
+        };
+    }
+    return { dateStr: tip.publishedAt || '--', timeStr: '--' };
 }
 
 function renderOptionTipsTable() {
@@ -11011,16 +11093,19 @@ function renderOptionTipsTable() {
     if (filtered.length === 0) {
         const msg = optionTipsState.lastUpdated === null
             ? 'Loading 1-second live Option, Gold/Silver & All NSE Tips...'
-            : 'No active calls matched this filter. Select "All Sources" or clear search.';
-        tbody.innerHTML = `<tr><td colspan="8" class="ot-loading-cell">${escapeOtHtml(msg)}</td></tr>`;
+            : (optionTipsState.segment === 'EXIT'
+                ? 'No Exit / Book Profit alerts right now — active calls will show EXIT alert here automatically when triggered.'
+                : 'No active calls matched this filter. Select "All Sources" or clear search.');
+        tbody.innerHTML = `<tr><td colspan="9" class="ot-loading-cell">${escapeOtHtml(msg)}</td></tr>`;
         return;
     }
 
+    const nowMs = Date.now();
     const html = filtered.map(tip => {
         const script = escapeOtHtml(tip.scriptName || '--');
         const subMeta = escapeOtHtml(tip.publishedAt || tip.segment || '');
-        const action = tip.action === 'SELL' ? 'SELL' : 'BUY';
-        const actionCls = action === 'SELL' ? 'ot-action-sell' : 'ot-action-buy';
+        const action = tip.action === 'EXIT' ? 'EXIT' : (tip.action === 'SELL' ? 'SELL' : 'BUY');
+        const actionCls = action === 'EXIT' ? 'ot-action-exit' : (action === 'SELL' ? 'ot-action-sell' : 'ot-action-buy');
         const chartSym = escapeOtHtml(tip.chartSymbol || tip.scriptName || '');
         const curr = tip.currency || 'INR';
 
@@ -11039,9 +11124,33 @@ function renderOptionTipsTable() {
 
         const slEstNote = tip.stoplossEstimated ? '<span class="ot-sl-note" title="4% reference SL">ref</span>' : '';
         const status = computeOtStatus(tip);
+        const dtParts = formatOtDateTimeParts(tip);
+        const ageMs = nowMs - Number(tip.lastEventMs || tip.issuedAtMs || 0);
+        const isFresh = Number.isFinite(ageMs) && ageMs >= 0 && ageMs < 15 * 60 * 1000;
+        const freshTag = isFresh ? '<span class="ot-new-tag">LATEST</span>' : '';
+
+        let statusHtml = `<span class="ot-status-text ${status.cls}">${escapeOtHtml(status.label)}</span>`;
+        if (tip.exitFlag || tip.exitMessage) {
+            const exType = String(tip.exitType || '');
+            const pillCls = exType === 'TARGET_HIT' ? 'ot-exit-profit' : (exType === 'SL_HIT' ? 'ot-exit-sl' : '');
+            const msgCls = exType === 'TARGET_HIT' ? 'ot-exit-profit-msg' : (exType === 'SL_HIT' ? 'ot-exit-sl-msg' : '');
+            const pillLabel = exType === 'TARGET_HIT' ? 'EXIT · TARGET HIT' : (exType === 'SL_HIT' ? 'EXIT · SL HIT' : 'EXIT ALERT');
+            const exText = tip.exitMessage || status.label || 'EXIT POSITION';
+            statusHtml = `
+                <div class="ot-status-exit-wrap">
+                    <span class="ot-exit-pill ${pillCls}">${escapeOtHtml(pillLabel)}</span>
+                    <span class="ot-exit-msg ${msgCls}">${escapeOtHtml(exText)}</span>
+                </div>
+            `;
+        }
+
+        const rowCls = tip.exitFlag ? 'ot-row-exit' : (isFresh ? 'ot-row-fresh' : '');
+        const issuedSub = (tip.exitAtMs && tip.issuedDateStr && tip.issuedTimeStr && tip.exitAtMs > tip.issuedAtMs)
+            ? `<span class="ot-time-line" title="Original Tip Issued Time">Call: ${escapeOtHtml(tip.issuedTimeStr)}</span>`
+            : '';
 
         return `
-            <tr data-chart-symbol="${chartSym}" title="Double-click to open ${script} in Candle Chart">
+            <tr class="${rowCls}" data-chart-symbol="${chartSym}" title="Double-click to open ${script} in Candle Chart">
                 <td>
                     <div class="ot-script-cell">
                         <div class="ot-script-main">
@@ -11051,6 +11160,13 @@ function renderOptionTipsTable() {
                         <button type="button" class="ot-chart-btn" data-chart-symbol="${chartSym}" title="Open Candle Chart">
                             <i class="fa-solid fa-chart-column"></i>
                         </button>
+                    </div>
+                </td>
+                <td class="ot-th-center">
+                    <div class="ot-datetime-cell">
+                        <span class="ot-date-line">${escapeOtHtml(dtParts.dateStr)} ${freshTag}</span>
+                        <span class="ot-time-line">${escapeOtHtml(dtParts.timeStr)} IST</span>
+                        ${issuedSub}
                     </div>
                 </td>
                 <td class="ot-th-center"><span class="ot-action-badge ${actionCls}">${action}</span></td>
@@ -11064,7 +11180,7 @@ function renderOptionTipsTable() {
                         ${linkHtml}
                     </div>
                 </td>
-                <td class="ot-th-center"><span class="ot-status-text ${status.cls}">${escapeOtHtml(status.label)}</span></td>
+                <td>${statusHtml}</td>
             </tr>
         `;
     }).join('');

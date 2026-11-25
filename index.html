@@ -1319,7 +1319,7 @@
                             <i class="fa-solid fa-bolt"></i> OPTION TIPS &mdash; 1s Live Call / Put &amp; Brokerage Calls
                         </h2>
                         <p class="ot-subtitle">
-                            NIFTY 50, BANK NIFTY, SENSEX (CE / PE) &bull; Gold &amp; Silver (₹ / $) &bull; All NSE Scripts &bull; 12 SEBI-registered brokerages &bull; Double-click any row for Candle Chart
+                            Newest First &bull; Issued Date &amp; Time (IST) &bull; Live Exit / Book Profit Alerts &bull; NIFTY, BANK NIFTY, SENSEX, Gold/Silver (₹/$), All NSE &amp; 12 Brokerages
                         </p>
                     </div>
                     <div class="ot-status-actions">
@@ -1342,6 +1342,9 @@
                         <button type="button" class="ot-seg-btn" data-seg="COMMODITY">Gold / Silver</button>
                         <button type="button" class="ot-seg-btn" data-seg="NSE_ALL">All NSE Scripts</button>
                         <button type="button" class="ot-seg-btn" data-seg="EQUITY">Brokerage Calls</button>
+                        <button type="button" class="ot-seg-btn ot-seg-exit-btn" data-seg="EXIT">
+                            Exit Alerts <span id="ot-exit-btn-count" class="ot-exit-btn-count hidden">0</span>
+                        </button>
                     </div>
                     <div class="ot-filter-right">
                         <select id="ot-broker-select" class="ot-select" aria-label="Filter by Brokerage or Feed">
@@ -1389,24 +1392,28 @@
                     </div>
                 </div>
 
-                <!-- Short Format Live Tips Table -->
+                <!-- Live Exit Messages Strip (Shown automatically whenever any Exit alert triggers) -->
+                <div id="ot-exit-banner" class="ot-exit-banner hidden" role="status" aria-live="polite"></div>
+
+                <!-- Short Format Live Tips Table (Sorted Newest First) -->
                 <div class="table-wrapper ot-table-wrapper">
                     <table id="option-tips-table" class="ot-table">
                         <thead>
                             <tr>
                                 <th>SCRIPT NAME</th>
+                                <th class="ot-th-center">TIP DATE &amp; TIME</th>
                                 <th class="ot-th-center">BUY / SELL</th>
                                 <th class="ot-th-right">ENTRY</th>
                                 <th class="ot-th-right">LIVE CMP</th>
                                 <th class="ot-th-right">TARGET</th>
                                 <th class="ot-th-right">STOPLOSS</th>
                                 <th>BROKER / SOURCE</th>
-                                <th class="ot-th-center">STATUS</th>
+                                <th>STATUS / EXIT MSG</th>
                             </tr>
                         </thead>
                         <tbody id="option-tips-tbody">
                             <tr>
-                                <td colspan="8" class="ot-loading-cell">
+                                <td colspan="9" class="ot-loading-cell">
                                     Loading 1-second live Option, Gold/Silver &amp; All NSE Tips...
                                 </td>
                             </tr>
