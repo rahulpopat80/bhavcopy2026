@@ -1,0 +1,112 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null &&
+        request.auth.token.email != null &&
+        request.auth.token.email_verified == true;
+    }
+
+    function isSeedAdminEmail() {
+      return isSignedIn() && (
+        request.auth.token.email in [
+          'rahuljcombank@gmail.com',
+          'akshatpopat9311@gmail.com',
+          'tilakpopat2007@gmail.com',
+          'support.obsidian@gmail.com',
+          'poojapopat84@gmail.com',
+          'work.tilakpopatfilms@gmail.com',
+          'tilakpopatfilms@gmail.com',
+          'enquiry.akshatpopat@gmail.com'
+        ]
+      );
+    }
+
+    function isConfiguredUser() {
+      return isSignedIn() && (
+        isSeedAdminEmail() ||
+        (
+          exists(/databases/$(database)/documents/metadata/access_control) &&
+          request.auth.token.email in get(/databases/$(database)/documents/metadata/access_control).data.users &&
+          get(/databases/$(database)/documents/metadata/access_control).data.users[request.auth.token.email].active == true
+        )
+      );
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        isSeedAdminEmail() ||
+        (
+          exists(/databases/$(database)/documents/metadata/access_control) &&
+          request.auth.token.email in get(/databases/$(database)/documents/metadata/access_control).data.users &&
+          get(/databases/$(database)/documents/metadata/access_control).data.users[request.auth.token.email].active == true &&
+          get(/databases/$(database)/documents/metadata/access_control).data.users[request.auth.token.email].role == 'admin'
+        )
+      );
+    }
+
+    function isNotViewer() {
+      return isConfiguredUser() && (
+        !exists(/databases/$(database)/documents/metadata/access_control) ||
+        !(request.auth.token.email in get(/databases/$(database)/documents/metadata/access_control).data.users) ||
+        get(/databases/$(database)/documents/metadata/access_control).data.users[request.auth.token.email].role != 'viewer'
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Software & Access Control metadata
+    match /metadata/access_control {
+      allow get: if isSignedIn();
+      allow create, update: if isAdmin() &&
+        request.resource.data.keys().hasAll(['users']) &&
+        request.resource.data.users is map;
+    }
+
+    match /metadata/software {
+      allow get: if isConfiguredUser();
+      allow create, update: if isAdmin() &&
+        request.resource.data.brandName is string &&
+        request.resource.data.brandName.size() >= 2 &&
+        request.resource.data.brandName.size() <= 80;
+    }
+
+    match /metadata/auth {
+      allow get: if isAdmin();
+      allow create, update: if isAdmin() &&
+        request.resource.data.username is string &&
+        request.resource.data.username.size() >= 3 &&
+        request.resource.data.username.size() <= 64 &&
+        request.resource.data.password is string &&
+        request.resource.data.password.size() >= 4 &&
+        request.resource.data.password.size() <= 128;
+    }
+
+    match /metadata/master {
+      allow get: if isConfiguredUser();
+      allow create, update, delete: if isNotViewer();
+    }
+
+    match /chunks/{chunkId} {
+      allow read: if isConfiguredUser();
+      allow create, update, delete: if isValidId(chunkId) && isNotViewer();
+    }
+
+    match /portfolio/{positionId} {
+      allow read: if isConfiguredUser();
+      allow create, update, delete: if isValidId(positionId) && isNotViewer();
+    }
+
+    match /watchlist/{watchId} {
+      allow read: if isConfiguredUser();
+      allow create, update, delete: if isValidId(watchId) && isNotViewer();
+    }
+  }
+}

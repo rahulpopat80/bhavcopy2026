@@ -1,0 +1,152 @@
+{
+  "entities": {
+    "AuthCredentials": {
+      "title": "AuthCredentials",
+      "description": "Master terminal credential record editable exclusively by Admin users.",
+      "type": "object",
+      "properties": {
+        "username": {
+          "type": "string",
+          "description": "Terminal login username",
+          "minLength": 3,
+          "maxLength": 64
+        },
+        "password": {
+          "type": "string",
+          "description": "Terminal login password",
+          "minLength": 4,
+          "maxLength": 128
+        },
+        "updatedBy": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 160
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["username", "password"]
+    },
+    "AuthorizedUserEntry": {
+      "title": "AuthorizedUserEntry",
+      "description": "Authorized Google account entry with assigned terminal role.",
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 160
+        },
+        "role": {
+          "type": "string",
+          "enum": ["admin", "trader", "user", "viewer"]
+        },
+        "label": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "active": {
+          "type": "boolean"
+        },
+        "addedBy": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 160
+        }
+      },
+      "required": ["email", "role", "active"]
+    },
+    "SoftwareSettings": {
+      "title": "SoftwareSettings",
+      "description": "Global Rahul Finance Pro software preferences controlled by admins.",
+      "type": "object",
+      "properties": {
+        "brandName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 80
+        },
+        "brandSubtitle": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "allowPasswordLogin": {
+          "type": "boolean"
+        },
+        "defaultTheme": {
+          "type": "string",
+          "enum": ["dark", "light"]
+        },
+        "defaultTimeframe": {
+          "type": "string",
+          "enum": ["1m", "3m", "5m", "10m", "15m", "1h", "1d"]
+        },
+        "announcementBanner": {
+          "type": "string",
+          "maxLength": 240
+        },
+        "updatedBy": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 160
+        }
+      },
+      "required": ["brandName", "allowPasswordLogin"]
+    },
+    "PortfolioPosition": {
+      "title": "PortfolioPosition",
+      "description": "Tracked equity or commodity position in the portfolio.",
+      "type": "object",
+      "properties": {
+        "symbol": { "type": "string", "maxLength": 32 },
+        "qty": { "type": "number" },
+        "buyPrice": { "type": "number" },
+        "buyDate": { "type": "string", "maxLength": 32 },
+        "status": { "type": "string", "enum": ["OPEN", "CLOSED"] }
+      },
+      "required": ["symbol", "qty", "buyPrice"]
+    },
+    "WatchlistItem": {
+      "title": "WatchlistItem",
+      "description": "Saved watchlist ticker symbol.",
+      "type": "object",
+      "properties": {
+        "symbol": { "type": "string", "maxLength": 32 },
+        "addedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["symbol"]
+    }
+  },
+  "firestore": {
+    "/metadata/auth": {
+      "schema": { "$ref": "#/entities/AuthCredentials" },
+      "description": "Terminal username & password credentials managed by Admins"
+    },
+    "/metadata/access_control": {
+      "schema": { "$ref": "#/entities/AuthorizedUserEntry" },
+      "description": "Map of authorized Gmail accounts and their assigned roles (admin, trader, user, viewer)"
+    },
+    "/metadata/software": {
+      "schema": { "$ref": "#/entities/SoftwareSettings" },
+      "description": "Global software branding and policy configuration managed by Admins"
+    },
+    "/metadata/master": {
+      "schema": "object",
+      "description": "Master Bhavcopy metadata"
+    },
+    "/chunks/{chunkId}": {
+      "schema": "object",
+      "description": "Chunked Master Bhavcopy rows"
+    },
+    "/portfolio/{positionId}": {
+      "schema": { "$ref": "#/entities/PortfolioPosition" },
+      "description": "Portfolio positions"
+    },
+    "/watchlist/{watchId}": {
+      "schema": { "$ref": "#/entities/WatchlistItem" },
+      "description": "Watchlist symbols"
+    }
+  }
+}

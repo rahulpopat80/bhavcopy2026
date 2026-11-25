@@ -28,15 +28,20 @@ const firebaseConfig = {
   measurementId: "G-25XHTGD699"
 };
 
-// Initialize Firebase Firestore
+// Initialize Firebase Firestore & Auth
 let db = null;
+let auth = null;
 try {
     firebase.initializeApp(firebaseConfig);
     db = firebase.firestore();
+    if (typeof firebase.auth === 'function') {
+        auth = firebase.auth();
+    }
     console.log("Firebase initialized successfully");
 } catch (e) {
     console.error("Firebase initialization failed:", e);
 }
+window.rfFirebase = { db, auth, config: firebaseConfig };
 
 // Application State
 let state = {
@@ -352,34 +357,13 @@ function startDashboardAfterLogin() {
             .catch(err => console.error('Service Worker Registration Failed:', err));
     }
 }
+window.startDashboardAfterLogin = startDashboardAfterLogin;
 
 function initEvents() {
-    // Sync password from Cloud database (with 5s timeout so login never hangs if offline)
-    const cloudPasswordPromise = db
-        ? Promise.race([
-            db.collection('metadata').doc('auth').get().then(doc => {
-                if (doc.exists) {
-                    const cloudPass = doc.data().password;
-                    if (cloudPass) {
-                        localStorage.setItem('appPassword', cloudPass);
-                        return cloudPass;
-                    }
-                }
-                return null;
-            }),
-            new Promise(resolve => setTimeout(() => resolve(null), 5000))
-        ]).catch(err => {
-            console.warn('Could not sync password from Firestore:', err);
-            return null;
-        })
-        : Promise.resolve(null);
-
     // Check Fullscreen Chart New-Tab Mode (?fullscreenChart=1&symbol=...&interval=...)
     const urlParams = new URLSearchParams(window.location.search);
     const isFullscreenChartMode = urlParams.get('fullscreenChart') === '1';
 
-    // Login Screen Check
-    const sessionLoggedIn = sessionStorage.getItem('isLoggedIn');
     const loginOverlay = document.getElementById('login-screen');
     const mainApp = document.getElementById('main-app');
 
@@ -422,47 +406,15 @@ function initEvents() {
                 }, 500);
             }
         }, 0);
-    } else if (sessionLoggedIn === 'true') {
-        loginOverlay.classList.add('hidden');
-        mainApp.classList.remove('hidden');
-        setTimeout(startDashboardAfterLogin, 0);
+    } else if (window.RfAuthAdmin && typeof window.RfAuthAdmin.init === 'function') {
+        window.RfAuthAdmin.init();
     } else {
-        const loginForm = document.getElementById('login-form');
-        const loginError = document.getElementById('login-error');
-        
-        loginForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const usernameInput = document.getElementById('username').value.trim();
-            const passwordInput = document.getElementById('password').value.trim();
-            
-            // FIX: Remove hardcoded default password fallback; read only from synced Firestore/localStorage
-            let currentPassword = localStorage.getItem('appPassword');
-            if (!currentPassword) {
-                currentPassword = await cloudPasswordPromise;
-            }
-            if (!currentPassword) {
-                if (loginError) {
-                    loginError.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Password not configured in cloud. Please contact admin.';
-                    loginError.classList.remove('hidden');
-                }
-                showNotification('Password not set. Please contact admin.', 'error');
-                return;
-            }
-
-            if (usernameInput === 'RAHUL' && passwordInput === currentPassword) {
-                sessionStorage.setItem('isLoggedIn', 'true');
-                loginOverlay.classList.add('hidden');
-                mainApp.classList.remove('hidden');
-                showNotification('Login successful!', 'success');
-                setTimeout(startDashboardAfterLogin, 0);
-            } else {
-                if (loginError) {
-                    loginError.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Invalid username or password!';
-                    loginError.classList.remove('hidden');
-                }
-                showNotification('Login failed! Invalid ID or Password.', 'error');
-            }
-        });
+        const sessionLoggedIn = sessionStorage.getItem('isLoggedIn');
+        if (sessionLoggedIn === 'true') {
+            if (loginOverlay) loginOverlay.classList.add('hidden');
+            if (mainApp) mainApp.classList.remove('hidden');
+            setTimeout(startDashboardAfterLogin, 0);
+        }
     }
 
     // Master Upload
@@ -614,6 +566,9 @@ function initEvents() {
     const samcoWebTabContent      = document.getElementById('samco-web-tab-content');
     const whatsappWebTabContent   = document.getElementById('whatsapp-web-tab-content');
 
+    const tabAdmin = document.getElementById('tab-admin');
+    const adminTabContent = document.getElementById('admin-tab-content');
+
     let lastNonSamcoTabBtn = tabOverview || tabResearch;
     const hideAllTabs = (activePortal = false) => {
         const keepSamcoFullscreen = activePortal === true || activePortal === 'samco';
@@ -624,10 +579,13 @@ function initEvents() {
         if (!keepWaFullscreen) {
             document.body.classList.remove('wa-fullscreen-mode');
         }
-        [overviewTabContent, researchTabContent, portfolioTabContent, resultsTabContent, watchlistTabContent, morningPicksTabContent, adviceTabContent, volPromoterTabContent, circuitsTabContent, globalIndicesTabContent, intradayTabContent, masterPieceTabContent, callPutTabContent, optionTipsTabContent, candleChartTabContent, samcoWebTabContent, whatsappWebTabContent]
+        [overviewTabContent, researchTabContent, portfolioTabContent, resultsTabContent, watchlistTabContent, morningPicksTabContent, adviceTabContent, volPromoterTabContent, circuitsTabContent, globalIndicesTabContent, intradayTabContent, masterPieceTabContent, callPutTabContent, optionTipsTabContent, candleChartTabContent, samcoWebTabContent, whatsappWebTabContent, adminTabContent]
             .forEach(el => el && el.classList.add('hidden'));
-        [tabOverview, tabResearch, tabPortfolio, tabResults, tabWatchlist, tabMorning, tabAdvice, tabVolPromoter, tabCircuits, tabGlobalIndices, tabIntraday, tabMasterPiece, tabCallPut, tabOptionTips, tabCandleChart, tabSamcoWeb, tabWhatsappWeb]
+        [tabOverview, tabResearch, tabPortfolio, tabResults, tabWatchlist, tabMorning, tabAdvice, tabVolPromoter, tabCircuits, tabGlobalIndices, tabIntraday, tabMasterPiece, tabCallPut, tabOptionTips, tabCandleChart, tabSamcoWeb, tabWhatsappWeb, tabAdmin]
             .forEach(el => el && el.classList.remove('active'));
+        if (window.RfAuthAdmin && typeof window.RfAuthAdmin.leaveAdminUrlIfActive === 'function') {
+            window.RfAuthAdmin.leaveAdminUrlIfActive();
+        }
         const samcoDock = document.getElementById('samco-minimized-dock');
         const samcoIframe = document.getElementById('samco-web-iframe');
         if (samcoDock && !keepSamcoFullscreen && samcoIframe && samcoIframe.getAttribute('src')) {
@@ -639,6 +597,7 @@ function initEvents() {
             waDock.classList.remove('hidden');
         }
     };
+    window.__rfHideAllTabs = hideAllTabs;
     window.__rfActivateLastTabFromSamco = () => {
         const targetBtn = lastNonSamcoTabBtn || tabOverview || tabResearch;
         if (targetBtn) targetBtn.click();
@@ -1276,20 +1235,11 @@ function initEvents() {
         }
     });
 
-    // --- CHANGE PASSWORD DIALOG LOGIC ---
+    // --- CHANGE PASSWORD DIALOG LOGIC (Admin-Only Guarded) ---
     const passwordModal = document.getElementById('password-modal');
-    const changePasswordBtn = document.getElementById('change-password-btn');
     const passwordModalCloseBtn = document.getElementById('password-modal-close-btn');
     const changePasswordForm = document.getElementById('change-password-form');
     const changePasswordError = document.getElementById('change-password-error');
-
-    if (changePasswordBtn) {
-        changePasswordBtn.addEventListener('click', () => {
-            if (changePasswordError) changePasswordError.classList.add('hidden');
-            if (changePasswordForm) changePasswordForm.reset();
-            if (passwordModal) passwordModal.classList.remove('hidden');
-        });
-    }
 
     if (passwordModalCloseBtn) {
         passwordModalCloseBtn.addEventListener('click', () => {
@@ -1308,6 +1258,10 @@ function initEvents() {
     if (changePasswordForm) {
         changePasswordForm.addEventListener('submit', async (e) => {
             e.preventDefault();
+            if (window.RfAuthAdmin && !window.RfAuthAdmin.isAdmin()) {
+                showNotification('Only Admins can change software credentials in /admin.', 'error');
+                return;
+            }
             const currentInput = document.getElementById('current-password-input').value;
             const newInput = document.getElementById('new-password-input').value;
             const confirmInput = document.getElementById('confirm-password-input').value;
@@ -1760,6 +1714,10 @@ async function loadMasterOnStartup() {
 
 // Delete Master Excel Data from Firestore
 async function deleteMasterFromCloud() {
+    if (window.RfAuthAdmin && !window.RfAuthAdmin.canMutateCloud()) {
+        showNotification('Viewer role is read-only and cannot delete cloud master data.', 'error');
+        return;
+    }
     if (!db) return;
     try {
         updateCloudSyncUI('connecting', 'Deleting Cloud Data...');
@@ -1871,6 +1829,10 @@ async function loadPortfolioFromCloud() {
 }
 
 async function savePortfolioItem(item) {
+    if (window.RfAuthAdmin && !window.RfAuthAdmin.canMutateCloud()) {
+        showNotification("Viewer role is read-only. Ask an Admin to upgrade your role to Trader or User.", "error");
+        return;
+    }
     if (!db) {
         showNotification("Firebase Offline. Cannot save transaction.", "error");
         return;
@@ -1896,6 +1858,10 @@ async function savePortfolioItem(item) {
 window.savePortfolioItem = savePortfolioItem;
 
 async function deletePortfolioItem(id) {
+    if (window.RfAuthAdmin && !window.RfAuthAdmin.canMutateCloud()) {
+        showNotification("Viewer role is read-only. Cannot delete portfolio items.", "error");
+        return;
+    }
     if (!db) {
         showNotification("Firebase Offline. Cannot delete transaction.", "error");
         return;

@@ -8,6 +8,7 @@ const staticFiles = [
   'rf-tanstack-grid.js',
   'rf-tradingview-charts.js',
   'rf-terminal-ui.js',
+  'rf-auth-admin.js',
   'style.css',
   'sw.js',
   'manifest.json',

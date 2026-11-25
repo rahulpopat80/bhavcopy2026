@@ -39,6 +39,7 @@
     <!-- Firebase SDK (Compat Version) -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js" defer></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js" defer></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js" defer></script>
     <script>
         window.onerror = function(message, source, lineno, colno, error) {
             console.error('[Browser Error]', message, source, lineno, colno, error);
@@ -162,9 +163,27 @@
                         <span>WhatsApp Web</span>
                     </button>
                 </div>
+
+                <div class="nav-group hidden" id="nav-group-admin">
+                    <span class="nav-group-label">Administration</span>
+                    <button class="nav-btn hidden" id="tab-admin" data-workspace-title="Admin Control Center">
+                        <i data-lucide="shield-check" class="rf-icon"></i>
+                        <span>Admin (/admin)</span>
+                    </button>
+                </div>
             </nav>
 
             <div class="sidebar-footer">
+                <div class="rf-account-card" id="rf-account-card">
+                    <div class="rf-account-avatar" id="rf-account-avatar">RF</div>
+                    <div class="rf-account-info">
+                        <strong id="rf-account-name">Rahul Finance</strong>
+                        <span id="rf-account-meta">User</span>
+                    </div>
+                    <button type="button" id="rf-signout-btn" class="rf-signout-icon-btn" title="Sign Out" aria-label="Sign Out">
+                        <i data-lucide="log-out" class="rf-icon"></i>
+                    </button>
+                </div>
                 <div class="cloud-sync-badge" id="cloud-sync-status">
                     <i class="fa-solid fa-cloud-arrow-up sync-icon"></i>
                     <span id="cloud-sync-text">Cloud Ready</span>
@@ -178,7 +197,7 @@
                         <i data-lucide="settings" class="rf-icon"></i>
                         <span>Settings</span>
                     </button>
-                    <button id="change-password-btn" class="sidebar-util-btn" title="Change Password">
+                    <button id="change-password-btn" class="sidebar-util-btn hidden" title="Admin Credentials (/admin)">
                         <i data-lucide="key-round" class="rf-icon"></i>
                         <span>Password</span>
                     </button>
@@ -209,6 +228,11 @@
                 </div>
 
                 <div class="topbar-right">
+                    <span id="topbar-user-label" class="topbar-user-text">Terminal</span>
+                    <button type="button" id="topbar-admin-btn" class="topbar-pill-btn hidden" title="Open /admin Control Center">
+                        <i data-lucide="shield-check" class="rf-icon"></i>
+                        <span>Admin</span>
+                    </button>
                     <span id="rf-stream-badge" class="stream-badge" title="Real-Time Market Feed Status">
                         <span class="live-dot-green"></span>
                         <span id="rf-stream-text">Connecting...</span>
@@ -219,6 +243,10 @@
                     </button>
                 </div>
             </header>
+            <div id="rf-software-announcement" class="rf-announcement-bar hidden">
+                <i class="fa-solid fa-bullhorn"></i>
+                <span id="rf-software-announcement-text"></span>
+            </div>
 
             <!-- Unified Live Market Ribbon (Double-Click any asset for TradingView Candle Chart) -->
             <section class="market-ribbon no-print" aria-label="Live Benchmark Market Strip">
@@ -1952,6 +1980,190 @@
                 </div>
             </div>
         </div>
+        <!-- Tab 16: Admin Control Center (/admin) -->
+        <div id="admin-tab-content" class="hidden">
+            <!-- Access Denied Gate for Non-Admin Users -->
+            <div id="admin-access-denied" class="card admin-denied-card hidden">
+                <div class="admin-denied-icon"><i class="fa-solid fa-shield-halved"></i></div>
+                <h2>Admin Access Required</h2>
+                <p>The <code>/admin</code> Control Center is strictly restricted to authorized Admin Gmail accounts. Standard user or username-only sessions cannot modify software credentials or access permissions.</p>
+                <div class="admin-denied-actions">
+                    <button type="button" id="admin-verify-google-btn" class="rf-google-btn" style="width:auto; min-width:240px;">
+                        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                            <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17Z"/>
+                            <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.11-6.72-4.96H1.29v3.14C3.26 21.3 7.31 24 12 24Z"/>
+                            <path fill="#FBBC05" d="M5.28 14.24c-.24-.72-.38-1.49-.38-2.24s.14-1.52.38-2.24V6.62H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.38l3.99-3.14Z"/>
+                            <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.99 3.14c.95-2.85 3.6-4.96 6.72-4.96Z"/>
+                        </svg>
+                        <span>Sign in with Admin Google Account</span>
+                    </button>
+                    <button type="button" id="admin-return-terminal-btn" class="btn btn-secondary">Back to Terminal</button>
+                </div>
+            </div>
+
+            <!-- Full Admin Console Panel (Admins Only) -->
+            <div id="admin-console-panel" class="admin-console-wrap hidden">
+                <div class="admin-kpi-grid">
+                    <div class="card admin-kpi-card">
+                        <span class="admin-kpi-label">Authorized Gmail IDs</span>
+                        <strong class="admin-kpi-val" id="admin-stat-total">0</strong>
+                    </div>
+                    <div class="card admin-kpi-card">
+                        <span class="admin-kpi-label">Active Admins</span>
+                        <strong class="admin-kpi-val" id="admin-stat-admins">0</strong>
+                    </div>
+                    <div class="card admin-kpi-card">
+                        <span class="admin-kpi-label">Traders · Users · Viewers</span>
+                        <strong class="admin-kpi-val" id="admin-stat-users">0</strong>
+                    </div>
+                    <div class="card admin-kpi-card">
+                        <span class="admin-kpi-label">Sign-In Policy</span>
+                        <strong class="admin-kpi-val admin-kpi-text" id="admin-stat-policy">Google + Credentials</strong>
+                    </div>
+                </div>
+
+                <div class="admin-main-grid">
+                    <!-- Left Column: Authorized Gmail Accounts & Roles -->
+                    <div class="card admin-panel-card">
+                        <div class="admin-panel-head">
+                            <div>
+                                <h2>Authorized Gmail Accounts &amp; Roles</h2>
+                                <p>Add Gmail IDs and assign role permissions (`Admin`, `Trader`, `User`, or `Viewer`). Only listed active accounts can sign in with Google.</p>
+                            </div>
+                        </div>
+
+                        <form id="admin-add-user-form" class="admin-add-form">
+                            <div class="admin-field">
+                                <label for="admin-new-email">Gmail Address</label>
+                                <input type="email" id="admin-new-email" required placeholder="name@gmail.com">
+                            </div>
+                            <div class="admin-field">
+                                <label for="admin-new-label">Display Name / Note</label>
+                                <input type="text" id="admin-new-label" maxlength="80" placeholder="e.g. Desk Trader">
+                            </div>
+                            <div class="admin-field">
+                                <label for="admin-new-role">Account Type</label>
+                                <select id="admin-new-role">
+                                    <option value="user">User (Standard)</option>
+                                    <option value="trader">Trader (Full Desk)</option>
+                                    <option value="viewer">Viewer (Read-Only)</option>
+                                    <option value="admin">Admin (/admin Access)</option>
+                                </select>
+                            </div>
+                            <button type="submit" class="btn btn-primary admin-add-btn">
+                                <i class="fa-solid fa-user-plus"></i> Add Gmail
+                            </button>
+                        </form>
+
+                        <div class="admin-table-toolbar">
+                            <input type="text" id="admin-users-search" class="admin-search-input" placeholder="Search Gmail or name...">
+                            <select id="admin-users-role-filter" class="admin-filter-select">
+                                <option value="all">All Account Types</option>
+                                <option value="admin">Admin Only</option>
+                                <option value="trader">Trader Only</option>
+                                <option value="user">User Only</option>
+                                <option value="viewer">Viewer Only</option>
+                            </select>
+                        </div>
+
+                        <div class="table-responsive admin-table-scroll">
+                            <table class="data-table admin-users-table">
+                                <thead>
+                                    <tr>
+                                        <th>Gmail Account</th>
+                                        <th>Account Type</th>
+                                        <th>Status</th>
+                                        <th>Added By</th>
+                                        <th style="text-align:right;">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="admin-users-tbody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Right Column: Software Credentials & Terminal Configuration -->
+                    <div class="admin-side-stack">
+                        <div class="card admin-panel-card">
+                            <div class="admin-panel-head">
+                                <div>
+                                    <h2>Software Username &amp; Password</h2>
+                                    <p>Change the credential login ID and password synced to Firebase.</p>
+                                </div>
+                            </div>
+                            <form id="admin-credentials-form" class="admin-form-stack">
+                                <div class="form-group">
+                                    <label for="admin-cred-username">Software Username (ID)</label>
+                                    <input type="text" id="admin-cred-username" minlength="3" maxlength="64" required placeholder="RAHUL">
+                                </div>
+                                <div class="form-group">
+                                    <label for="admin-cred-password">New Password (leave blank to keep current)</label>
+                                    <input type="password" id="admin-cred-password" minlength="4" maxlength="128" placeholder="Enter new password...">
+                                </div>
+                                <div class="form-group">
+                                    <label for="admin-cred-confirm">Confirm New Password</label>
+                                    <input type="password" id="admin-cred-confirm" minlength="4" maxlength="128" placeholder="Confirm new password...">
+                                </div>
+                                <button type="submit" class="btn btn-primary" style="width:100%; justify-content:center;">
+                                    <i class="fa-solid fa-key"></i> Save Credentials
+                                </button>
+                            </form>
+                        </div>
+
+                        <div class="card admin-panel-card">
+                            <div class="admin-panel-head">
+                                <div>
+                                    <h2>Software &amp; Terminal Settings</h2>
+                                    <p>Control software branding, sign-in policy, defaults, and broadcast notice.</p>
+                                </div>
+                            </div>
+                            <form id="admin-software-form" class="admin-form-stack">
+                                <div class="form-group">
+                                    <label for="admin-sw-brand">Software Brand Name</label>
+                                    <input type="text" id="admin-sw-brand" maxlength="80" required placeholder="Rahul Finance">
+                                </div>
+                                <div class="form-group">
+                                    <label for="admin-sw-subtitle">Terminal Subtitle</label>
+                                    <input type="text" id="admin-sw-subtitle" maxlength="120" placeholder="Trading Terminal">
+                                </div>
+                                <div class="admin-two-col">
+                                    <div class="form-group">
+                                        <label for="admin-sw-theme">Default Theme</label>
+                                        <select id="admin-sw-theme">
+                                            <option value="dark">Dark Terminal</option>
+                                            <option value="light">Apple Daylight</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="admin-sw-timeframe">Default Chart TF</label>
+                                        <select id="admin-sw-timeframe">
+                                            <option value="1m">1m</option>
+                                            <option value="3m">3m</option>
+                                            <option value="5m">5m</option>
+                                            <option value="10m">10m</option>
+                                            <option value="15m">15m</option>
+                                            <option value="1h">1h</option>
+                                            <option value="1d">1d</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label for="admin-sw-banner">Workspace Announcement Banner (Optional)</label>
+                                    <input type="text" id="admin-sw-banner" maxlength="240" placeholder="Leave blank to hide banner...">
+                                </div>
+                                <label class="admin-checkbox-row">
+                                    <input type="checkbox" id="admin-sw-allow-password" checked>
+                                    <span>Allow Username &amp; Password Sign-In (Optional alongside Google Sign-In)</span>
+                                </label>
+                                <button type="submit" class="btn btn-primary" style="width:100%; justify-content:center;">
+                                    <i class="fa-solid fa-sliders"></i> Save Software Settings
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
             </main>
         </div>
     </div>
@@ -2249,27 +2461,151 @@
         </div>
     </div>
 
-    <!-- Login Screen Overlay -->
+    <!-- Pro Trading Login Screen Overlay -->
     <div id="login-screen" class="login-overlay">
-        <div class="login-card">
-            <div class="login-header">
-                <i class="fa-solid fa-shield-halved login-icon"></i>
-                <h2>Rahul Finance</h2>
-                <p>Sign in to access your real-time market terminal.</p>
+        <div class="login-pro-shell">
+            <!-- Left Showcase: Pro Trading Architecture & Market Logos -->
+            <div class="login-pro-showcase">
+                <div class="login-pro-brand-row">
+                    <div class="login-logo-frame">
+                        <img src="./icon.png" alt="Rahul Finance Pro Emblem" class="login-logo-img">
+                    </div>
+                    <div class="login-brand-copy">
+                        <div class="login-brand-title-line">
+                            <span class="login-brand-name">Rahul Finance</span>
+                            <span class="login-pro-edition">PRO</span>
+                        </div>
+                        <span class="login-brand-sub">Equities · Derivatives · Global Benchmarks</span>
+                    </div>
+                </div>
+
+                <div class="login-hero-copy">
+                    <h1>Institutional Market Intelligence &amp; Execution Terminal</h1>
+                    <p>Real-time Indian &amp; global indices, TradingView multi-pane candlestick analysis, 1-second Option Tips, NSE Call/Put Chain, and cloud-synced portfolio tracking.</p>
+                </div>
+
+                <!-- Architectural Candlestick Visual Preview -->
+                <div class="login-chart-preview" aria-hidden="true">
+                    <div class="login-chart-preview-head">
+                        <span>NIFTY 50 · MCX BULLION · NSE F&amp;O</span>
+                        <span>MULTI-PANE ENGINE</span>
+                    </div>
+                    <svg viewBox="0 0 420 120" class="login-candle-svg" preserveAspectRatio="none">
+                        <defs>
+                            <linearGradient id="rfChartGlow" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.24"/>
+                                <stop offset="100%" stop-color="#38bdf8" stop-opacity="0"/>
+                            </linearGradient>
+                        </defs>
+                        <line x1="0" y1="30" x2="420" y2="30" stroke="rgba(148,163,184,0.12)" stroke-dasharray="3 3"/>
+                        <line x1="0" y1="65" x2="420" y2="65" stroke="rgba(148,163,184,0.12)" stroke-dasharray="3 3"/>
+                        <line x1="0" y1="98" x2="420" y2="98" stroke="rgba(148,163,184,0.12)" stroke-dasharray="3 3"/>
+                        <path d="M10 92 L45 84 L80 88 L115 70 L150 74 L185 52 L220 58 L255 44 L290 48 L325 32 L360 36 L405 18 L405 120 L10 120 Z" fill="url(#rfChartGlow)"/>
+                        <path d="M10 92 L45 84 L80 88 L115 70 L150 74 L185 52 L220 58 L255 44 L290 48 L325 32 L360 36 L405 18" fill="none" stroke="#38bdf8" stroke-width="2"/>
+                        <!-- Candlesticks -->
+                        <line x1="28" y1="78" x2="28" y2="100" stroke="#22c55e" stroke-width="1.5"/><rect x="23" y="83" width="10" height="11" rx="1.5" fill="#22c55e"/>
+                        <line x1="62" y1="74" x2="62" y2="94" stroke="#ef4444" stroke-width="1.5"/><rect x="57" y="79" width="10" height="10" rx="1.5" fill="#ef4444"/>
+                        <line x1="96" y1="64" x2="96" y2="90" stroke="#22c55e" stroke-width="1.5"/><rect x="91" y="69" width="10" height="15" rx="1.5" fill="#22c55e"/>
+                        <line x1="130" y1="62" x2="130" y2="82" stroke="#22c55e" stroke-width="1.5"/><rect x="125" y="66" width="10" height="11" rx="1.5" fill="#22c55e"/>
+                        <line x1="164" y1="54" x2="164" y2="79" stroke="#ef4444" stroke-width="1.5"/><rect x="159" y="60" width="10" height="12" rx="1.5" fill="#ef4444"/>
+                        <line x1="198" y1="45" x2="198" y2="68" stroke="#22c55e" stroke-width="1.5"/><rect x="193" y="49" width="10" height="14" rx="1.5" fill="#22c55e"/>
+                        <line x1="232" y1="44" x2="232" y2="65" stroke="#ef4444" stroke-width="1.5"/><rect x="227" y="49" width="10" height="10" rx="1.5" fill="#ef4444"/>
+                        <line x1="266" y1="36" x2="266" y2="57" stroke="#22c55e" stroke-width="1.5"/><rect x="261" y="40" width="10" height="12" rx="1.5" fill="#22c55e"/>
+                        <line x1="300" y1="34" x2="300" y2="55" stroke="#22c55e" stroke-width="1.5"/><rect x="295" y="38" width="10" height="11" rx="1.5" fill="#22c55e"/>
+                        <line x1="334" y1="24" x2="334" y2="46" stroke="#22c55e" stroke-width="1.5"/><rect x="329" y="28" width="10" height="13" rx="1.5" fill="#22c55e"/>
+                        <line x1="368" y1="22" x2="368" y2="44" stroke="#ef4444" stroke-width="1.5"/><rect x="363" y="27" width="10" height="10" rx="1.5" fill="#ef4444"/>
+                        <line x1="402" y1="12" x2="402" y2="34" stroke="#22c55e" stroke-width="1.5"/><rect x="397" y="16" width="10" height="13" rx="1.5" fill="#22c55e"/>
+                    </svg>
+                </div>
+
+                <!-- Exchange & Platform Ecosystem Logos -->
+                <div class="login-ecosystem-logos">
+                    <span class="login-eco-label">Integrated Exchanges &amp; Infrastructure</span>
+                    <div class="login-eco-grid">
+                        <div class="login-eco-item">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17l6-6 4 4 8-8"/><path d="M17 7h4v4"/></svg>
+                            <span>NSE</span>
+                        </div>
+                        <div class="login-eco-item">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="10" width="4" height="10"/><rect x="10" y="6" width="4" height="14"/><rect x="17" y="3" width="4" height="17"/></svg>
+                            <span>BSE</span>
+                        </div>
+                        <div class="login-eco-item">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><path d="M8.5 12h7M12 8.5v7"/></svg>
+                            <span>MCX</span>
+                        </div>
+                        <div class="login-eco-item">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3.6 9h16.8M3.6 15h16.8M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>
+                            <span>NASDAQ</span>
+                        </div>
+                        <div class="login-eco-item">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L4 7v5c0 5 3.5 9.5 8 10 4.5-.5 8-5 8-10V7l-8-5z"/></svg>
+                            <span>SAMCO</span>
+                        </div>
+                        <div class="login-eco-item">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 17L10 3l4 8 4-5 2 11-8 4-8-4z"/></svg>
+                            <span>Firebase</span>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <form id="login-form">
-                <div class="form-group">
-                    <label for="username">Username (ID)</label>
-                    <div class="input-wrapper"><i class="fa-solid fa-user"></i><input type="text" id="username" placeholder="Enter username..." required autocomplete="username"></div>
+
+            <!-- Right Card: Google Sign-In + Optional Username/Password -->
+            <div class="login-card login-pro-card">
+                <div class="login-header">
+                    <div class="login-card-logo-wrap">
+                        <img src="./icon.png" alt="Rahul Finance" class="login-card-logo">
+                    </div>
+                    <h2 class="login-brand-name">Rahul Finance</h2>
+                    <p>Sign in with an authorized Google account or terminal credentials.</p>
                 </div>
-                <div class="form-group">
-                    <label for="password">Password</label>
-                    <div class="input-wrapper"><i class="fa-solid fa-lock"></i><input type="password" id="password" placeholder="Enter password..." required autocomplete="current-password"></div>
+
+                <div id="login-admin-notice" class="login-admin-notice hidden">
+                    <i class="fa-solid fa-shield-halved"></i>
+                    <span>Sign in with an Admin Google account to open <strong>/admin</strong>.</span>
                 </div>
+
+                <button type="button" id="google-login-btn" class="rf-google-btn">
+                    <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true">
+                        <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17Z"/>
+                        <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.11-6.72-4.96H1.29v3.14C3.26 21.3 7.31 24 12 24Z"/>
+                        <path fill="#FBBC05" d="M5.28 14.24c-.24-.72-.38-1.49-.38-2.24s.14-1.52.38-2.24V6.62H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.38l3.99-3.14Z"/>
+                        <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.99 3.14c.95-2.85 3.6-4.96 6.72-4.96Z"/>
+                    </svg>
+                    <span>Continue with Google</span>
+                </button>
+
+                <div class="login-divider">
+                    <span>OR SIGN IN WITH CREDENTIALS</span>
+                </div>
+
+                <form id="login-form">
+                    <div class="form-group">
+                        <label for="username">Username (ID)</label>
+                        <div class="input-wrapper"><i class="fa-solid fa-user"></i><input type="text" id="username" placeholder="Enter username..." required autocomplete="username"></div>
+                    </div>
+                    <div class="form-group">
+                        <label for="password">Password</label>
+                        <div class="input-wrapper">
+                            <i class="fa-solid fa-lock"></i>
+                            <input type="password" id="password" placeholder="Enter password..." required autocomplete="current-password">
+                            <button type="button" id="login-toggle-password" class="login-eye-btn" aria-label="Show or hide password">
+                                <i class="fa-regular fa-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <button type="submit" class="login-btn">Sign In to Terminal <i class="fa-solid fa-arrow-right-to-bracket"></i></button>
+                </form>
+
+                <div id="login-password-disabled-note" class="login-disabled-note hidden">
+                    <i class="fa-solid fa-lock"></i>
+                    <span>Username &amp; password sign-in is disabled by Admin. Please continue with Google.</span>
+                </div>
+
                 <div id="login-error" class="login-error hidden"><i class="fa-solid fa-triangle-exclamation"></i> Invalid username or password!</div>
-                <button type="submit" class="login-btn">Log In <i class="fa-solid fa-arrow-right-to-bracket"></i></button>
-            </form>
-            <div class="login-footer">Created By : Rahul Popat</div>
+
+                <div class="login-footer">Created By : Rahul Popat</div>
+            </div>
         </div>
     </div>
 
@@ -2301,6 +2637,7 @@
     <script src="rf-tradingview-charts.js" defer></script>
     <script src="rf-terminal-ui.js" defer></script>
     <script type="module" src="rf-tanstack-grid.js"></script>
+    <script src="rf-auth-admin.js" defer></script>
     <script src="app.js" defer></script>
 </body>
 </html>
