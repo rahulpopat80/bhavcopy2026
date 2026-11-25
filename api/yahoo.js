@@ -4,6 +4,8 @@
 // - Plus ?tick=1 fast quote/tail endpoint (200ms micro-cache) & ?symbols=...&tick=1 batch quotes
 // - Supports GOLD_INR (MCX ₹/10g), SILVER_INR (MCX ₹/1kg), GC=F ($), SI=F ($), ^NSEI, ^BSESN, ^NSEBANK, & NSE/BSE stocks
 
+import { getLiveMarketSnapshot } from './live-market.js';
+
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 const tickMicroCache = new Map();
 const prevCloseMetaCache = new Map();
@@ -357,9 +359,27 @@ async function fetchFastTickForSymbol(nsSymbol) {
         return cachedTick.payload;
     }
 
-    // 1. MCX Gold / Silver INR fast path
+    // 1. MCX / Spot Parity Gold & Silver INR fast path (synchronized 2x/s with live-market engine)
     if (nsSymbol === 'GOLD_INR' || nsSymbol === 'SILVER_INR') {
         const isGold = nsSymbol === 'GOLD_INR';
+        const snap = await getLiveMarketSnapshot().catch(() => null);
+        const item = isGold ? snap?.gold : snap?.silver;
+        if (item && Number.isFinite(Number(item.price)) && Number(item.price) > 0) {
+            const nowSec = Math.floor(Date.now() / 1000);
+            const payload = buildTickResponse(
+                nsSymbol,
+                isGold ? 'GOLD MCX / 10g (INR ₹)' : 'SILVER MCX / 1kg (INR ₹)',
+                Number(item.price),
+                Number(item.prevClose) || Number(item.price),
+                nowSec,
+                0,
+                { time: nowSec, open: Number(item.price), high: Number(item.price), low: Number(item.price), close: Number(item.price), volume: 0 }
+            );
+            payload.marketState = item.marketState || null;
+            payload.source = item.source || null;
+            tickMicroCache.set(nsSymbol, { ts: Date.now(), payload });
+            return payload;
+        }
         const mcx = await fetchMcxCommodityPrice(isGold ? 'GOLD' : 'SILVER').catch(() => null);
         if (mcx && mcx.price > 0) {
             const nowSec = Math.floor(Date.now() / 1000);
@@ -605,9 +625,10 @@ export default async function handler(req, res) {
         const upstreamTarget = nsSymbol === 'GOLD_INR' ? 'GC=F' : (nsSymbol === 'SILVER_INR' ? 'SI=F' : nsSymbol);
         const upstreamRange = rawRange ? String(rawRange).trim() : defaultRange;
 
-        const [response, mcxRes] = await Promise.all([
+        const [response, mcxRes, liveFxRes] = await Promise.all([
             fetchYahooFromHosts(upstreamTarget, upstreamRange, upstreamInterval, 6000),
-            isInrMetal ? fetchMcxCommodityPrice(nsSymbol === 'GOLD_INR' ? 'GOLD' : 'SILVER').catch(() => null) : Promise.resolve(null)
+            isInrMetal ? fetchMcxCommodityPrice(nsSymbol === 'GOLD_INR' ? 'GOLD' : 'SILVER').catch(() => null) : Promise.resolve(null),
+            isInrMetal ? fetchTradingViewUsdInr().catch(() => null) : Promise.resolve(null)
         ]);
 
         if (!response.ok) {
@@ -625,20 +646,25 @@ export default async function handler(req, res) {
 
             if (isInrMetal && candles.length > 0) {
                 const comexRef = livePrice || candles[candles.length - 1].close;
-                let scaleFactor = nsSymbol === 'GOLD_INR' ? (85 * 10 / 31.1035) : (85 * 1000 / 31.1035);
+                const fxRate = Number.isFinite(liveFxRes?.price) && liveFxRes.price > 0 ? liveFxRes.price : null;
+                let scaleFactor = fxRate
+                    ? (nsSymbol === 'GOLD_INR' ? (fxRate * 10 / 31.1034768) : (fxRate * 1000 / 31.1034768))
+                    : null;
                 if (mcxRes && mcxRes.price > 0 && comexRef > 0) {
                     scaleFactor = mcxRes.price / comexRef;
                     livePrice = mcxRes.price;
-                } else if (comexRef > 0) {
+                } else if (scaleFactor && comexRef > 0) {
                     livePrice = comexRef * scaleFactor;
                 }
-                candles = candles.map(c => ({
-                    ...c,
-                    open: c.open * scaleFactor,
-                    high: c.high * scaleFactor,
-                    low: c.low * scaleFactor,
-                    close: c.close * scaleFactor
-                }));
+                if (scaleFactor) {
+                    candles = candles.map(c => ({
+                        ...c,
+                        open: c.open * scaleFactor,
+                        high: c.high * scaleFactor,
+                        low: c.low * scaleFactor,
+                        close: c.close * scaleFactor
+                    }));
+                }
             }
 
             data.candles = candles;

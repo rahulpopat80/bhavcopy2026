@@ -13,7 +13,12 @@ let cachedPayload = null;
 let cachedAt = 0;
 
 let cachedBreadth = { nseMarket: null, nifty50Breadth: null, nifty50Index: null, ts: 0, inFlight: null };
-let cachedExtraGlobal = { twii: null, sse3: null, ts: 0, inFlight: null };
+let cachedExtraGlobal = {
+    twii: null, sse3: null, nasdaq: null, hangseng: null, banknifty: null,
+    dji: null, gspc: null, gdaxi: null, n225: null, sse1: null, ks11: null,
+    ts: 0, inFlight: null
+};
+const tvScannerCache = new Map(); // market -> { map, ts, backoffUntil }
 
 const metalPrevCache = {
     'GC=F': { prevClose: null, ts: 0 },
@@ -48,6 +53,102 @@ function toNum(val) {
 
 function round2(n) {
     return Number.isFinite(n) ? Math.round(n * 100) / 100 : n;
+}
+
+function getTzClock(timeZone) {
+    const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone,
+        weekday: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+    }).formatToParts(new Date());
+    const map = {};
+    for (const p of parts) map[p.type] = p.value;
+    const wd = map.weekday;
+    const isWeekend = wd === 'Sat' || wd === 'Sun';
+    const hour = Number(map.hour === '24' ? 0 : map.hour);
+    const minute = Number(map.minute);
+    const mins = hour * 60 + minute;
+    return { wd, isWeekend, mins };
+}
+
+function isUsDstActive() {
+    try {
+        const tzPart = new Intl.DateTimeFormat('en-US', {
+            timeZone: 'America/New_York',
+            timeZoneName: 'short'
+        }).formatToParts(new Date()).find(p => p.type === 'timeZoneName')?.value || '';
+        return tzPart.includes('EDT');
+    } catch {
+        return true;
+    }
+}
+
+export function getExchangeScheduleState(exchangeCode) {
+    const code = String(exchangeCode || '').toUpperCase();
+    if (code === 'FX_SPOT' || code === 'COMEX' || code === 'FX') {
+        const et = getTzClock('America/New_York');
+        if (et.wd === 'Sat') return 'CLOSED';
+        if (et.wd === 'Fri' && et.mins >= 17 * 60) return 'CLOSED';
+        if (et.wd === 'Sun' && et.mins < 17 * 60) return 'CLOSED';
+        return 'OPEN';
+    }
+    if (code === 'NSE' || code === 'BSE') {
+        const ist = getTzClock('Asia/Kolkata');
+        if (ist.isWeekend) return 'CLOSED';
+        if (ist.mins >= 9 * 60 && ist.mins < 9 * 60 + 15) return 'PRE';
+        if (ist.mins >= 9 * 60 + 15 && ist.mins <= 15 * 60 + 30) return 'OPEN';
+        return 'CLOSED';
+    }
+    if (code === 'MCX') {
+        const ist = getTzClock('Asia/Kolkata');
+        if (ist.isWeekend) return 'CLOSED';
+        const mcxCloseMins = isUsDstActive() ? (23 * 60 + 30) : (23 * 60 + 55);
+        if (ist.mins >= 9 * 60 && ist.mins <= mcxCloseMins) return 'OPEN';
+        return 'CLOSED';
+    }
+    if (code === 'NASDAQ' || code === 'US') {
+        const et = getTzClock('America/New_York');
+        if (et.isWeekend) return 'CLOSED';
+        if (et.mins >= 4 * 60 && et.mins < 9 * 60 + 30) return 'PRE';
+        if (et.mins >= 9 * 60 + 30 && et.mins <= 16 * 60) return 'OPEN';
+        if (et.mins > 16 * 60 && et.mins <= 20 * 60) return 'POST';
+        return 'CLOSED';
+    }
+    if (code === 'HKEX') {
+        const hk = getTzClock('Asia/Hong_Kong');
+        if (hk.isWeekend) return 'CLOSED';
+        if ((hk.mins >= 9 * 60 + 30 && hk.mins <= 12 * 60) || (hk.mins >= 13 * 60 && hk.mins <= 16 * 60)) return 'OPEN';
+        if (hk.mins > 12 * 60 && hk.mins < 13 * 60) return 'BREAK';
+        return 'CLOSED';
+    }
+    if (code === 'XETRA') {
+        const de = getTzClock('Europe/Berlin');
+        if (de.isWeekend) return 'CLOSED';
+        return (de.mins >= 9 * 60 && de.mins <= 17 * 60 + 30) ? 'OPEN' : 'CLOSED';
+    }
+    if (code === 'TSE') {
+        const jp = getTzClock('Asia/Tokyo');
+        if (jp.isWeekend) return 'CLOSED';
+        return ((jp.mins >= 9 * 60 && jp.mins <= 11 * 60 + 30) || (jp.mins >= 12 * 60 + 30 && jp.mins <= 15 * 60 + 30)) ? 'OPEN' : 'CLOSED';
+    }
+    if (code === 'SSE') {
+        const cn = getTzClock('Asia/Shanghai');
+        if (cn.isWeekend) return 'CLOSED';
+        return ((cn.mins >= 9 * 60 + 30 && cn.mins <= 11 * 60 + 30) || (cn.mins >= 13 * 60 && cn.mins <= 15 * 60)) ? 'OPEN' : 'CLOSED';
+    }
+    if (code === 'TWSE') {
+        const tw = getTzClock('Asia/Taipei');
+        if (tw.isWeekend) return 'CLOSED';
+        return (tw.mins >= 9 * 60 && tw.mins <= 13 * 60 + 30) ? 'OPEN' : 'CLOSED';
+    }
+    if (code === 'KRX') {
+        const kr = getTzClock('Asia/Seoul');
+        if (kr.isWeekend) return 'CLOSED';
+        return (kr.mins >= 9 * 60 && kr.mins <= 15 * 60 + 30) ? 'OPEN' : 'CLOSED';
+    }
+    return 'CLOSED';
 }
 
 function getMcxCandidateExpiries(preferred) {
@@ -134,6 +235,17 @@ async function fetchYahooChart(symbol) {
 }
 
 async function fetchTradingViewScanner(market, tickers, columns = ['close', 'change', 'change_abs', 'Bid', 'Ask']) {
+    const cacheKey = `${market}:${tickers.length}`;
+    const entry = tvScannerCache.get(cacheKey) || { map: new Map(), ts: 0, backoffUntil: 0 };
+    const now = Date.now();
+    const minIntervalMs = market === 'global' ? 3000 : 1200;
+    if (now < entry.backoffUntil) {
+        return entry.map;
+    }
+    if (entry.map.size > 0 && (now - entry.ts) < minIntervalMs) {
+        return entry.map;
+    }
+
     const r = await fetchWithTimeout(`https://scanner.tradingview.com/${market}/scan`, {
         method: 'POST',
         headers: { 'User-Agent': UA, 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -142,6 +254,11 @@ async function fetchTradingViewScanner(market, tickers, columns = ['close', 'cha
             columns
         })
     }, 1500);
+    if (r.status === 429) {
+        entry.backoffUntil = now + 20000;
+        tvScannerCache.set(cacheKey, entry);
+        return entry.map;
+    }
     if (!r.ok) throw new Error(`TV ${market} HTTP ${r.status}`);
     const j = await r.json();
     const map = new Map();
@@ -157,18 +274,21 @@ async function fetchTradingViewScanner(market, tickers, columns = ['close', 'cha
             ? (bid + ask) / 2
             : close;
         if (!Number.isFinite(price) || price <= 0) continue;
-        const change = Number.isFinite(chgAbs) ? chgAbs : 0;
-        const prevClose = Number.isFinite(close - change) && (close - change) > 0 ? (close - change) : price;
-        const finalChange = price - prevClose;
-        const finalPct = prevClose > 0 ? (finalChange / prevClose) * 100 : (Number.isFinite(pct) ? pct : 0);
+        const prevClose = Number.isFinite(close - chgAbs) && (close - chgAbs) > 0 ? (close - chgAbs) : null;
+        const change = Number.isFinite(chgAbs) ? (prevClose ? price - prevClose : chgAbs) : (prevClose ? price - prevClose : null);
+        const finalPct = (prevClose && change !== null) ? (change / prevClose) * 100 : (Number.isFinite(pct) ? pct : null);
         map.set(row.s, {
             price,
             prevClose,
-            change: finalChange,
+            change,
             changePercent: finalPct
         });
     }
-    return map;
+    if (map.size > 0) {
+        tvScannerCache.set(cacheKey, { map, ts: now, backoffUntil: 0 });
+        return map;
+    }
+    return entry.map;
 }
 
 async function fetchSwissquoteBbo(instrument) {
@@ -195,14 +315,17 @@ async function fetchGrowwIndex(exchange, segment, symbol) {
     const d = await r.json();
     const price = toNum(d.value ?? d.indexIndicativePrice ?? d.close);
     if (!Number.isFinite(price) || price <= 0) throw new Error(`Invalid Groww price for ${symbol}`);
-    const change = Number.isFinite(toNum(d.dayChange)) ? toNum(d.dayChange) : 0;
-    const changePercent = Number.isFinite(toNum(d.dayChangePerc)) ? toNum(d.dayChangePerc) : 0;
+    const prevClose = Number.isFinite(toNum(d.close)) && toNum(d.close) > 0 ? toNum(d.close) : null;
+    const change = Number.isFinite(toNum(d.dayChange)) ? toNum(d.dayChange) : (prevClose ? price - prevClose : null);
+    const changePercent = Number.isFinite(toNum(d.dayChangePerc)) ? toNum(d.dayChangePerc) : (prevClose && change !== null ? (change / prevClose) * 100 : null);
     return {
         price,
         change,
         changePercent,
-        prevClose: toNum(d.close),
-        source: exchange === 'BSE' ? 'BSE Live' : 'NSE Live'
+        prevClose,
+        exchange,
+        marketState: getExchangeScheduleState(exchange),
+        source: exchange === 'BSE' ? 'BSE Feed' : 'NSE Feed'
     };
 }
 
@@ -215,17 +338,20 @@ async function fetchMcSensex() {
     const d = j?.data;
     if (!d) throw new Error('Empty MC Sensex data');
     const price = toNum(d.pricecurrent);
-    const change = toNum(d.pricechange);
-    const changePercent = toNum(d.pricepercentchange);
+    const prevClose = Number.isFinite(toNum(d.priceprevclose)) && toNum(d.priceprevclose) > 0 ? toNum(d.priceprevclose) : null;
+    const change = Number.isFinite(toNum(d.pricechange)) ? toNum(d.pricechange) : (prevClose && Number.isFinite(price) ? price - prevClose : null);
+    const changePercent = Number.isFinite(toNum(d.pricepercentchange)) ? toNum(d.pricepercentchange) : (prevClose && change !== null ? (change / prevClose) * 100 : null);
     const advances = Number.isFinite(toNum(d.adv)) ? Math.round(toNum(d.adv)) : null;
     const declines = Number.isFinite(toNum(d.decl)) ? Math.round(toNum(d.decl)) : null;
     return {
-        index: Number.isFinite(price) ? {
+        index: Number.isFinite(price) && price > 0 ? {
             price,
-            change: Number.isFinite(change) ? change : 0,
-            changePercent: Number.isFinite(changePercent) ? changePercent : 0,
-            prevClose: toNum(d.priceprevclose),
-            source: 'BSE Live'
+            change,
+            changePercent,
+            prevClose,
+            exchange: 'BSE',
+            marketState: getExchangeScheduleState('BSE'),
+            source: 'BSE Feed'
         } : null,
         breadth: (advances !== null && declines !== null) ? {
             advances,
@@ -305,23 +431,33 @@ function triggerBackgroundNseBreadth() {
     })();
 }
 
-// Background fetcher for remaining Global Indices not covered by TradingView global/scan
+// Background fetcher for Global Indices (covers Yahoo fallback when TradingView global/scan rate-limits)
 function triggerBackgroundExtraGlobal() {
     const now = Date.now();
-    if (cachedExtraGlobal.inFlight || (now - cachedExtraGlobal.ts) < 5000) return;
+    if (cachedExtraGlobal.inFlight || (now - cachedExtraGlobal.ts) < 3500) return;
 
     cachedExtraGlobal.inFlight = (async () => {
         try {
-            const [twRes, ss3Res] = await Promise.allSettled([
-                fetchYahooChart('^TWII'),
-                fetchYahooChart('000003.SS')
-            ]);
-            if (twRes.status === 'fulfilled' && twRes.value) {
-                cachedExtraGlobal.twii = { ...twRes.value, source: 'Yahoo Finance' };
-            }
-            if (ss3Res.status === 'fulfilled' && ss3Res.value) {
-                cachedExtraGlobal.sse3 = { ...ss3Res.value, source: 'Yahoo Finance' };
-            }
+            const pairs = [
+                ['twii', '^TWII'],
+                ['sse3', '000003.SS'],
+                ['nasdaq', '^IXIC'],
+                ['hangseng', '^HSI'],
+                ['banknifty', '^NSEBANK'],
+                ['dji', '^DJI'],
+                ['gspc', '^GSPC'],
+                ['gdaxi', '^GDAXI'],
+                ['n225', '^N225'],
+                ['sse1', '000001.SS'],
+                ['ks11', '^KS11']
+            ];
+            const settled = await Promise.allSettled(pairs.map(([, sym]) => fetchYahooChart(sym)));
+            settled.forEach((res, idx) => {
+                if (res.status === 'fulfilled' && res.value) {
+                    const key = pairs[idx][0];
+                    cachedExtraGlobal[key] = { ...res.value, source: 'Yahoo Finance' };
+                }
+            });
         } catch {
             // ignore
         } finally {
@@ -332,6 +468,9 @@ function triggerBackgroundExtraGlobal() {
 }
 
 function applyMcxLiveParity(symKey, mcxItem, spotUsdItem, usdInrItem) {
+    const mcxState = getExchangeScheduleState('MCX');
+    const fxState = getExchangeScheduleState('FX_SPOT');
+    const unit = symKey === 'GOLD' ? '₹/10g' : '₹/kg';
     const currentFactor = (spotUsdItem?.price > 0 && usdInrItem?.price > 0)
         ? (spotUsdItem.price * usdInrItem.price)
         : null;
@@ -348,6 +487,32 @@ function applyMcxLiveParity(symKey, mcxItem, spotUsdItem, usdInrItem) {
             state.lastUpd = mcxItem.lastUpdRaw || '';
             state.baseFactor = currentFactor;
             state.updatedAt = Date.now();
+        }
+
+        // Only adjust between MCX ticks using live Spot*FX when MCX OR Spot FX is actively open;
+        // label transparently whether MCX itself is OPEN or CLOSED (indicative COMEX parity).
+        if (mcxState === 'OPEN') {
+            if (!mcxChanged && currentFactor && state.baseFactor && state.basePrice) {
+                const ratio = currentFactor / state.baseFactor;
+                if (Number.isFinite(ratio) && Math.abs(ratio - 1) < 0.05) {
+                    const livePrice = round2(state.basePrice * ratio);
+                    const prevClose = round2(state.prevClose || state.basePrice);
+                    const change = round2(livePrice - prevClose);
+                    const changePercent = prevClose > 0 ? round2((change / prevClose) * 100) : null;
+                    return {
+                        price: livePrice,
+                        prevClose,
+                        change,
+                        changePercent,
+                        expiry: mcxItem.expiry,
+                        updatedTime: mcxItem.updatedTime,
+                        unit,
+                        exchange: 'MCX',
+                        marketState: 'OPEN',
+                        source: 'MCX + Spot FX Live'
+                    };
+                }
+            }
             return {
                 price: round2(mcxItem.price),
                 prevClose: round2(mcxItem.prevClose),
@@ -355,18 +520,21 @@ function applyMcxLiveParity(symKey, mcxItem, spotUsdItem, usdInrItem) {
                 changePercent: round2(mcxItem.changePercent),
                 expiry: mcxItem.expiry,
                 updatedTime: mcxItem.updatedTime,
+                unit,
+                exchange: 'MCX',
+                marketState: 'OPEN',
                 source: 'MCX Live'
             };
         }
 
-        // Between MCX edge refreshes (or after MCX closes): adjust MCX benchmark by exact real-time Spot*USDINR % move
-        if (currentFactor && state.baseFactor && state.basePrice) {
+        // MCX is closed: if global Spot Bullion + FX is still open, show indicative COMEX/Spot parity clearly labeled
+        if (fxState === 'OPEN' && currentFactor && state.baseFactor && state.basePrice) {
             const ratio = currentFactor / state.baseFactor;
-            if (Number.isFinite(ratio) && Math.abs(ratio - 1) < 0.05) {
+            if (Number.isFinite(ratio) && Math.abs(ratio - 1) < 0.06) {
                 const livePrice = round2(state.basePrice * ratio);
                 const prevClose = round2(state.prevClose || state.basePrice);
                 const change = round2(livePrice - prevClose);
-                const changePercent = prevClose > 0 ? round2((change / prevClose) * 100) : 0;
+                const changePercent = prevClose > 0 ? round2((change / prevClose) * 100) : null;
                 return {
                     price: livePrice,
                     prevClose,
@@ -374,7 +542,11 @@ function applyMcxLiveParity(symKey, mcxItem, spotUsdItem, usdInrItem) {
                     changePercent,
                     expiry: mcxItem.expiry,
                     updatedTime: mcxItem.updatedTime,
-                    source: 'MCX + Spot FX Live'
+                    mcxClose: round2(mcxItem.price),
+                    unit,
+                    exchange: 'MCX (Closed) · COMEX Parity',
+                    marketState: 'PARITY',
+                    source: 'COMEX Spot Parity'
                 };
             }
         }
@@ -386,7 +558,10 @@ function applyMcxLiveParity(symKey, mcxItem, spotUsdItem, usdInrItem) {
             changePercent: round2(mcxItem.changePercent),
             expiry: mcxItem.expiry,
             updatedTime: mcxItem.updatedTime,
-            source: 'MCX Live'
+            unit,
+            exchange: 'MCX',
+            marketState: 'CLOSED',
+            source: 'MCX Closed (Last Traded)'
         };
     }
 
@@ -396,28 +571,37 @@ function applyMcxLiveParity(symKey, mcxItem, spotUsdItem, usdInrItem) {
         const price = round2(spotUsdItem.price * usdInrItem.price * gramsFactor);
         const prev = round2((spotUsdItem.prevClose || spotUsdItem.price) * (usdInrItem.prevClose || usdInrItem.price) * gramsFactor);
         const change = round2(price - prev);
-        const changePercent = prev > 0 ? round2((change / prev) * 100) : 0;
-        return { price, prevClose: prev, change, changePercent, source: 'COMEX Parity' };
+        const changePercent = prev > 0 ? round2((change / prev) * 100) : null;
+        return {
+            price,
+            prevClose: prev,
+            change,
+            changePercent,
+            unit,
+            exchange: 'COMEX/FX Spot',
+            marketState: fxState,
+            source: 'COMEX Spot Parity'
+        };
     }
 
     return null;
 }
 
-export default async function handler(req, res) {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    res.setHeader('Cache-Control', 'no-store, max-age=0');
+function decorateWithExchange(item, exchangeCode, fallbackSource = '') {
+    if (!item || !Number.isFinite(Number(item.price)) || Number(item.price) <= 0) return null;
+    return {
+        ...item,
+        exchange: item.exchange || exchangeCode,
+        marketState: item.marketState || getExchangeScheduleState(exchangeCode),
+        source: item.source || fallbackSource
+    };
+}
 
-    if (req.method === 'OPTIONS') {
-        return res.status(200).end();
-    }
-
+export async function getLiveMarketSnapshot() {
     if (cachedPayload && (Date.now() - cachedAt) < 120) {
-        return res.status(200).json(cachedPayload);
+        return cachedPayload;
     }
 
-    // Fire slow secondary background refreshes without blocking the 500ms stream
     triggerBackgroundNseBreadth();
     triggerBackgroundExtraGlobal();
 
@@ -453,10 +637,11 @@ export default async function handler(req, res) {
     const tvCfd = tvCfdRes.status === 'fulfilled' ? tvCfdRes.value : new Map();
     const tvGlobal = tvGlobalRes.status === 'fulfilled' ? tvGlobalRes.value : new Map();
     const mcSensexData = mcSensexRes.status === 'fulfilled' ? mcSensexRes.value : {};
+    const fxMarketState = getExchangeScheduleState('FX_SPOT');
 
     // 1. USD / INR (DOLLAR)
     let usdInr = tvForex.get('PEPPERSTONE:USDINR')
-        ? { ...tvForex.get('PEPPERSTONE:USDINR'), symbol: 'INR=X', currency: 'INR', source: 'FX Live' }
+        ? { ...tvForex.get('PEPPERSTONE:USDINR'), symbol: 'INR=X', currency: 'INR', exchange: 'FX', marketState: fxMarketState, source: 'FX Interbank' }
         : (cachedPayload?.usdInr || null);
 
     // 2. GOLD ($ USD) & SILVER ($ USD) — sub-second TradingView Spot + Swissquote BBO
@@ -475,11 +660,13 @@ export default async function handler(req, res) {
             changePercent: (change / tvGoldSpot.prevClose) * 100,
             currency: 'USD',
             symbol: 'GC=F',
-            unit: '/oz',
-            source: 'Spot Live'
+            unit: '$/oz',
+            exchange: 'SPOT',
+            marketState: fxMarketState,
+            source: 'Swissquote BBO'
         };
     } else if (tvGoldSpot) {
-        goldUsd = { ...tvGoldSpot, currency: 'USD', symbol: 'GC=F', unit: '/oz', source: 'Spot Live' };
+        goldUsd = { ...tvGoldSpot, currency: 'USD', symbol: 'GC=F', unit: '$/oz', exchange: 'SPOT', marketState: fxMarketState, source: 'TradingView Spot' };
     } else if (cachedPayload?.goldUsd) {
         goldUsd = cachedPayload.goldUsd;
     }
@@ -494,11 +681,13 @@ export default async function handler(req, res) {
             changePercent: (change / tvSilverSpot.prevClose) * 100,
             currency: 'USD',
             symbol: 'SI=F',
-            unit: '/oz',
-            source: 'Spot Live'
+            unit: '$/oz',
+            exchange: 'SPOT',
+            marketState: fxMarketState,
+            source: 'Swissquote BBO'
         };
     } else if (tvSilverSpot) {
-        silverUsd = { ...tvSilverSpot, currency: 'USD', symbol: 'SI=F', unit: '/oz', source: 'Spot Live' };
+        silverUsd = { ...tvSilverSpot, currency: 'USD', symbol: 'SI=F', unit: '$/oz', exchange: 'SPOT', marketState: fxMarketState, source: 'TradingView Spot' };
     } else if (cachedPayload?.silverUsd) {
         silverUsd = cachedPayload.silverUsd;
     }
@@ -506,42 +695,71 @@ export default async function handler(req, res) {
     // 3. NIFTY 50 & SENSEX
     let nifty = growwNiftyRes.status === 'fulfilled'
         ? growwNiftyRes.value
-        : (tvGlobal.get('NSE:NIFTY') ? { ...tvGlobal.get('NSE:NIFTY'), source: 'NSE Live' } : (cachedBreadth.nifty50Index || null));
+        : (tvGlobal.get('NSE:NIFTY')
+            ? decorateWithExchange(tvGlobal.get('NSE:NIFTY'), 'NSE', 'TradingView NSE')
+            : (cachedBreadth.nifty50Index ? decorateWithExchange(cachedBreadth.nifty50Index, 'NSE', 'NSE Feed') : null));
 
     let sensex = growwSensexRes.status === 'fulfilled'
         ? growwSensexRes.value
-        : (mcSensexData.index || (tvGlobal.get('BSE:SENSEX') ? { ...tvGlobal.get('BSE:SENSEX'), source: 'BSE Live' } : null));
+        : (mcSensexData.index || (tvGlobal.get('BSE:SENSEX') ? decorateWithExchange(tvGlobal.get('BSE:SENSEX'), 'BSE', 'TradingView BSE') : null));
 
-    // 4. NASDAQ & HANG SENG (sub-second TradingView direct)
-    const nasdaq = tvGlobal.get('NASDAQ:IXIC')
-        ? { ...tvGlobal.get('NASDAQ:IXIC'), source: 'Live Feed' }
-        : (cachedPayload?.nasdaq || null);
-    const hangseng = tvGlobal.get('HSI:HSI')
-        ? { ...tvGlobal.get('HSI:HSI'), source: 'Live Feed' }
-        : (cachedPayload?.hangseng || null);
+    // 4. NASDAQ, HANG SENG & BANK NIFTY (TradingView primary + Yahoo background/cold-start fallback)
+    let nasdaq = tvGlobal.get('NASDAQ:IXIC')
+        ? decorateWithExchange(tvGlobal.get('NASDAQ:IXIC'), 'NASDAQ', 'NASDAQ Feed')
+        : (cachedExtraGlobal.nasdaq
+            ? decorateWithExchange(cachedExtraGlobal.nasdaq, 'NASDAQ', 'Yahoo NASDAQ')
+            : (cachedPayload?.nasdaq || null));
+    let hangseng = tvGlobal.get('HSI:HSI')
+        ? decorateWithExchange(tvGlobal.get('HSI:HSI'), 'HKEX', 'HKEX Feed')
+        : (cachedExtraGlobal.hangseng
+            ? decorateWithExchange(cachedExtraGlobal.hangseng, 'HKEX', 'Yahoo HKEX')
+            : (cachedPayload?.hangseng || null));
+    let banknifty = tvGlobal.get('NSE:BANKNIFTY')
+        ? decorateWithExchange(tvGlobal.get('NSE:BANKNIFTY'), 'NSE', 'NSE Feed')
+        : (cachedExtraGlobal.banknifty
+            ? decorateWithExchange(cachedExtraGlobal.banknifty, 'NSE', 'Yahoo NSE')
+            : (cachedPayload?.globalIndices?.['^NSEBANK'] || null));
 
-    // Last-resort Yahoo fallbacks ONLY on cold start if both primary sources failed
+    // Last-resort Yahoo fallbacks ONLY on cold start if primary sources failed
     const fallbacks = [];
     if (!usdInr) {
-        fallbacks.push(fetchYahooChart('INR=X').then(d => { usdInr = { ...d, symbol: 'INR=X', currency: 'INR', source: 'Yahoo FX' }; }).catch(() => {}));
+        fallbacks.push(fetchYahooChart('INR=X').then(d => { usdInr = { ...d, symbol: 'INR=X', currency: 'INR', exchange: 'FX', marketState: fxMarketState, source: 'Yahoo FX' }; }).catch(() => {}));
     }
     if (!goldUsd) {
-        fallbacks.push(fetchYahooChart('GC=F').then(d => { goldUsd = { ...d, currency: 'USD', symbol: 'GC=F', unit: '/oz', source: 'COMEX USD' }; }).catch(() => {}));
+        fallbacks.push(fetchYahooChart('GC=F').then(d => { goldUsd = { ...d, currency: 'USD', symbol: 'GC=F', unit: '$/oz', exchange: 'COMEX', marketState: fxMarketState, source: 'COMEX Yahoo' }; }).catch(() => {}));
     }
     if (!silverUsd) {
-        fallbacks.push(fetchYahooChart('SI=F').then(d => { silverUsd = { ...d, currency: 'USD', symbol: 'SI=F', unit: '/oz', source: 'COMEX USD' }; }).catch(() => {}));
+        fallbacks.push(fetchYahooChart('SI=F').then(d => { silverUsd = { ...d, currency: 'USD', symbol: 'SI=F', unit: '$/oz', exchange: 'COMEX', marketState: fxMarketState, source: 'COMEX Yahoo' }; }).catch(() => {}));
     }
     if (!nifty) {
-        fallbacks.push(fetchYahooChart('^NSEI').then(d => { nifty = { ...d, source: 'Yahoo' }; }).catch(() => {}));
+        fallbacks.push(fetchYahooChart('^NSEI').then(d => { nifty = decorateWithExchange(d, 'NSE', 'Yahoo NSE'); }).catch(() => {}));
     }
     if (!sensex) {
-        fallbacks.push(fetchYahooChart('^BSESN').then(d => { sensex = { ...d, source: 'Yahoo' }; }).catch(() => {}));
+        fallbacks.push(fetchYahooChart('^BSESN').then(d => { sensex = decorateWithExchange(d, 'BSE', 'Yahoo BSE'); }).catch(() => {}));
+    }
+    if (!nasdaq) {
+        fallbacks.push(fetchYahooChart('^IXIC').then(d => {
+            cachedExtraGlobal.nasdaq = d;
+            nasdaq = decorateWithExchange(d, 'NASDAQ', 'Yahoo NASDAQ');
+        }).catch(() => {}));
+    }
+    if (!hangseng) {
+        fallbacks.push(fetchYahooChart('^HSI').then(d => {
+            cachedExtraGlobal.hangseng = d;
+            hangseng = decorateWithExchange(d, 'HKEX', 'Yahoo HKEX');
+        }).catch(() => {}));
+    }
+    if (!banknifty) {
+        fallbacks.push(fetchYahooChart('^NSEBANK').then(d => {
+            cachedExtraGlobal.banknifty = d;
+            banknifty = decorateWithExchange(d, 'NSE', 'Yahoo NSE');
+        }).catch(() => {}));
     }
     if (fallbacks.length > 0) {
         await Promise.allSettled(fallbacks);
     }
 
-    // 5. GOLD /10g (INR) & SILVER /1kg (INR) — MCX + real-time FX/Spot parity continuity
+    // 5. GOLD /10g (INR) & SILVER /1kg (INR)
     const mcxGold = mcxGoldRes.status === 'fulfilled' ? mcxGoldRes.value : null;
     const mcxSilver = mcxSilverRes.status === 'fulfilled' ? mcxSilverRes.value : null;
 
@@ -551,19 +769,19 @@ export default async function handler(req, res) {
     if (gold && goldUsd) gold = { ...gold, usd: goldUsd };
     if (silver && silverUsd) silver = { ...silver, usd: silverUsd };
 
-    // 6. All Global Indices Live Map (for instant 500ms Global Indices tab updates)
+    // 6. All Global Indices Live Map
     const globalIndices = {
-        '^NSEBANK': tvGlobal.get('NSE:BANKNIFTY') || null,
-        '^DJI': tvGlobal.get('DJ:DJI') || null,
-        '^GSPC': tvGlobal.get('SP:SPX') || null,
-        '^IXIC': tvGlobal.get('NASDAQ:IXIC') || null,
-        '^GDAXI': tvGlobal.get('XETR:DAX') || null,
-        '^N225': tvGlobal.get('TVC:NI225') || null,
-        '^HSI': tvGlobal.get('HSI:HSI') || null,
-        '000001.SS': tvGlobal.get('SSE:000001') || null,
-        '000003.SS': cachedExtraGlobal.sse3 || null,
-        '^TWII': cachedExtraGlobal.twii || null,
-        '^KS11': tvGlobal.get('KRX:KOSPI') || null
+        '^NSEBANK': banknifty,
+        '^DJI': decorateWithExchange(tvGlobal.get('DJ:DJI') || cachedExtraGlobal.dji, 'US', 'NYSE/US Feed'),
+        '^GSPC': decorateWithExchange(tvGlobal.get('SP:SPX') || cachedExtraGlobal.gspc, 'US', 'US Feed'),
+        '^IXIC': nasdaq,
+        '^GDAXI': decorateWithExchange(tvGlobal.get('XETR:DAX') || cachedExtraGlobal.gdaxi, 'XETRA', 'XETRA Feed'),
+        '^N225': decorateWithExchange(tvGlobal.get('TVC:NI225') || cachedExtraGlobal.n225, 'TSE', 'TSE Feed'),
+        '^HSI': hangseng,
+        '000001.SS': decorateWithExchange(tvGlobal.get('SSE:000001') || cachedExtraGlobal.sse1, 'SSE', 'SSE Feed'),
+        '000003.SS': decorateWithExchange(cachedExtraGlobal.sse3, 'SSE', 'Yahoo SSE'),
+        '^TWII': decorateWithExchange(cachedExtraGlobal.twii, 'TWSE', 'Yahoo TWSE'),
+        '^KS11': decorateWithExchange(tvGlobal.get('KRX:KOSPI') || cachedExtraGlobal.ks11, 'KRX', 'KRX Feed')
     };
 
     const payload = {
@@ -577,6 +795,14 @@ export default async function handler(req, res) {
         nasdaq,
         hangseng,
         globalIndices,
+        exchangeStates: {
+            NSE: getExchangeScheduleState('NSE'),
+            BSE: getExchangeScheduleState('BSE'),
+            MCX: getExchangeScheduleState('MCX'),
+            FX: fxMarketState,
+            NASDAQ: getExchangeScheduleState('NASDAQ'),
+            HKEX: getExchangeScheduleState('HKEX')
+        },
         breadth: {
             nseMarket: cachedBreadth.nseMarket || null,
             sensex30: mcSensexData.breadth || cachedPayload?.breadth?.sensex30 || null,
@@ -587,5 +813,19 @@ export default async function handler(req, res) {
 
     cachedPayload = payload;
     cachedAt = Date.now();
+    return payload;
+}
+
+export default async function handler(req, res) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Cache-Control', 'no-store, max-age=0');
+
+    if (req.method === 'OPTIONS') {
+        return res.status(200).end();
+    }
+
+    const payload = await getLiveMarketSnapshot();
     return res.status(200).json(payload);
 }

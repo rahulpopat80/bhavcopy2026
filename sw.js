@@ -1,9 +1,12 @@
 // FIX: Bumped cache version so updated app.js/index.html/style.css are served immediately
-const CACHE_NAME = 'rahul-finance-cache-v23-20261125';
+const CACHE_NAME = 'rahul-finance-cache-v24-20261125';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
   './app.js',
+  './rf-tradingview-charts.js',
+  './rf-terminal-ui.js',
+  './rf-tanstack-grid.js',
   './style.css',
   './manifest.json',
   './icon.png'
@@ -35,7 +38,7 @@ self.addEventListener('activate', (e) => {
   );
 });
 
-// FIX: Network-First strategy for app.js, index.html, style.css (cache only as offline fallback)
+// FIX: Network-First strategy for app shell & terminal modules (cache only as offline fallback)
 self.addEventListener('fetch', (e) => {
   const url = e.request.url;
 
@@ -55,6 +58,9 @@ self.addEventListener('fetch', (e) => {
   const isCoreAppFile =
     e.request.mode === 'navigate' ||
     url.endsWith('/app.js') ||
+    url.endsWith('/rf-tradingview-charts.js') ||
+    url.endsWith('/rf-terminal-ui.js') ||
+    url.endsWith('/rf-tanstack-grid.js') ||
     url.endsWith('/index.html') ||
     url.endsWith('/style.css') ||
     url.endsWith('/');

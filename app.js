@@ -69,6 +69,7 @@ let state = {
     researchChartInstance: null,
     volumePromoterSource: 'GLOBAL'
 };
+window.state = state;
 
 // Live tick TTL: 450ms (~2x/sec real-time refresh across all stocks & indices), 15s backoff on failed symbols
 const PRICE_CACHE_TTL_MS = 450;
@@ -205,7 +206,12 @@ function startDashboardAfterLogin() {
     // Load Master File from Local Storage after painting UI, then refresh from Cloud in background
     loadMasterOnStartup();
 
-    // Live 2x/sec (~500ms) feed for NIFTY 50, SENSEX, GOLD/10g (INR & USD), SILVER/1kg (INR & USD), NASDAQ, HANG SENG & Advance/Decline
+    // Connect real-time WebSocket stream (2x/sec push) with automatic HTTP fallback
+    if (window.RfTerminalUI && typeof window.RfTerminalUI.connectMarketStream === 'function') {
+        window.RfTerminalUI.connectMarketStream();
+    }
+
+    // Live 2x/sec (~500ms) feed fallback for NIFTY 50, SENSEX, GOLD/10g (INR & USD), SILVER/1kg (INR & USD), NASDAQ, HANG SENG & Advance/Decline
     if (typeof fetchLiveMarket1s === 'function') {
         fetchLiveMarket1s();
     }
@@ -397,9 +403,10 @@ function initEvents() {
             document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
             const tabCC = document.getElementById('tab-candle-chart');
             const ccPane = document.getElementById('candle-chart-tab-content');
-            document.querySelectorAll('#main-app > div[id$="-tab-content"]').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('#main-app div[id$="-tab-content"]').forEach(el => el.classList.add('hidden'));
             if (tabCC) tabCC.classList.add('active');
             if (ccPane) ccPane.classList.remove('hidden');
+            window.RfTerminalUI?.updateActiveWorkspaceTitle();
 
             if (typeof initCandleChartTab === 'function') initCandleChartTab();
             if (typeof loadCandleChartTab === 'function') loadCandleChartTab(true);
@@ -571,6 +578,7 @@ function initEvents() {
     }
 
     // Tab switching logic
+    const tabOverview    = document.getElementById('tab-overview');
     const tabResearch    = document.getElementById('tab-research');
     const tabPortfolio   = document.getElementById('tab-portfolio');
     const tabResults     = document.getElementById('tab-results');
@@ -588,6 +596,7 @@ function initEvents() {
     const tabSamcoWeb    = document.getElementById('tab-samco-web');
     const tabWhatsappWeb = document.getElementById('tab-whatsapp-web');
     
+    const overviewTabContent      = document.getElementById('overview-tab-content');
     const researchTabContent      = document.getElementById('research-tab-content');
     const portfolioTabContent     = document.getElementById('portfolio-tab-content');
     const resultsTabContent       = document.getElementById('results-tab-content');
@@ -605,7 +614,7 @@ function initEvents() {
     const samcoWebTabContent      = document.getElementById('samco-web-tab-content');
     const whatsappWebTabContent   = document.getElementById('whatsapp-web-tab-content');
 
-    let lastNonSamcoTabBtn = tabResearch;
+    let lastNonSamcoTabBtn = tabOverview || tabResearch;
     const hideAllTabs = (activePortal = false) => {
         const keepSamcoFullscreen = activePortal === true || activePortal === 'samco';
         const keepWaFullscreen = activePortal === 'wa';
@@ -615,9 +624,9 @@ function initEvents() {
         if (!keepWaFullscreen) {
             document.body.classList.remove('wa-fullscreen-mode');
         }
-        [researchTabContent, portfolioTabContent, resultsTabContent, watchlistTabContent, morningPicksTabContent, adviceTabContent, volPromoterTabContent, circuitsTabContent, globalIndicesTabContent, intradayTabContent, masterPieceTabContent, callPutTabContent, optionTipsTabContent, candleChartTabContent, samcoWebTabContent, whatsappWebTabContent]
+        [overviewTabContent, researchTabContent, portfolioTabContent, resultsTabContent, watchlistTabContent, morningPicksTabContent, adviceTabContent, volPromoterTabContent, circuitsTabContent, globalIndicesTabContent, intradayTabContent, masterPieceTabContent, callPutTabContent, optionTipsTabContent, candleChartTabContent, samcoWebTabContent, whatsappWebTabContent]
             .forEach(el => el && el.classList.add('hidden'));
-        [tabResearch, tabPortfolio, tabResults, tabWatchlist, tabMorning, tabAdvice, tabVolPromoter, tabCircuits, tabGlobalIndices, tabIntraday, tabMasterPiece, tabCallPut, tabOptionTips, tabCandleChart, tabSamcoWeb, tabWhatsappWeb]
+        [tabOverview, tabResearch, tabPortfolio, tabResults, tabWatchlist, tabMorning, tabAdvice, tabVolPromoter, tabCircuits, tabGlobalIndices, tabIntraday, tabMasterPiece, tabCallPut, tabOptionTips, tabCandleChart, tabSamcoWeb, tabWhatsappWeb]
             .forEach(el => el && el.classList.remove('active'));
         const samcoDock = document.getElementById('samco-minimized-dock');
         const samcoIframe = document.getElementById('samco-web-iframe');
@@ -631,13 +640,24 @@ function initEvents() {
         }
     };
     window.__rfActivateLastTabFromSamco = () => {
-        const targetBtn = lastNonSamcoTabBtn || tabResearch;
+        const targetBtn = lastNonSamcoTabBtn || tabOverview || tabResearch;
         if (targetBtn) targetBtn.click();
     };
     window.__rfActivateLastTabFromWa = () => {
-        const targetBtn = lastNonSamcoTabBtn || tabResearch;
+        const targetBtn = lastNonSamcoTabBtn || tabOverview || tabResearch;
         if (targetBtn) targetBtn.click();
     };
+
+    if (tabOverview && overviewTabContent) {
+        tabOverview.addEventListener('click', () => {
+            lastNonSamcoTabBtn = tabOverview;
+            hideAllTabs();
+            tabOverview.classList.add('active');
+            overviewTabContent.classList.remove('hidden');
+            window.RfTerminalUI?.updateActiveWorkspaceTitle();
+            window.RfTerminalUI?.refreshOverviewWidgets();
+        });
+    }
 
     if (tabResearch && researchTabContent) {
         tabResearch.addEventListener('click', () => {
@@ -645,6 +665,7 @@ function initEvents() {
             hideAllTabs();
             tabResearch.classList.add('active');
             researchTabContent.classList.remove('hidden');
+            window.RfTerminalUI?.updateActiveWorkspaceTitle();
         });
     }
 
@@ -830,9 +851,20 @@ function initEvents() {
     }
 
 
-    // Portfolio Form Initializations
+    // Portfolio Form & Status Filter Initializations
     setupPortfolioFormCalculations();
     setupPortfolioFormSubmit();
+    const portFilterGroup = document.getElementById('port-status-filter-group');
+    if (portFilterGroup && !portFilterGroup.dataset.wired) {
+        portFilterGroup.dataset.wired = '1';
+        portFilterGroup.addEventListener('click', (e) => {
+            const btn = e.target.closest('.port-filter-btn[data-port-filter]');
+            if (!btn) return;
+            portFilterGroup.querySelectorAll('.port-filter-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            renderPortfolioTable();
+        });
+    }
 
     // Gainers range toggles
     const toggle1 = document.getElementById('gainer-toggle-1');
@@ -1861,6 +1893,7 @@ async function savePortfolioItem(item) {
         showNotification("Failed to save transaction.", "error");
     }
 }
+window.savePortfolioItem = savePortfolioItem;
 
 async function deletePortfolioItem(id) {
     if (!db) {
@@ -1981,6 +2014,9 @@ function updatePortfolioLiveCellsDOM() {
         footRatio.textContent = `${totalRatio >= 0 ? '+' : ''}${totalRatio.toFixed(2)}%`;
     }
     updatePortfolioSummary(totalInvested, totalProfit, activeCount, soldCount);
+    if (window.RfTvCharts && typeof window.RfTvCharts.renderPortfolioAnalyticsCharts === 'function') {
+        window.RfTvCharts.renderPortfolioAnalyticsCharts(portfolioItems, state.portfolioLivePrices);
+    }
     return true;
 }
 
@@ -2087,9 +2123,24 @@ function renderPortfolioTable() {
 
     const searchInput = document.getElementById('portfolio-search-input');
     const searchVal = searchInput ? searchInput.value.trim().toUpperCase() : '';
-    const filteredItems = searchVal 
-        ? sortedItems.filter(item => item.companySymbol.toUpperCase().includes(searchVal))
-        : sortedItems;
+    const statusFilter = document.querySelector('#port-status-filter-group .port-filter-btn.active')?.dataset?.portFilter || 'ALL';
+    const filteredItems = sortedItems.filter(item => {
+        const hasSold = Boolean(item.sellRate && item.sellDate);
+        if (statusFilter === 'ACTIVE' && hasSold) return false;
+        if (statusFilter === 'SOLD' && !hasSold) return false;
+        if (searchVal && !String(item.companySymbol || '').toUpperCase().includes(searchVal)) return false;
+        return true;
+    });
+
+    if (filteredItems.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="13" style="text-align:center; padding: 2rem; color: var(--text-secondary);">No matching transactions for the selected filter.</td></tr>`;
+        if (tfoot) tfoot.innerHTML = '';
+        if (window.RfTvCharts && typeof window.RfTvCharts.renderPortfolioAnalyticsCharts === 'function') {
+            window.RfTvCharts.renderPortfolioAnalyticsCharts(portfolioItems, state.portfolioLivePrices);
+        }
+        document.getElementById('portfolio-count').textContent = `Showing: 0 / ${portfolioItems.length}`;
+        return;
+    }
 
     let html = '';
     let totalInvested = 0;
@@ -2239,7 +2290,10 @@ function renderPortfolioTable() {
     }
 
     updatePortfolioSummary(totalInvested, totalProfit, activeCount, soldCount);
-    document.getElementById('portfolio-count').textContent = `Holdings: ${portfolioItems.length}`;
+    document.getElementById('portfolio-count').textContent = `Holdings: ${filteredItems.length}${filteredItems.length !== portfolioItems.length ? ' / ' + portfolioItems.length : ''}`;
+    if (window.RfTvCharts && typeof window.RfTvCharts.renderPortfolioAnalyticsCharts === 'function') {
+        window.RfTvCharts.renderPortfolioAnalyticsCharts(portfolioItems, state.portfolioLivePrices);
+    }
 }
 
 function updatePortfolioSummary(invested, profit, active, sold) {
@@ -3972,37 +4026,58 @@ window.showResearchModal = function(symbol) {
     if (window.event) {
         window.event.stopPropagation();
     }
-    
+
+    const cleanSymbol = String(symbol || '').trim().toUpperCase();
+    if (!cleanSymbol) return;
+    symbol = cleanSymbol;
+
     // Set titles
-    document.getElementById('research-company-title').textContent = `${symbol} RESEARCH`;
+    const titleEl = document.getElementById('research-company-title');
+    if (titleEl) titleEl.textContent = `${symbol} RESEARCH`;
     
-    // Reset contents to loading
-    const descEl = document.getElementById('research-description');
+    // Reset contents to loading (null-safe)
+    const descEl = document.getElementById('research-description') || document.getElementById('research-summary-text');
     const highEl = document.getElementById('research-52w-high');
     const lowEl = document.getElementById('research-52w-low');
-    const badgeEl = document.getElementById('research-sentiment-badge');
-    const adviceEl = document.getElementById('research-sentiment-text');
+    const badgeEl = document.getElementById('research-sentiment-badge') || document.getElementById('research-verdict-badge');
+    const adviceEl = document.getElementById('research-sentiment-text') || document.getElementById('research-verdict-reason');
     
-    descEl.textContent = 'કંપનીની માહિતી મેળવી રહ્યા છીએ...';
-    highEl.textContent = '₹0.00';
-    lowEl.textContent = '₹0.00';
-    badgeEl.textContent = 'Calculating...';
-    badgeEl.style.background = '#64748b';
-    badgeEl.style.color = '#fff';
-    adviceEl.textContent = 'ગણતરી કરી રહ્યા છીએ...';
+    if (descEl) descEl.textContent = 'કંપનીની માહિતી મેળવી રહ્યા છીએ...';
+    if (highEl) highEl.textContent = '₹0.00';
+    if (lowEl) lowEl.textContent = '₹0.00';
+    if (badgeEl) {
+        badgeEl.textContent = 'Calculating...';
+        badgeEl.style.background = '#64748b';
+        badgeEl.style.color = '#fff';
+    }
+    if (adviceEl) adviceEl.textContent = 'ગણતરી કરી રહ્યા છીએ...';
     
     // Reset chart stats
+    const chartLatestEl = document.getElementById('chart-latest-price');
     const chartLivePriceEl = document.getElementById('chart-live-price');
+    const chartHighPriceEl = document.getElementById('chart-high-price');
+    const chartGainValEl = document.getElementById('chart-gain-val');
     const chartDataHighEl = document.getElementById('chart-data-high');
     const chartDataLowEl = document.getElementById('chart-data-low');
+    if (chartLatestEl) chartLatestEl.textContent = '₹0.00';
     if (chartLivePriceEl) chartLivePriceEl.textContent = 'Loading...';
+    if (chartHighPriceEl) chartHighPriceEl.textContent = '₹0.00';
+    if (chartGainValEl) {
+        chartGainValEl.textContent = '+0.00%';
+        chartGainValEl.style.color = 'var(--text-secondary)';
+    }
     if (chartDataHighEl) chartDataHighEl.textContent = 'Loading...';
     if (chartDataLowEl) chartDataLowEl.textContent = 'Loading...';
     
-    // Set external links
-    document.getElementById('link-screener').href = `https://www.screener.in/company/${symbol}/`;
-    document.getElementById('link-tickertape').href = `https://www.tickertape.in/stocks/${symbol}`;
-    document.getElementById('link-moneycontrol').href = `https://www.moneycontrol.com/userview/alerts/editorialSearch?str=${symbol}`;
+    // Set external links safely
+    const linkScreener = document.getElementById('link-screener');
+    const linkTickertape = document.getElementById('link-tickertape');
+    const linkMoneycontrol = document.getElementById('link-moneycontrol');
+    const linkTrendlyne = document.getElementById('link-trendlyne');
+    if (linkScreener) linkScreener.href = `https://www.screener.in/company/${encodeURIComponent(symbol)}/`;
+    if (linkTickertape) linkTickertape.href = `https://www.tickertape.in/stocks/${encodeURIComponent(symbol)}`;
+    if (linkMoneycontrol) linkMoneycontrol.href = `https://www.moneycontrol.com/userview/alerts/editorialSearch?str=${encodeURIComponent(symbol)}`;
+    if (linkTrendlyne) linkTrendlyne.href = `https://trendlyne.com/equity/search/?q=${encodeURIComponent(symbol)}`;
     
     // Draw Historical Chart
     let drawChart = false;
@@ -4038,11 +4113,23 @@ window.showResearchModal = function(symbol) {
                     prices.reverse();
                     drawChart = true;
                     
-                    // Populate Data High / Data Low from master file prices
+                    // Populate Data High / Data Low / 30D stats from master file prices
                     const validPrices = prices.filter(p => p !== null && !isNaN(p));
-                    if (validPrices.length > 0 && chartDataHighEl && chartDataLowEl) {
-                        chartDataHighEl.textContent = `₹${Math.max(...validPrices).toFixed(2)}`;
-                        chartDataLowEl.textContent = `₹${Math.min(...validPrices).toFixed(2)}`;
+                    if (validPrices.length > 0) {
+                        const latestMaster = validPrices[validPrices.length - 1];
+                        const recent30 = validPrices.slice(-30);
+                        const high30 = Math.max(...recent30);
+                        const base30 = recent30[0];
+                        const gain30 = base30 ? ((latestMaster - base30) / base30) * 100 : 0;
+
+                        if (chartLatestEl) chartLatestEl.textContent = `₹${latestMaster.toFixed(2)}`;
+                        if (chartHighPriceEl) chartHighPriceEl.textContent = `₹${high30.toFixed(2)}`;
+                        if (chartGainValEl) {
+                            chartGainValEl.textContent = `${gain30 >= 0 ? '+' : ''}${gain30.toFixed(2)}%`;
+                            chartGainValEl.style.color = gain30 >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+                        }
+                        if (chartDataHighEl) chartDataHighEl.textContent = `₹${Math.max(...validPrices).toFixed(2)}`;
+                        if (chartDataLowEl) chartDataLowEl.textContent = `₹${Math.min(...validPrices).toFixed(2)}`;
                     }
                 }
             }
@@ -4074,7 +4161,8 @@ window.showResearchModal = function(symbol) {
         : [];
 
     // Show Modal immediately so canvas has measured layout dimensions
-    document.getElementById('research-modal').classList.remove('hidden');
+    const researchModalEl = document.getElementById('research-modal');
+    if (researchModalEl) researchModalEl.classList.remove('hidden');
 
     if (typeof renderModalCandleChart === 'function') {
         renderModalCandleChart('rm', symbol, 'research-price-chart', fallbackCandles);
@@ -4093,16 +4181,16 @@ window.showResearchModal = function(symbol) {
                 .then(res => res.json())
                 .then(transData => {
                     const sentences = transData && transData[0] ? transData[0].map(s => s[0]).join('') : '';
-                    descEl.textContent = sentences || rawDescription;
+                    if (descEl) descEl.textContent = sentences || rawDescription;
                 })
                 .catch(transErr => {
                     console.warn("Translation failed, displaying English description:", transErr);
-                    descEl.textContent = rawDescription;
+                    if (descEl) descEl.textContent = rawDescription;
                 });
         })
         .catch(err => {
             console.warn("DuckDuckGo fetch failed:", err?.message || err);
-            descEl.textContent = `${symbol} એ ભારતીય શેરબજાર (NSE) માં સૂચિબદ્ધ કંપની છે જે ભારતમાં વિવિધ વ્યાપારી પ્રવૃત્તિઓ સાથે સંકળાયેલી છે. વધુ માહિતી માટે નીચે આપેલ લિંક્સની મુલાકાત લો.`;
+            if (descEl) descEl.textContent = `${symbol} એ ભારતીય શેરબજાર (NSE) માં સૂચિબદ્ધ કંપની છે જે ભારતમાં વિવિધ વ્યાપારી પ્રવૃત્તિઓ સાથે સંકળાયેલી છે. વધુ માહિતી માટે નીચે આપેલ લિંક્સની મુલાકાત લો.`;
         });
         
     // 2. Fetch Yahoo Finance Stock Quote Data for Technical Sentiment & 52W High/Low
@@ -4120,8 +4208,8 @@ window.showResearchModal = function(symbol) {
         const currentPrice = meta.regularMarketPrice;
         const longName = meta.longName || symbol;
 
-        if (longName) {
-            document.getElementById('research-company-title').textContent = longName.toUpperCase();
+        if (longName && titleEl) {
+            titleEl.textContent = longName.toUpperCase();
         }
 
         // Populate Live Price in the chart stats strip
@@ -4133,13 +4221,37 @@ window.showResearchModal = function(symbol) {
         // Dynamic client-side calculation of 52-week High and Low from full year data
         let high52 = meta.fiftyTwoWeekHigh;
         let low52 = meta.fiftyTwoWeekLow;
+        let closePrices = [];
 
         try {
             if (result.indicators && result.indicators.quote && result.indicators.quote[0]) {
-                const closePrices = result.indicators.quote[0].close.filter(x => x !== null && x !== undefined && !isNaN(x));
+                closePrices = result.indicators.quote[0].close.filter(x => x !== null && x !== undefined && !isNaN(x));
                 if (closePrices.length > 0) {
                     high52 = Math.max(...closePrices);
                     low52 = Math.min(...closePrices);
+
+                    // Backfill 30-day & latest close stats if master file didn't have this symbol
+                    const latestY = closePrices[closePrices.length - 1];
+                    const recent30 = closePrices.slice(-30);
+                    const high30 = Math.max(...recent30);
+                    const base30 = recent30[0];
+                    const gain30 = base30 ? ((latestY - base30) / base30) * 100 : 0;
+                    if (chartLatestEl && (chartLatestEl.textContent === '₹0.00' || !drawChart)) {
+                        chartLatestEl.textContent = `₹${latestY.toFixed(2)}`;
+                    }
+                    if (chartHighPriceEl && (chartHighPriceEl.textContent === '₹0.00' || !drawChart)) {
+                        chartHighPriceEl.textContent = `₹${high30.toFixed(2)}`;
+                    }
+                    if (chartGainValEl && !drawChart) {
+                        chartGainValEl.textContent = `${gain30 >= 0 ? '+' : ''}${gain30.toFixed(2)}%`;
+                        chartGainValEl.style.color = gain30 >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+                    }
+                    if (chartDataHighEl && chartDataHighEl.textContent === 'Loading...') {
+                        chartDataHighEl.textContent = `₹${high52.toFixed(2)}`;
+                    }
+                    if (chartDataLowEl && chartDataLowEl.textContent === 'Loading...') {
+                        chartDataLowEl.textContent = `₹${low52.toFixed(2)}`;
+                    }
                 }
             }
         } catch (calcErr) {
@@ -4147,8 +4259,8 @@ window.showResearchModal = function(symbol) {
         }
 
         if (high52 && low52 && currentPrice) {
-            highEl.textContent = `\u20b9${high52.toFixed(2)}`;
-            lowEl.textContent = `\u20b9${low52.toFixed(2)}`;
+            if (highEl) highEl.textContent = `\u20b9${high52.toFixed(2)}`;
+            if (lowEl) lowEl.textContent = `\u20b9${low52.toFixed(2)}`;
 
             const totalRange = high52 - low52;
             const position = currentPrice - low52;
@@ -4170,17 +4282,21 @@ window.showResearchModal = function(symbol) {
                 gujAdvice = `\u0ab8\u0acd\u0a9f\u0acb\u0a95 \u0aae\u0aa7\u0acd\u0aaf\u0aae \u0ab6\u0acd\u0ab0\u0ac7\u0aa3\u0ac0\u0aae\u0abe\u0a82 \u0a9a\u0abe\u0ab2\u0ac0 \u0ab0\u0ab9\u0acd\u0aaf\u0acb \u0a9b\u0ac7. \u0a85\u0aa4\u0acd\u0aaf\u0abe\u0ab0\u0ac7 \u0ab9\u0abe\u0ab2\u0aa8\u0abe \u0ab0\u0acb\u0a95\u0abe\u0aa3\u0aa8\u0ac7 Hold \u0a95\u0ab0\u0ac0 \u0ab0\u0abe\u0a96\u0ab5\u0ac1\u0a82 \u0ab5\u0aa7\u0ac1 \u0aaf\u0acb\u0a97\u0acd\u0aaf \u0ab0\u0ab9\u0ac7\u0ab6\u0ac7. \u0aa8\u0ab5\u0ac0 \u0a96\u0ab0\u0ac0\u0aa6\u0ac0 \u0aae\u0abe\u0a9f\u0ac7 'Buy on Dips' \u0aa8\u0ac0 \u0ab0\u0aa3\u0aa8\u0ac0\u0aa4\u0abf \u0a85\u0aaa\u0aa8\u0abe\u0ab5\u0acb.`;
             }
 
-            badgeEl.textContent = sentiment;
-            badgeEl.style.background = color;
-            badgeEl.style.color = '#ffffff';
-            adviceEl.textContent = gujAdvice;
+            if (badgeEl) {
+                badgeEl.textContent = sentiment;
+                badgeEl.style.background = color;
+                badgeEl.style.color = '#ffffff';
+            }
+            if (adviceEl) adviceEl.textContent = gujAdvice;
         } else {
-            highEl.textContent = 'N/A';
-            lowEl.textContent = 'N/A';
-            badgeEl.textContent = 'Hold';
-            badgeEl.style.background = '#eab308';
-            badgeEl.style.color = '#fff';
-            adviceEl.textContent = '\u0a86 \u0ab8\u0acd\u0a9f\u0acb\u0a95\u0aa8\u0acb \u0aeb\u0ae8 \u0a85\u0aa0\u0ab5\u0abe\u0aa1\u0abf\u0aaf\u0abe\u0aa8\u0acb \u0ab5\u0abf\u0a97\u0aa4\u0ab5\u0abe\u0ab0 \u0aa1\u0ac7\u0a9f\u0abe \u0aa1\u0abe\u0a89\u0aa8\u0ab2\u0acb\u0aa1 \u0aa5\u0a88 \u0ab6\u0a95\u0acd\u0aaf\u0acb \u0aa8\u0aa5\u0ac0. Screener.in \u0a85\u0aa5\u0ab5\u0abe Tickertape.in \u0aa8\u0ac0 \u0aae\u0ac1\u0ab2\u0abe\u0a95\u0abe\u0aa4 \u0ab2\u0acb.';
+            if (highEl) highEl.textContent = 'N/A';
+            if (lowEl) lowEl.textContent = 'N/A';
+            if (badgeEl) {
+                badgeEl.textContent = 'Hold';
+                badgeEl.style.background = '#eab308';
+                badgeEl.style.color = '#fff';
+            }
+            if (adviceEl) adviceEl.textContent = '\u0a86 \u0ab8\u0acd\u0a9f\u0acb\u0a95\u0aa8\u0acb \u0aeb\u0ae8 \u0a85\u0aa0\u0ab5\u0abe\u0aa1\u0abf\u0aaf\u0abe\u0aa8\u0acb \u0ab5\u0abf\u0a97\u0aa4\u0ab5\u0abe\u0ab0 \u0aa1\u0ac7\u0a9f\u0abe \u0aa1\u0abe\u0a89\u0aa8\u0ab2\u0acb\u0aa1 \u0aa5\u0a88 \u0ab6\u0a95\u0acd\u0aaf\u0acb \u0aa8\u0aa5\u0ac0. Screener.in \u0a85\u0aa5\u0ab5\u0abe Tickertape.in \u0aa8\u0ac0 \u0aae\u0ac1\u0ab2\u0abe\u0a95\u0abe\u0aa4 \u0ab2\u0acb.';
         }
     };
 
@@ -4213,14 +4329,18 @@ window.showResearchModal = function(symbol) {
         }
         if (!success) {
             console.warn('All Yahoo Finance sources exhausted for symbol:', symbol);
-            highEl.textContent = 'N/A';
-            lowEl.textContent = 'N/A';
-            badgeEl.textContent = 'Hold';
-            badgeEl.style.background = '#eab308';
-            badgeEl.style.color = '#fff';
-            adviceEl.textContent = 'Yahoo Finance ડેટા હાલ ઉપલબ્ધ નથી. Screener.in અથવા Tickertape.in ની મુલાકાત લો.';
+            if (highEl) highEl.textContent = 'N/A';
+            if (lowEl) lowEl.textContent = 'N/A';
+            if (badgeEl) {
+                badgeEl.textContent = 'Hold';
+                badgeEl.style.background = '#eab308';
+                badgeEl.style.color = '#fff';
+            }
+            if (adviceEl) adviceEl.textContent = 'Yahoo Finance ડેટા હાલ ઉપલબ્ધ નથી. Screener.in અથવા Tickertape.in ની મુલાકાત લો.';
             const liveEl2 = document.getElementById('chart-live-price');
             if (liveEl2) liveEl2.textContent = 'Price unavailable';
+            if (chartDataHighEl && chartDataHighEl.textContent === 'Loading...') chartDataHighEl.textContent = 'N/A';
+            if (chartDataLowEl && chartDataLowEl.textContent === 'Loading...') chartDataLowEl.textContent = 'N/A';
         }
     })();
 };
@@ -6306,13 +6426,16 @@ function renderGlobalIndicesRows(tbody, items, isCachedFallback = false, cachedT
         const sign = item.change >= 0 ? '+' : '';
         const color = isCachedFallback ? '#94a3b8' : (item.change >= 0 ? 'var(--success-color)' : 'var(--danger-color)');
         const nameColor = isCachedFallback ? '#94a3b8' : 'var(--accent-color)';
-        const priceColor = isCachedFallback ? '#94a3b8' : '#fff';
+        const priceColor = isCachedFallback ? '#94a3b8' : 'var(--text-primary)';
 
+        const mState = String(item.marketState || (item.isOpen ? 'OPEN' : 'CLOSED')).toUpperCase();
         const statusHtml = isCachedFallback
             ? `<span style="background:rgba(148,163,184,0.12);color:#94a3b8;font-weight:700;padding:0.15rem 0.5rem;border-radius:4px;font-size:0.75rem;">CACHED</span>`
-            : item.isOpen
+            : mState === 'OPEN'
             ? `<span style="background:rgba(16,185,129,0.12);color:var(--success-color);font-weight:700;padding:0.15rem 0.5rem;border-radius:4px;font-size:0.75rem;display:inline-flex;align-items:center;gap:3px;"><span class="live-pulse" style="width:5px;height:5px;box-shadow:0 0 0 0 rgba(16,185,129,0.7);animation:pulse 1.5s infinite;background:#10b981;border-radius:50%;"></span> OPEN</span>`
-            : `<span style="background:rgba(255,255,255,0.06);color:var(--text-secondary);font-weight:700;padding:0.15rem 0.5rem;border-radius:4px;font-size:0.75rem;">CLOSED</span>`;
+            : (mState === 'PRE' || mState === 'POST')
+            ? `<span style="background:rgba(245,158,11,0.14);color:#f59e0b;font-weight:700;padding:0.15rem 0.5rem;border-radius:4px;font-size:0.75rem;">${mState}</span>`
+            : `<span style="background:rgba(148,163,184,0.12);color:var(--text-secondary);font-weight:700;padding:0.15rem 0.5rem;border-radius:4px;font-size:0.75rem;">CLOSED</span>`;
 
         return `
             <tr style="${rowOpacityStyle}">
@@ -6376,6 +6499,7 @@ window.fetchGlobalIndices = async function(showLoading = false) {
                         const reg = meta.currentTradingPeriod.regular;
                         isOpen = now >= reg.start && now <= reg.end;
                     }
+                    const marketState = meta.marketState || (isOpen ? 'OPEN' : 'CLOSED');
 
                     fetchedData.push({
                         name: item.name,
@@ -6383,7 +6507,8 @@ window.fetchGlobalIndices = async function(showLoading = false) {
                         price,
                         change,
                         changePct,
-                        isOpen
+                        isOpen,
+                        marketState
                     });
                 }
             } catch (e) {
@@ -7344,6 +7469,18 @@ function renderMmiPanel(mmi) {
         const dtStr = mmi.date ? new Date(mmi.date).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '';
         dateEl.textContent = `Source: ${mmi.source || 'tickertape.in/market-mood-index'}${dtStr ? ' • Feed Time: ' + dtStr : ''}`;
     }
+
+    // Render Apache ECharts Radial Gauge when loaded, otherwise show SVG fallback
+    const echartsBox = document.getElementById('cp-mmi-echarts');
+    const svgBox = document.getElementById('cp-mmi-svg');
+    if (echartsBox && window.RfTvCharts && typeof window.echarts !== 'undefined') {
+        echartsBox.classList.remove('hidden');
+        if (svgBox) svgBox.classList.add('hidden');
+        window.RfTvCharts.renderEChartsMmiGauge('cp-mmi-echarts', mmi);
+    } else if (svgBox) {
+        svgBox.classList.remove('hidden');
+        if (echartsBox) echartsBox.classList.add('hidden');
+    }
 }
 
 function renderOptionChainPanel(oc) {
@@ -7493,93 +7630,127 @@ function updateTickerPair(valId, chgId, item, opts = {}) {
     }
 }
 
-window.fetchLiveMarket1s = async function() {
+function updateRibbonStateBadge(stateId, item) {
+    const el = document.getElementById(stateId);
+    if (!el || !item) return;
+    const st = String(item.marketState || (item.isOpen ? 'OPEN' : 'CLOSED')).toUpperCase();
+    if (st === 'OPEN') {
+        el.textContent = 'OPEN';
+        el.className = 'index-state st-open';
+    } else if (st === 'PARITY') {
+        el.textContent = 'SPOT PARITY';
+        el.className = 'index-state st-parity';
+    } else {
+        el.textContent = st;
+        el.className = 'index-state st-closed';
+    }
+}
+
+window.applyLiveMarketPayload = function(d) {
+    if (!d) return;
+    const gUsd = d.goldUsd || d.gold?.usd;
+    const sUsd = d.silverUsd || d.silver?.usd;
+
+    // 1. Update global header ribbon cards every ~500ms
+    updateTickerPair('nifty-val', 'nifty-chg', d.nifty, { decimals: 2 });
+    updateTickerPair('sensex-val', 'sensex-chg', d.sensex, { decimals: 2 });
+    updateTickerPair('gold-val', 'gold-chg', d.gold, { decimals: 2, prefix: '\u20b9' });
+    updateTickerPair('silver-val', 'silver-chg', d.silver, { decimals: 2, prefix: '\u20b9' });
+    updateTickerPair('gold-usd-val', 'gold-usd-chg', gUsd, { decimals: 2, prefix: '$' });
+    updateTickerPair('silver-usd-val', 'silver-usd-chg', sUsd, { decimals: 3, prefix: '$' });
+    updateTickerPair('usdinr-val', 'usdinr-chg', d.usdInr, { decimals: 3, prefix: '\u20b9' });
+
+    updateRibbonStateBadge('nifty-state', d.nifty);
+    updateRibbonStateBadge('sensex-state', d.sensex);
+    updateRibbonStateBadge('gold-state', d.gold);
+    updateRibbonStateBadge('silver-state', d.silver);
+    updateRibbonStateBadge('gold-usd-state', gUsd);
+    updateRibbonStateBadge('silver-usd-state', sUsd);
+    updateRibbonStateBadge('usdinr-state', d.usdInr);
+
+    // 2. Update Call Put tab live strip (including separate INR & USD Gold/Silver cards, NASDAQ & HANG SENG)
+    updateTickerPair('cp-live-nifty-val', 'cp-live-nifty-chg', d.nifty, { decimals: 2 });
+    updateTickerPair('cp-live-sensex-val', 'cp-live-sensex-chg', d.sensex, { decimals: 2 });
+    updateTickerPair('cp-live-gold-val', 'cp-live-gold-chg', d.gold, { decimals: 2, prefix: '\u20b9' });
+    updateTickerPair('cp-live-silver-val', 'cp-live-silver-chg', d.silver, { decimals: 2, prefix: '\u20b9' });
+    updateTickerPair('cp-live-gold-usd-val', 'cp-live-gold-usd-chg', gUsd, { decimals: 2, prefix: '$' });
+    updateTickerPair('cp-live-silver-usd-val', 'cp-live-silver-usd-chg', sUsd, { decimals: 3, prefix: '$' });
+    updateTickerPair('cp-live-nasdaq-val', 'cp-live-nasdaq-chg', d.nasdaq, { decimals: 2 });
+    updateTickerPair('cp-live-hangseng-val', 'cp-live-hangseng-chg', d.hangseng, { decimals: 2 });
+
+    // 2B. If Global Indices tab is active and globalIndices arrived, stream live 500ms updates into Global Indices rows
+    if (d.globalIndices && isTabActive('tab-global-indices') && typeof globalIndicesConfig !== 'undefined' && typeof renderGlobalIndicesRows === 'function') {
+        const giTbody = document.getElementById('global-indices-tbody');
+        if (giTbody) {
+            const liveRows = [];
+            globalIndicesConfig.forEach(cfg => {
+                const liveItem = d.globalIndices[cfg.ticker];
+                if (liveItem && Number.isFinite(Number(liveItem.price))) {
+                    const mState = liveItem.marketState || (liveItem.isOpen ? 'OPEN' : 'CLOSED');
+                    liveRows.push({
+                        name: cfg.name,
+                        ticker: cfg.ticker,
+                        price: Number(liveItem.price),
+                        change: Number(liveItem.change || 0),
+                        changePct: Number(liveItem.changePercent || 0),
+                        isOpen: mState === 'OPEN',
+                        marketState: mState
+                    });
+                }
+            });
+            if (liveRows.length >= 6) {
+                renderGlobalIndicesRows(giTbody, liveRows, false, null);
+            }
+        }
+    }
+
+    const setElText = (id, text) => {
+        const el = document.getElementById(id);
+        if (el && text) el.textContent = text;
+    };
+    if (d.gold?.source) setElText('cp-live-gold-src', d.gold.source);
+    if (d.silver?.source) setElText('cp-live-silver-src', d.silver.source);
+    if (gUsd?.source) setElText('cp-live-gold-usd-src', gUsd.source);
+    if (sUsd?.source) setElText('cp-live-silver-usd-src', sUsd.source);
+
+    // 3. Update SENSEX 30 & NSE Market Advance/Decline (nseindia.com/market-data/decline)
+    const sBreadth = d.breadth?.sensex30;
+    if (sBreadth) {
+        setElText('cp-sensex-adv', String(sBreadth.advances));
+        setElText('cp-sensex-dec', String(sBreadth.declines));
+        const sTotal = (sBreadth.advances + sBreadth.declines) || 30;
+        const sPct = (sBreadth.advances / sTotal) * 100;
+        setElText('cp-sensex-adv-pct', `Adv ${sPct.toFixed(0)}% / Dec ${(100 - sPct).toFixed(0)}%`);
+        const sBar = document.getElementById('cp-sensex-ad-bar');
+        if (sBar) sBar.style.width = `${sPct.toFixed(1)}%`;
+    }
+
+    const nMarket = d.breadth?.nseMarket;
+    if (nMarket) {
+        setElText('cp-nse-adv', Number(nMarket.advances).toLocaleString('en-IN'));
+        setElText('cp-nse-dec', Number(nMarket.declines).toLocaleString('en-IN'));
+        setElText('cp-nse-unch', Number(nMarket.unchanged).toLocaleString('en-IN'));
+        setElText('cp-nse-total', Number(nMarket.total).toLocaleString('en-IN'));
+        const adTotal = (nMarket.advances + nMarket.declines) || 1;
+        const nPct = (nMarket.advances / adTotal) * 100;
+        const nBar = document.getElementById('cp-nse-ad-bar');
+        if (nBar) nBar.style.width = `${nPct.toFixed(1)}%`;
+        setElText('cp-breadth-time', `Source: nseindia.com/market-data/decline${nMarket.timestamp ? ' • Exchange: ' + nMarket.timestamp : ''}`);
+    }
+
+    // 4. Update Market Overview cards & breadth
+    window.RfTerminalUI?.renderMarketOverview(d);
+};
+
+window.fetchLiveMarket1s = async function(force = false) {
+    if (!force && window.RfTerminalUI?.isMarketStreamWsActive()) return;
     if (isLiveMarket1sInFlight) return;
     isLiveMarket1sInFlight = true;
     try {
         const res = await fetchWithTimeout('/api/live-market', { cache: 'no-store' }, 4000);
         if (!res.ok) return;
         const d = await res.json();
-
-        const gUsd = d.goldUsd || d.gold?.usd;
-        const sUsd = d.silverUsd || d.silver?.usd;
-
-        // 1. Update global header cards every ~500ms (NIFTY 50, SENSEX, GOLD/10g INR, SILVER/kg INR, GOLD $, SILVER $, USD/INR)
-        updateTickerPair('nifty-val', 'nifty-chg', d.nifty, { decimals: 2 });
-        updateTickerPair('sensex-val', 'sensex-chg', d.sensex, { decimals: 2 });
-        updateTickerPair('gold-val', 'gold-chg', d.gold, { decimals: 2, prefix: '\u20b9' });
-        updateTickerPair('silver-val', 'silver-chg', d.silver, { decimals: 2, prefix: '\u20b9' });
-        updateTickerPair('gold-usd-val', 'gold-usd-chg', gUsd, { decimals: 2, prefix: '$' });
-        updateTickerPair('silver-usd-val', 'silver-usd-chg', sUsd, { decimals: 3, prefix: '$' });
-        updateTickerPair('usdinr-val', 'usdinr-chg', d.usdInr, { decimals: 3, prefix: '\u20b9' });
-
-        // 2. Update Call Put tab live strip (including separate INR & USD Gold/Silver cards, NASDAQ & HANG SENG)
-        updateTickerPair('cp-live-nifty-val', 'cp-live-nifty-chg', d.nifty, { decimals: 2 });
-        updateTickerPair('cp-live-sensex-val', 'cp-live-sensex-chg', d.sensex, { decimals: 2 });
-        updateTickerPair('cp-live-gold-val', 'cp-live-gold-chg', d.gold, { decimals: 2, prefix: '\u20b9' });
-        updateTickerPair('cp-live-silver-val', 'cp-live-silver-chg', d.silver, { decimals: 2, prefix: '\u20b9' });
-        updateTickerPair('cp-live-gold-usd-val', 'cp-live-gold-usd-chg', gUsd, { decimals: 2, prefix: '$' });
-        updateTickerPair('cp-live-silver-usd-val', 'cp-live-silver-usd-chg', sUsd, { decimals: 3, prefix: '$' });
-        updateTickerPair('cp-live-nasdaq-val', 'cp-live-nasdaq-chg', d.nasdaq, { decimals: 2 });
-        updateTickerPair('cp-live-hangseng-val', 'cp-live-hangseng-chg', d.hangseng, { decimals: 2 });
-
-        // 2B. If Global Indices tab is active and TradingView globalIndices arrived, stream live 500ms updates into Global Indices rows
-        if (d.globalIndices && isTabActive('tab-global-indices') && typeof globalIndicesConfig !== 'undefined' && typeof renderGlobalIndicesRows === 'function') {
-            const giTbody = document.getElementById('global-indices-tbody');
-            if (giTbody) {
-                const liveRows = [];
-                globalIndicesConfig.forEach(cfg => {
-                    const liveItem = d.globalIndices[cfg.ticker];
-                    if (liveItem && Number.isFinite(Number(liveItem.price))) {
-                        liveRows.push({
-                            name: cfg.name,
-                            ticker: cfg.ticker,
-                            price: Number(liveItem.price),
-                            change: Number(liveItem.change || 0),
-                            changePct: Number(liveItem.changePercent || 0),
-                            isOpen: true
-                        });
-                    }
-                });
-                if (liveRows.length >= 6) {
-                    renderGlobalIndicesRows(giTbody, liveRows, false, null);
-                }
-            }
-        }
-
-        const setElText = (id, text) => {
-            const el = document.getElementById(id);
-            if (el && text) el.textContent = text;
-        };
-        if (d.gold?.source) setElText('cp-live-gold-src', d.gold.source);
-        if (d.silver?.source) setElText('cp-live-silver-src', d.silver.source);
-        if (gUsd?.source) setElText('cp-live-gold-usd-src', gUsd.source);
-        if (sUsd?.source) setElText('cp-live-silver-usd-src', sUsd.source);
-
-        // 3. Update SENSEX 30 & NSE Market Advance/Decline (nseindia.com/market-data/decline)
-        const sBreadth = d.breadth?.sensex30;
-        if (sBreadth) {
-            setElText('cp-sensex-adv', String(sBreadth.advances));
-            setElText('cp-sensex-dec', String(sBreadth.declines));
-            const sTotal = (sBreadth.advances + sBreadth.declines) || 30;
-            const sPct = (sBreadth.advances / sTotal) * 100;
-            setElText('cp-sensex-adv-pct', `Adv ${sPct.toFixed(0)}% / Dec ${(100 - sPct).toFixed(0)}%`);
-            const sBar = document.getElementById('cp-sensex-ad-bar');
-            if (sBar) sBar.style.width = `${sPct.toFixed(1)}%`;
-        }
-
-        const nMarket = d.breadth?.nseMarket;
-        if (nMarket) {
-            setElText('cp-nse-adv', Number(nMarket.advances).toLocaleString('en-IN'));
-            setElText('cp-nse-dec', Number(nMarket.declines).toLocaleString('en-IN'));
-            setElText('cp-nse-unch', Number(nMarket.unchanged).toLocaleString('en-IN'));
-            setElText('cp-nse-total', Number(nMarket.total).toLocaleString('en-IN'));
-            const adTotal = (nMarket.advances + nMarket.declines) || 1;
-            const nPct = (nMarket.advances / adTotal) * 100;
-            const nBar = document.getElementById('cp-nse-ad-bar');
-            if (nBar) nBar.style.width = `${nPct.toFixed(1)}%`;
-            setElText('cp-breadth-time', `Source: nseindia.com/market-data/decline${nMarket.timestamp ? ' • Exchange: ' + nMarket.timestamp : ''}`);
-        }
+        window.applyLiveMarketPayload(d);
     } catch (err) {
         console.warn('[Live Market 2x/s]', err.message);
     } finally {
@@ -7699,6 +7870,7 @@ const candleTabState = {
     guideFilter: 'all',
     initialized: false
 };
+window.candleTabState = candleTabState;
 
 function normalizeCandleSymbolInput(rawSym) {
     const s = String(rawSym || '').trim().toUpperCase();
@@ -7733,6 +7905,7 @@ function fmtCandlePrice(val, symbol, compactAxis = false) {
     const dec = compactAxis && num >= 1000 ? 0 : decimals;
     return `${prefix}${num.toLocaleString('en-IN', { minimumFractionDigits: dec, maximumFractionDigits: dec })}`;
 }
+window.fmtCandlePrice = fmtCandlePrice;
 
 window.openSymbolInCandleChart = function(symbol) {
     const clean = normalizeCandleSymbolInput(symbol);
@@ -7768,9 +7941,10 @@ window.openSymbolInCandleChart = function(symbol) {
     const tabCC = document.getElementById('tab-candle-chart');
     const ccPane = document.getElementById('candle-chart-tab-content');
     document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('#main-app > div[id$="-tab-content"]').forEach(el => el.classList.add('hidden'));
+    document.querySelectorAll('#main-app div[id$="-tab-content"]').forEach(el => el.classList.add('hidden'));
     if (tabCC) tabCC.classList.add('active');
     if (ccPane) ccPane.classList.remove('hidden');
+    window.RfTerminalUI?.updateActiveWorkspaceTitle();
 
     if (typeof initCandleChartTab === 'function') initCandleChartTab();
     if (typeof loadCandleChartTab === 'function') loadCandleChartTab(true);
@@ -7846,6 +8020,7 @@ function openCandleChartFullscreenTab(symbol, interval, indicators) {
     a.click();
     a.remove();
 }
+window.openCandleChartFullscreenTab = openCandleChartFullscreenTab;
 
 function formatCandleLabel(unixSec, tf) {
     const dt = new Date(unixSec * 1000);
@@ -8541,6 +8716,15 @@ function computeTechnicalTradeSignal(candles, bbFull, ema9Full, ema21Full, sma50
         reasons: reasons.slice(0, 6)
     };
 }
+window.computeSMAValues = computeSMAValues;
+window.computeEMAValues = computeEMAValues;
+window.computeRSIValues = computeRSIValues;
+window.computeMACDValues = computeMACDValues;
+window.computeSessionVWAP = computeSessionVWAP;
+window.computeBollingerBands = computeBollingerBands;
+window.computeVolumeSma = computeVolumeSma;
+window.detectCandlestickPatterns = detectCandlestickPatterns;
+window.computeTechnicalTradeSignal = computeTechnicalTradeSignal;
 
 function renderCandlestickBollingerChart(canvasId, allCandles, options = {}) {
     const canvas = document.getElementById(canvasId);
@@ -9514,9 +9698,15 @@ function wireCandleZoomControls() {
         const wrap = btn.closest('.cc-zoom-controls');
         const canvasId = wrap?.dataset?.targetCanvas;
         if (!canvasId) return;
+        const action = btn.dataset.action;
+
+        if (canvasId === 'tv-candle-chart-container' && window.RfTvCharts && typeof window.LightweightCharts !== 'undefined') {
+            window.RfTvCharts.zoomChart('tv-candle-chart-container', action);
+            return;
+        }
+
         const canvas = document.getElementById(canvasId);
         if (!canvas) return;
-        const action = btn.dataset.action;
         const curCount = typeof canvas.__ccGetViewCount === 'function' ? canvas.__ccGetViewCount() : 60;
         const panStep = Math.max(4, Math.round(curCount * 0.25));
 
@@ -9904,10 +10094,20 @@ window.refreshVisibleCandles1s = async function() {
             };
 
             let analysis = null;
-            if (canvas && typeof canvas.__ccUpdateData === 'function') {
-                analysis = canvas.__ccUpdateData(job.state.candles, opts);
+            const tvContainer = document.getElementById('tv-candle-chart-container');
+            const useTvChart = job.type === 'tab' && tvContainer && window.RfTvCharts && typeof window.LightweightCharts !== 'undefined';
+
+            if (useTvChart) {
+                tvContainer.classList.remove('hidden');
+                if (canvas) canvas.classList.add('hidden');
+                analysis = window.RfTvCharts.renderOrUpdateMainChart('tv-candle-chart-container', job.state.candles, opts);
             } else {
-                analysis = renderCandlestickBollingerChart(job.canvasId, job.state.candles, opts);
+                if (job.type === 'tab' && canvas) canvas.classList.remove('hidden');
+                if (canvas && typeof canvas.__ccUpdateData === 'function') {
+                    analysis = canvas.__ccUpdateData(job.state.candles, opts);
+                } else {
+                    analysis = renderCandlestickBollingerChart(job.canvasId, job.state.candles, opts);
+                }
             }
 
             if (job.type === 'tab') {
@@ -9917,12 +10117,16 @@ window.refreshVisibleCandles1s = async function() {
                 if (banTfEl) banTfEl.textContent = `${job.state.interval.toUpperCase()} • Live 3x/s (${nowStr})`;
                 if (analysis) {
                     applyCandleChartAnalysisUI(job.state.symbol, job.state.interval, job.state.candles, analysis);
+                    window.RfTerminalUI?.updateOrderTicketSymbolContext(job.state.symbol, job.state.candles, analysis);
                 }
                 if (typeof refreshTenMinThreeCandleIndicator === 'function') {
                     refreshTenMinThreeCandleIndicator(job.state.symbol, tickData, false);
                 }
                 const readoutEl = document.getElementById('cc-hover-readout');
-                if (readoutEl && (!canvas || !canvas.__ccIsHovering || !canvas.__ccIsHovering())) {
+                const isHoveringChart = useTvChart
+                    ? window.RfTvCharts?.isChartHovering('tv-candle-chart-container')
+                    : (canvas && canvas.__ccIsHovering && canvas.__ccIsHovering());
+                if (readoutEl && !isHoveringChart) {
                     const last = job.state.candles[job.state.candles.length - 1];
                     if (last) {
                         readoutEl.textContent = `Live (${nowStr}) | O:${last.open.toFixed(2)} H:${last.high.toFixed(2)} L:${last.low.toFixed(2)} C:${last.close.toFixed(2)} (ડબલ-ક્લિક = Full Screen)`;
@@ -10445,6 +10649,13 @@ window.initCandleChartTab = function() {
         return;
     }
     candleTabState.initialized = true;
+    try {
+        const isFs = document.body.classList.contains('cc-fullscreen-mode');
+        const savedTf = localStorage.getItem('rf_default_tf');
+        if (!isFs && savedTf && VALID_CANDLE_TFS.includes(savedTf)) {
+            candleTabState.interval = savedTf;
+        }
+    } catch (_) {}
     populateCandleSymbolDatalist();
     renderCandlePatternGuide(candleTabState.guideFilter);
     syncCandleControlsFromState();
@@ -10487,6 +10698,7 @@ window.initCandleChartTab = function() {
     const redrawWithIndicators = () => {
         syncCandleControlsFromState();
         if (candleTabState.candles.length > 0) {
+            const tvContainer = document.getElementById('tv-candle-chart-container');
             const canvas = document.getElementById('candle-main-canvas');
             const opts = {
                 symbol: candleTabState.symbol,
@@ -10499,12 +10711,22 @@ window.initCandleChartTab = function() {
                 visibleStartTime: candleTabState.visibleStartTime
             };
             let analysis = null;
-            if (canvas && typeof canvas.__ccUpdateData === 'function') {
-                analysis = canvas.__ccUpdateData(candleTabState.candles, opts);
+            if (tvContainer && window.RfTvCharts && typeof window.LightweightCharts !== 'undefined') {
+                tvContainer.classList.remove('hidden');
+                if (canvas) canvas.classList.add('hidden');
+                analysis = window.RfTvCharts.renderOrUpdateMainChart('tv-candle-chart-container', candleTabState.candles, opts);
             } else {
-                analysis = renderCandlestickBollingerChart('candle-main-canvas', candleTabState.candles, opts);
+                if (canvas) canvas.classList.remove('hidden');
+                if (canvas && typeof canvas.__ccUpdateData === 'function') {
+                    analysis = canvas.__ccUpdateData(candleTabState.candles, opts);
+                } else {
+                    analysis = renderCandlestickBollingerChart('candle-main-canvas', candleTabState.candles, opts);
+                }
             }
-            if (analysis) applyCandleChartAnalysisUI(candleTabState.symbol, candleTabState.interval, candleTabState.candles, analysis);
+            if (analysis) {
+                applyCandleChartAnalysisUI(candleTabState.symbol, candleTabState.interval, candleTabState.candles, analysis);
+                window.RfTerminalUI?.updateOrderTicketSymbolContext(candleTabState.symbol, candleTabState.candles, analysis);
+            }
         }
     };
 
@@ -10592,7 +10814,9 @@ window.loadCandleChartTab = async function(forceRefresh = false) {
         if (banTfEl) banTfEl.textContent = `${interval.toUpperCase()} • Live 3x/s`;
         if (detSymEl) detSymEl.textContent = `${resolvedName} (${symbol} • ${interval.toUpperCase()})`;
 
-        const analysis = renderCandlestickBollingerChart('candle-main-canvas', series.candles, {
+        const tvContainer = document.getElementById('tv-candle-chart-container');
+        const mainCanvas = document.getElementById('candle-main-canvas');
+        const chartOpts = {
             symbol,
             companyName: resolvedName,
             showBB: candleTabState.indicators.bb,
@@ -10601,9 +10825,20 @@ window.loadCandleChartTab = async function(forceRefresh = false) {
             interval,
             maxBars: getDefaultMaxBarsForTf(interval, false),
             visibleStartTime: series.visibleStartTime
-        });
+        };
+
+        let analysis = null;
+        if (tvContainer && window.RfTvCharts && typeof window.LightweightCharts !== 'undefined') {
+            tvContainer.classList.remove('hidden');
+            if (mainCanvas) mainCanvas.classList.add('hidden');
+            analysis = window.RfTvCharts.renderOrUpdateMainChart('tv-candle-chart-container', series.candles, chartOpts);
+        } else {
+            if (mainCanvas) mainCanvas.classList.remove('hidden');
+            analysis = renderCandlestickBollingerChart('candle-main-canvas', series.candles, chartOpts);
+        }
 
         applyCandleChartAnalysisUI(symbol, interval, series.candles, analysis);
+        window.RfTerminalUI?.updateOrderTicketSymbolContext(symbol, series.candles, analysis);
         refreshTenMinThreeCandleIndicator(symbol, null, forceRefresh);
         const liveBadgeTime = document.getElementById('cc-live-time');
         if (liveBadgeTime) {
@@ -10685,8 +10920,8 @@ window.initSamcoWebTab = function() {
             if (typeof window.__rfActivateLastTabFromSamco === 'function') {
                 window.__rfActivateLastTabFromSamco();
             } else {
-                const tabRes = document.getElementById('tab-research');
-                if (tabRes) tabRes.click();
+                const tabFallback = document.getElementById('tab-overview') || document.getElementById('tab-research');
+                if (tabFallback) tabFallback.click();
             }
             if (dock && iframe && iframe.getAttribute('src')) {
                 dock.classList.remove('hidden');
@@ -10825,8 +11060,8 @@ window.initWhatsappWebTab = function() {
             if (typeof window.__rfActivateLastTabFromWa === 'function') {
                 window.__rfActivateLastTabFromWa();
             } else {
-                const tabRes = document.getElementById('tab-research');
-                if (tabRes) tabRes.click();
+                const tabFallback = document.getElementById('tab-overview') || document.getElementById('tab-research');
+                if (tabFallback) tabFallback.click();
             }
             if (dock && iframe && iframe.getAttribute('src')) {
                 dock.classList.remove('hidden');

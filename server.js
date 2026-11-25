@@ -10,7 +10,7 @@ import yahooHandler from './api/yahoo.js';
 import corporateHandler from './api/corporate.js';
 import mmiHandler from './api/mmi.js';
 import optionChainHandler from './api/option-chain.js';
-import liveMarketHandler from './api/live-market.js';
+import liveMarketHandler, { getLiveMarketSnapshot } from './api/live-market.js';
 import optionTipsHandler from './api/option-tips.js';
 import samcoProxyHandler, { validateTargetUrl as validateSamcoUrl } from './api/samco-proxy.js';
 import waProxyHandler, { validateWaTargetUrl as validateWaUrl } from './api/wa-proxy.js';
@@ -136,6 +136,19 @@ app.all('/api/option-tips', async (req, res) => {
   }
 });
 
+// Serve verified browser library bundles cleanly without external CDN fragility
+app.get('/vendor/lightweight-charts.standalone.production.js', (req, res) => {
+  res.sendFile(path.join(__dirname, 'node_modules/lightweight-charts/dist/lightweight-charts.standalone.production.js'));
+});
+app.get('/vendor/echarts.min.js', (req, res) => {
+  res.sendFile(path.join(__dirname, 'node_modules/echarts/dist/echarts.min.js'));
+});
+app.get('/vendor/lucide.min.js', (req, res) => {
+  res.sendFile(path.join(__dirname, 'node_modules/lucide/dist/umd/lucide.min.js'));
+});
+app.use('/vendor/tanstack-table-core', express.static(path.join(__dirname, 'node_modules/@tanstack/table-core/dist')));
+app.use('/vendor/tanstack-store', express.static(path.join(__dirname, 'node_modules/@tanstack/store/dist')));
+
 // Serve static frontend files
 app.use(express.static(__dirname, {
   index: 'index.html',
@@ -147,6 +160,35 @@ app.get('/', (req, res) => {
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ noServer: true });
+const marketStreamClients = new Set();
+let marketBroadcastTimer = null;
+let marketBroadcastInFlight = false;
+
+function ensureMarketBroadcastLoop() {
+  if (marketBroadcastTimer) return;
+  marketBroadcastTimer = setInterval(async () => {
+    if (marketStreamClients.size === 0) {
+      clearInterval(marketBroadcastTimer);
+      marketBroadcastTimer = null;
+      return;
+    }
+    if (marketBroadcastInFlight) return;
+    marketBroadcastInFlight = true;
+    try {
+      const payload = await getLiveMarketSnapshot();
+      const msg = JSON.stringify({ type: 'market_tick', data: payload });
+      for (const ws of marketStreamClients) {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(msg);
+        }
+      }
+    } catch (err) {
+      console.warn('[MarketStream WS]', err?.message || err);
+    } finally {
+      marketBroadcastInFlight = false;
+    }
+  }, 500);
+}
 
 server.on('upgrade', (req, socket, head) => {
   let reqUrl;
@@ -154,6 +196,26 @@ server.on('upgrade', (req, socket, head) => {
     reqUrl = new URL(req.url || '/', 'http://localhost');
   } catch {
     socket.destroy();
+    return;
+  }
+
+  if (reqUrl.pathname === '/api/market-stream') {
+    wss.handleUpgrade(req, socket, head, async (clientWs) => {
+      marketStreamClients.add(clientWs);
+      ensureMarketBroadcastLoop();
+      clientWs.on('close', () => {
+        marketStreamClients.delete(clientWs);
+      });
+      clientWs.on('error', () => {
+        marketStreamClients.delete(clientWs);
+      });
+      try {
+        const snapshot = await getLiveMarketSnapshot();
+        if (clientWs.readyState === WebSocket.OPEN) {
+          clientWs.send(JSON.stringify({ type: 'market_tick', data: snapshot }));
+        }
+      } catch (_) {}
+    });
     return;
   }
 
