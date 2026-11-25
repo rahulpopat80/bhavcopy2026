@@ -108,8 +108,9 @@ export const BROKER_DIRECTORY = [
 ];
 
 const BROKER_FEEDS_TTL_MS = 3 * 60 * 1000;
-const NSE_ALL_TTL_MS = 1800;
-const CORE_LIVE_TTL_MS = 450;
+const NSE_ALL_TTL_MS = 800;
+const NSE_TECH_TTL_MS = 10 * 1000;
+const CORE_LIVE_TTL_MS = 750;
 const SPOT_CANDLES_TTL_MS = 10 * 1000;
 const QUOTE_TTL_MS = 850;
 const ANCHOR_TTL_MS = 4 * 60 * 60 * 1000;
@@ -117,13 +118,16 @@ const EXIT_RETENTION_MS = 6 * 60 * 60 * 1000;
 const MAX_RECENT_EXITS = 30;
 
 let brokerFeedCache = { ts: 0, tips: [], inFlight: null };
-let nseAllCache = { ts: 0, tips: [], inFlight: null };
+let nseAllCache = { ts: 0, techTs: 0, tips: [], inFlight: null };
 let coreCache = { ts: 0, optionTips: [], commodityTips: [], brokerTips: [], nseAllTips: [] };
 let nseInitialBootDone = false;
 const nseBootTs = Date.now();
 const spotTechCache = new Map();
 const symbolResolveCache = new Map();
 const liveQuoteCache = new Map();
+const growwStockQuoteCache = new Map();
+const indexOcCache = new Map();
+const yahooBgState = { inFlight: false };
 const optionAnchorCache = new Map();
 const signalTimelineMap = new Map();
 const exitHistoryMap = new Map();
@@ -138,26 +142,35 @@ const mcxParityState = {
     SILVER: { basePrice: null, lastUpd: '', baseFactor: null }
 };
 
+const IST_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const istFmtCache = new Map();
+
 function formatIstDateTime(ms) {
     const ts = Number(ms);
     if (!Number.isFinite(ts) || ts <= 0) {
         return { dateStr: '--', timeStr: '--', iso: '' };
     }
-    const d = new Date(ts);
-    const dateStr = new Intl.DateTimeFormat('en-IN', {
-        timeZone: 'Asia/Kolkata',
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric'
-    }).format(d);
-    const timeStr = new Intl.DateTimeFormat('en-IN', {
-        timeZone: 'Asia/Kolkata',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: true
-    }).format(d).toUpperCase();
-    return { dateStr, timeStr, iso: d.toISOString() };
+    const secKey = Math.floor(ts / 1000);
+    const hit = istFmtCache.get(secKey);
+    if (hit) return hit;
+
+    const ist = new Date(secKey * 1000 + 19800000);
+    const dd = String(ist.getUTCDate()).padStart(2, '0');
+    const mmm = IST_MONTHS[ist.getUTCMonth()];
+    const yyyy = ist.getUTCFullYear();
+    const h24 = ist.getUTCHours();
+    const ampm = h24 >= 12 ? 'PM' : 'AM';
+    const h12 = String((h24 % 12) || 12).padStart(2, '0');
+    const mm = String(ist.getUTCMinutes()).padStart(2, '0');
+    const ss = String(ist.getUTCSeconds()).padStart(2, '0');
+    const res = {
+        dateStr: `${dd} ${mmm} ${yyyy}`,
+        timeStr: `${h12}:${mm}:${ss} ${ampm}`,
+        iso: ''
+    };
+    if (istFmtCache.size > 4000) istFmtCache.clear();
+    istFmtCache.set(secKey, res);
+    return res;
 }
 
 function parseIstDateTimeString(raw) {
@@ -785,9 +798,10 @@ async function fetchIndexOptionTips(cfg) {
         : `https://groww.in/v1/api/stocks_data/v1/tr_live_indices/exchange/NSE/segment/CASH/${cfg.symbol}/latest`;
 
     const headers = { 'User-Agent': UA, Accept: 'application/json' };
+    const cachedChain = indexOcCache.get(cfg.symbol);
     const [ocRes, spotRes, techRes] = await Promise.allSettled([
-        fetchWithTimeout(ocUrl, { headers }, 3000),
-        fetchWithTimeout(spotUrl, { headers }, 3000),
+        fetchWithTimeout(ocUrl, { headers }, 1400),
+        fetchWithTimeout(spotUrl, { headers }, 1200),
         fetchTechnicalBias5m(cfg.spotYahoo)
     ]);
 
@@ -798,8 +812,8 @@ async function fetchIndexOptionTips(cfg) {
     }
 
     const tech = techRes.status === 'fulfilled' ? techRes.value : null;
-    if (!Number.isFinite(spotPrice) && tech?.price) {
-        spotPrice = tech.price;
+    if (!Number.isFinite(spotPrice)) {
+        spotPrice = cachedChain?.spotPrice || tech?.price || NaN;
     }
 
     let ocRows = [];
@@ -827,11 +841,12 @@ async function fetchIndexOptionTips(cfg) {
         ocRows = Array.from(strikeMap.values()).sort((a, b) => a.strike - b.strike);
     }
 
-    if (cfg.symbol === 'SENSEX' && ocRows.length === 0) {
+    const needBseFallback = cfg.symbol === 'SENSEX' && ocRows.length === 0 && (!cachedChain || (Date.now() - cachedChain.ts) > 8000);
+    if (needBseFallback) {
         try {
             const bseRes = await fetchWithTimeout('https://api.bseindia.com/BseIndiaAPI/api/DerivOptionChain_New/w?Expiry=&scrip_cd=1&strprice=0', {
                 headers: { 'User-Agent': UA, Accept: 'application/json', Referer: 'https://www.bseindia.com/' }
-            }, 3000);
+            }, 1400);
             if (bseRes.ok) {
                 const bj = await bseRes.json();
                 const tbl = Array.isArray(bj?.Table) ? bj.Table : [];
@@ -861,6 +876,13 @@ async function fetchIndexOptionTips(cfg) {
         } catch {
             // ignore fallback failure
         }
+    }
+
+    if (ocRows.length > 0) {
+        indexOcCache.set(cfg.symbol, { ts: Date.now(), ocRows, expiry, spotPrice });
+    } else if (cachedChain?.ocRows?.length) {
+        ocRows = cachedChain.ocRows;
+        expiry = expiry || cachedChain.expiry;
     }
 
     let bullScore = 0;
@@ -1040,19 +1062,41 @@ async function fetchMcxSpotQuote(symbol) {
     }
 }
 
+async function fetchSwissquoteMid(pair) {
+    try {
+        const res = await fetchWithTimeout(`https://forex-data-feed.swissquote.com/public-quotes/bboquotes/instrument/${pair}`, {
+            headers: { 'User-Agent': UA, Accept: 'application/json', 'Cache-Control': 'no-cache' }
+        }, 1500);
+        if (!res.ok) return NaN;
+        const arr = await res.json();
+        const item = Array.isArray(arr) ? arr[0] : arr;
+        const spread = item?.spreadProfilePrices?.[0] || item?.topo;
+        const bid = Number(spread?.bid ?? item?.bid);
+        const ask = Number(spread?.ask ?? item?.ask);
+        if (Number.isFinite(bid) && Number.isFinite(ask) && bid > 0 && ask > 0) {
+            return (bid + ask) / 2;
+        }
+        return NaN;
+    } catch {
+        return NaN;
+    }
+}
+
 async function fetchCommodityGoldSilverTips() {
     const tips = [];
-    const [tvCfdRes, tvFxRes, mcxGoldRes, mcxSilverRes, goldTechRes, silverTechRes] = await Promise.allSettled([
+    const [tvCfdRes, tvFxRes, sqXauRes, sqXagRes, mcxGoldRes, mcxSilverRes, goldTechRes, silverTechRes] = await Promise.allSettled([
         fetchWithTimeout('https://scanner.tradingview.com/cfd/scan', {
             method: 'POST',
             headers: { 'User-Agent': UA, 'Content-Type': 'application/json', Accept: 'application/json' },
             body: JSON.stringify({ symbols: { tickers: ['TVC:GOLD', 'TVC:SILVER', 'OANDA:XAUUSD', 'OANDA:XAGUSD'], query: { types: [] } }, columns: ['close', 'change', 'change_abs'] })
-        }, 1500),
+        }, 900),
         fetchWithTimeout('https://scanner.tradingview.com/forex/scan', {
             method: 'POST',
             headers: { 'User-Agent': UA, 'Content-Type': 'application/json', Accept: 'application/json' },
             body: JSON.stringify({ symbols: { tickers: ['PEPPERSTONE:USDINR'], query: { types: [] } }, columns: ['close', 'Bid', 'Ask'] })
-        }, 1500),
+        }, 900),
+        fetchSwissquoteMid('XAU/USD'),
+        fetchSwissquoteMid('XAG/USD'),
         fetchMcxSpotQuote('GOLD'),
         fetchMcxSpotQuote('SILVER'),
         fetchTechnicalBias5m('GC=F'),
@@ -1075,9 +1119,11 @@ async function fetchCommodityGoldSilverTips() {
 
     const goldTech = goldTechRes.status === 'fulfilled' ? goldTechRes.value : null;
     const silverTech = silverTechRes.status === 'fulfilled' ? silverTechRes.value : null;
+    const sqGold = sqXauRes.status === 'fulfilled' && Number.isFinite(sqXauRes.value) ? sqXauRes.value : NaN;
+    const sqSilver = sqXagRes.status === 'fulfilled' && Number.isFinite(sqXagRes.value) ? sqXagRes.value : NaN;
 
-    const spotGoldUsd = cfdMap.get('TVC:GOLD') || cfdMap.get('OANDA:XAUUSD') || goldTech?.price;
-    const spotSilverUsd = cfdMap.get('TVC:SILVER') || cfdMap.get('OANDA:XAGUSD') || silverTech?.price;
+    const spotGoldUsd = Number.isFinite(sqGold) ? sqGold : (cfdMap.get('TVC:GOLD') || cfdMap.get('OANDA:XAUUSD') || goldTech?.price);
+    const spotSilverUsd = Number.isFinite(sqSilver) ? sqSilver : (cfdMap.get('TVC:SILVER') || cfdMap.get('OANDA:XAGUSD') || silverTech?.price);
 
     const now = Date.now();
     const buildMetalPair = (symKey, labelInr, labelUsd, mcxRaw, spotUsd, tech, chartInr, chartUsd, decUsd) => {
@@ -1201,12 +1247,41 @@ async function fetchNseAllScanSlice(start, end) {
                 { left: 'type', operation: 'equal', right: 'stock' },
                 { left: 'close', operation: 'greater', right: 0 }
             ],
-            columns: ['name', 'close', 'change', 'change_abs', 'EMA9', 'EMA20', 'RSI', 'MACD.macd', 'MACD.signal', 'VWAP', 'ATR', 'volume'],
+            columns: ['name', 'close', 'change', 'change_abs', 'EMA9', 'EMA20', 'RSI', 'MACD.macd', 'MACD.signal', 'VWAP', 'ATR', 'volume', 'description'],
             sort: { sortBy: 'Value.Traded', sortOrder: 'desc' },
             range: [start, end]
         })
-    }, 3500);
+    }, 2500);
     if (!res.ok) throw new Error(`TV India scan ${res.status}`);
+    const j = await res.json();
+    return Array.isArray(j?.data) ? j.data : [];
+}
+
+function normalizeCompanyKey(name) {
+    return String(name || '')
+        .toLowerCase()
+        .replace(/\b(limited|ltd\.?|india|industries|enterprises|corp\.?|corporation|holdings?|services?|international)\b/g, ' ')
+        .replace(/[^a-z0-9]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+async function fetchNseFastPricesOnly() {
+    const res = await fetchWithTimeout('https://scanner.tradingview.com/india/scan', {
+        method: 'POST',
+        headers: { 'User-Agent': UA, 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({
+            filter: [
+                { left: 'exchange', operation: 'equal', right: 'NSE' },
+                { left: 'type', operation: 'equal', right: 'stock' },
+                { left: 'close', operation: 'greater', right: 0 }
+            ],
+            columns: ['name', 'close'],
+            sort: { sortBy: 'Value.Traded', sortOrder: 'desc' },
+            range: [0, 3500]
+        })
+    }, 1500);
+    if (!res.ok) throw new Error(`TV India fast scan ${res.status}`);
     const j = await res.json();
     return Array.isArray(j?.data) ? j.data : [];
 }
@@ -1217,11 +1292,42 @@ async function fetchAllNseScriptsTips(force = false) {
         return nseAllCache.tips;
     }
     if (nseAllCache.inFlight) {
-        return nseAllCache.tips.length > 0 ? nseAllCache.tips : nseAllCache.inFlight;
+        if (nseAllCache.tips.length === 0) return nseAllCache.inFlight;
+        return Promise.race([
+            nseAllCache.inFlight,
+            new Promise(r => setTimeout(() => r(nseAllCache.tips), 450))
+        ]);
     }
+
+    const needFullTech = force || nseAllCache.tips.length === 0 || (now - (nseAllCache.techTs || 0)) >= NSE_TECH_TTL_MS;
 
     const work = (async () => {
         try {
+            if (!needFullTech && nseAllCache.tips.length > 0) {
+                const fastRows = await fetchNseFastPricesOnly();
+                if (fastRows.length > 0) {
+                    const priceMap = new Map();
+                    for (const row of fastRows) {
+                        const d = row?.d;
+                        if (!Array.isArray(d)) continue;
+                        const sym = String(d[0] || '').trim().toUpperCase();
+                        const close = Number(d[1]);
+                        if (sym && Number.isFinite(close) && close > 0) {
+                            priceMap.set(sym, roundTick(close, 2));
+                        }
+                    }
+                    const updated = nseAllCache.tips.map(item => {
+                        const liveCmp = priceMap.get(item.scriptName);
+                        if (!Number.isFinite(liveCmp)) return item;
+                        const prev = nseSignalStateMap.get(item.scriptName);
+                        if (prev) prev.cmp = liveCmp;
+                        return { ...item, cmp: liveCmp };
+                    });
+                    nseAllCache = { ...nseAllCache, ts: Date.now(), tips: updated, inFlight: null };
+                    return updated;
+                }
+            }
+
             const [s1, s2] = await Promise.allSettled([
                 fetchNseAllScanSlice(0, 1750),
                 fetchNseAllScanSlice(1750, 3500)
@@ -1280,7 +1386,6 @@ async function fetchAllNseScriptsTips(force = false) {
                     issuedAtMs = nseInitialBootDone ? scanNow : baselineTs;
                     nseSignalStateMap.set(sym, { action, issuedAtMs, entry, cmp: roundTick(close, 2), target, stoploss });
                 } else if (prevNse.action !== action) {
-                    // Record previous NSE call exit upon signal flip
                     const exitId = `exit-nse-${sym.toLowerCase()}-${scanNow}`;
                     recentExitsMap.set(exitId, {
                         id: exitId,
@@ -1315,9 +1420,11 @@ async function fetchAllNseScriptsTips(force = false) {
                     prevNse.cmp = roundTick(close, 2);
                 }
 
+                const descRaw = String(d[12] || '').trim();
                 parsed.push({
                     id: `nse-${sym.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
                     scriptName: sym,
+                    companyKey: normalizeCompanyKey(descRaw),
                     segment: 'NSE_ALL',
                     currency: 'INR',
                     action,
@@ -1337,7 +1444,8 @@ async function fetchAllNseScriptsTips(force = false) {
 
             if (parsed.length > 0) {
                 nseInitialBootDone = true;
-                nseAllCache = { ts: Date.now(), tips: parsed, inFlight: null };
+                const doneAt = Date.now();
+                nseAllCache = { ts: doneAt, techTs: doneAt, tips: parsed, inFlight: null };
                 return parsed;
             }
         } catch (err) {
@@ -1352,35 +1460,53 @@ async function fetchAllNseScriptsTips(force = false) {
     if (nseAllCache.tips.length === 0) {
         return await work;
     }
-    work.catch(() => { nseAllCache.inFlight = null; });
-    return nseAllCache.tips;
+    return Promise.race([
+        work,
+        new Promise(r => setTimeout(() => r(nseAllCache.tips), 450))
+    ]);
 }
 
-export default async function handler(req, res) {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    res.setHeader('Cache-Control', 'no-store, max-age=0');
-
-    if (req.method === 'OPTIONS') {
-        return res.status(200).end();
-    }
-
-    const forceRefresh = String(req.query?.force || '') === '1';
-    const segFilter = String(req.query?.seg || 'all').trim();
-    const brokerFilter = String(req.query?.broker || 'all').trim();
-    const searchQuery = String(req.query?.q || '').trim().toLowerCase();
-    const reqLimit = Math.min(1200, Math.max(20, parseInt(req.query?.limit, 10) || 120));
-
+async function fetchGrowwStockPrice(symbol) {
+    const sym = String(symbol || '').replace(/\.(NS|BO)$/i, '').trim().toUpperCase();
+    if (!sym || /[^A-Z0-9&_-]/.test(sym)) return NaN;
     const now = Date.now();
-
+    const hit = growwStockQuoteCache.get(sym);
+    if (hit && (now - hit.ts) < 700) return hit.price;
     try {
-        let optionTips = coreCache.optionTips;
-        let commodityTips = coreCache.commodityTips;
-        let brokerTips = coreCache.brokerTips;
-        let nseAllTips = coreCache.nseAllTips;
+        const res = await fetchWithTimeout(
+            `https://groww.in/v1/api/stocks_data/v1/tr_live_prices/exchange/NSE/segment/CASH/${encodeURIComponent(sym)}/latest`,
+            { headers: { 'User-Agent': UA, Accept: 'application/json', 'Cache-Control': 'no-cache' } },
+            700
+        );
+        if (!res.ok) return hit ? hit.price : NaN;
+        const j = await res.json();
+        const ltp = toNum(j?.ltp ?? j?.lastPrice ?? j?.close);
+        if (Number.isFinite(ltp) && ltp > 0) {
+            const rounded = roundTick(ltp, 2);
+            if (growwStockQuoteCache.size > 1000) growwStockQuoteCache.clear();
+            growwStockQuoteCache.set(sym, { ts: Date.now(), price: rounded });
+            return rounded;
+        }
+    } catch {
+        // return cached if available
+    }
+    return hit ? hit.price : NaN;
+}
 
-        if (forceRefresh || coreCache.ts === 0 || (now - coreCache.ts) >= CORE_LIVE_TTL_MS) {
+function triggerBackgroundYahooQuotes(symbols) {
+    if (!symbols || symbols.length === 0 || yahooBgState.inFlight) return;
+    yahooBgState.inFlight = true;
+    Promise.allSettled(symbols.map(sym => fetchLiveYahooQuote(sym)))
+        .finally(() => { yahooBgState.inFlight = false; });
+}
+
+let coreRefreshInFlight = null;
+
+async function refreshCoreSnapshot(forceRefresh = false) {
+    if (coreRefreshInFlight && !forceRefresh) return coreRefreshInFlight;
+
+    const work = (async () => {
+        try {
             const [brokerTipsRaw, commodityRes, nseAllRes, ...indexGroups] = await Promise.all([
                 refreshBrokerFeedCache(forceRefresh),
                 fetchCommodityGoldSilverTips().catch(() => []),
@@ -1388,60 +1514,114 @@ export default async function handler(req, res) {
                 ...INDEX_OPT_CONFIG.map(cfg => fetchIndexOptionTips(cfg).catch(() => []))
             ]);
 
-            // Build quick CMP lookup from live NSE scanner so brokerage tips also get instant live CMP without extra Yahoo latency
-            const nseCmpMap = new Map();
-            for (const item of nseAllRes) {
-                nseCmpMap.set(item.scriptName, item.cmp);
+        // Build O(1) 1-second live CMP maps (by NSE ticker AND normalized company name)
+        const nseCmpBySymbol = new Map();
+        const nseByCompanyName = new Map();
+        for (const item of nseAllRes) {
+            nseCmpBySymbol.set(item.scriptName, item.cmp);
+            if (item.companyKey && !nseByCompanyName.has(item.companyKey)) {
+                nseByCompanyName.set(item.companyKey, { sym: item.scriptName, cmp: item.cmp });
             }
+        }
 
-            const enrichedBrokerTips = (brokerTipsRaw || []).map(t => ({ ...t }));
-            const missingQuoteSymbols = [];
-            for (const t of enrichedBrokerTips) {
-                const baseSym = String(t.yahooSymbol || t.chartSymbolHint || '').replace(/\.(NS|BO)$/i, '').toUpperCase();
-                const fastCmp = nseCmpMap.get(baseSym);
-                if (Number.isFinite(fastCmp) && fastCmp > 0) {
-                    t.cmp = fastCmp;
-                    if (!Number.isFinite(t.entry)) t.entry = fastCmp;
-                } else if (t.yahooSymbol) {
-                    missingQuoteSymbols.push(t.yahooSymbol);
-                }
-            }
+        const enrichedBrokerTips = (brokerTipsRaw || []).map(t => ({ ...t }));
+        const missingQuoteSymbols = [];
+        for (const t of enrichedBrokerTips) {
+            const baseSym = String(t.yahooSymbol || t.chartSymbolHint || '').replace(/\.(NS|BO)$/i, '').toUpperCase();
+            let fastCmp = nseCmpBySymbol.get(baseSym);
+            let matchedNseSym = fastCmp ? `${baseSym}.NS` : null;
 
-            const uniqueMissing = Array.from(new Set(missingQuoteSymbols)).slice(0, 12);
-            if (uniqueMissing.length > 0) {
-                const quotePairs = await Promise.allSettled(
-                    uniqueMissing.map(async sym => [sym, await fetchLiveYahooQuote(sym)])
-                );
-                const qMap = new Map();
-                for (const q of quotePairs) {
-                    if (q.status === 'fulfilled' && q.value[1]) {
-                        qMap.set(q.value[0], q.value[1]);
-                    }
-                }
-                for (const t of enrichedBrokerTips) {
-                    if (!Number.isFinite(t.cmp) && t.yahooSymbol) {
-                        const q = qMap.get(t.yahooSymbol);
-                        if (q && Number.isFinite(q.price)) {
-                            t.cmp = q.price;
-                            if (!Number.isFinite(t.entry)) t.entry = q.price;
+            if (!Number.isFinite(fastCmp)) {
+                const nameKey = normalizeCompanyKey(t.scriptName);
+                const byName = nseByCompanyName.get(nameKey);
+                if (byName && Number.isFinite(byName.cmp)) {
+                    fastCmp = byName.cmp;
+                    matchedNseSym = `${byName.sym}.NS`;
+                } else if (nameKey.length >= 4) {
+                    for (const [cKey, val] of nseByCompanyName.entries()) {
+                        if (cKey.startsWith(nameKey) || nameKey.startsWith(cKey)) {
+                            fastCmp = val.cmp;
+                            matchedNseSym = `${val.sym}.NS`;
+                            break;
                         }
                     }
                 }
             }
 
-            for (const t of enrichedBrokerTips) {
-                if (Number.isFinite(t.entry) && !Number.isFinite(t.stoploss) && Number.isFinite(t.target)) {
-                    t.stoploss = t.action === 'SELL' ? roundTick(t.entry * 1.04) : roundTick(t.entry * 0.96);
-                    t.stoplossEstimated = true;
+            if (Number.isFinite(fastCmp) && fastCmp > 0) {
+                t.cmp = fastCmp;
+                if (!t.yahooSymbol && matchedNseSym) t.yahooSymbol = matchedNseSym;
+                if (!Number.isFinite(t.entry)) t.entry = fastCmp;
+            } else if (t.yahooSymbol) {
+                const cachedQ = liveQuoteCache.get(t.yahooSymbol);
+                if (cachedQ?.data?.price > 0) {
+                    t.cmp = cachedQ.data.price;
+                    if (!Number.isFinite(t.entry)) t.entry = cachedQ.data.price;
                 }
-                t.chartSymbol = t.yahooSymbol || t.scriptName;
+                missingQuoteSymbols.push(t.yahooSymbol);
             }
+        }
 
-            optionTips = indexGroups.flat();
-            commodityTips = commodityRes;
-            brokerTips = enrichedBrokerTips;
-            nseAllTips = nseAllRes;
-            coreCache = { ts: Date.now(), optionTips, commodityTips, brokerTips, nseAllTips };
+        const uniqueMissing = Array.from(new Set(missingQuoteSymbols)).slice(0, 12);
+        if (uniqueMissing.length > 0) {
+            if (coreCache.ts === 0) {
+                await Promise.race([
+                    Promise.allSettled(uniqueMissing.map(sym => fetchLiveYahooQuote(sym))),
+                    new Promise(r => setTimeout(r, 900))
+                ]);
+                for (const t of enrichedBrokerTips) {
+                    if (!Number.isFinite(t.cmp) && t.yahooSymbol) {
+                        const cachedQ = liveQuoteCache.get(t.yahooSymbol);
+                        if (cachedQ?.data?.price > 0) {
+                            t.cmp = cachedQ.data.price;
+                            if (!Number.isFinite(t.entry)) t.entry = cachedQ.data.price;
+                        }
+                    }
+                }
+            } else {
+                triggerBackgroundYahooQuotes(uniqueMissing);
+            }
+        }
+
+        // Refresh true 1-second Groww NSE LTP for brokerage equities + top 25 active NSE scripts
+        const liveGrowwTargets = new Set();
+        for (const t of enrichedBrokerTips) {
+            if (t.segment === 'INDEX' || t.segment === 'OPTION' || t.segment === 'COMMODITY') continue;
+            const sym = String(t.yahooSymbol || t.chartSymbolHint || '').replace(/\.(NS|BO)$/i, '').trim().toUpperCase();
+            if (sym && !/[^A-Z0-9&_-]/.test(sym)) liveGrowwTargets.add(sym);
+        }
+        for (let i = 0; i < Math.min(25, nseAllRes.length); i++) {
+            const sym = nseAllRes[i]?.scriptName;
+            if (sym) liveGrowwTargets.add(sym);
+        }
+        const growwSymList = Array.from(liveGrowwTargets).slice(0, 45);
+        if (growwSymList.length > 0) {
+            await Promise.race([
+                Promise.allSettled(growwSymList.map(sym => fetchGrowwStockPrice(sym))),
+                new Promise(r => setTimeout(r, 350))
+            ]);
+            for (const t of enrichedBrokerTips) {
+                const sym = String(t.yahooSymbol || t.chartSymbolHint || '').replace(/\.(NS|BO)$/i, '').trim().toUpperCase();
+                const hit = growwStockQuoteCache.get(sym);
+                if (hit?.price > 0) {
+                    t.cmp = hit.price;
+                    if (!Number.isFinite(t.entry)) t.entry = hit.price;
+                }
+            }
+            for (const n of nseAllRes) {
+                const hit = growwStockQuoteCache.get(n.scriptName);
+                if (hit?.price > 0) {
+                    n.cmp = hit.price;
+                }
+            }
+        }
+
+        for (const t of enrichedBrokerTips) {
+            if (Number.isFinite(t.entry) && !Number.isFinite(t.stoploss) && Number.isFinite(t.target)) {
+                t.stoploss = t.action === 'SELL' ? roundTick(t.entry * 1.04) : roundTick(t.entry * 0.96);
+                t.stoplossEstimated = true;
+            }
+            t.chartSymbol = t.yahooSymbol || t.scriptName;
         }
 
         const SEG_PRIORITY = { OPTION: 5, COMMODITY: 4, INDEX: 3, EQUITY: 2, NSE_ALL: 1 };
@@ -1503,18 +1683,17 @@ export default async function handler(req, res) {
             return t;
         }
 
-        // Prune stale recent reversal exits older than 6 hours
         for (const [k, v] of recentExitsMap.entries()) {
             if ((evalNow - (v.exitAtMs || v.lastEventMs || 0)) > EXIT_RETENTION_MS) {
                 recentExitsMap.delete(k);
             }
         }
 
+        const optionTips = indexGroups.flat();
         const recentExits = Array.from(recentExitsMap.values());
-        const combinedRaw = [...optionTips, ...commodityTips, ...brokerTips, ...nseAllTips, ...recentExits];
+        const combinedRaw = [...optionTips, ...commodityRes, ...enrichedBrokerTips, ...nseAllRes, ...recentExits];
         const allTips = combinedRaw.map(finalizeTip);
 
-        // Sort strictly newest-first (most recently issued tip or latest Exit alert at top)
         allTips.sort((a, b) => {
             const diff = (b.lastEventMs || 0) - (a.lastEventMs || 0);
             if (diff !== 0) return diff;
@@ -1523,8 +1702,68 @@ export default async function handler(req, res) {
         });
 
         const exitTipsAll = allTips.filter(t => Boolean(t.exitFlag));
+        const brokerStats = BROKER_DIRECTORY.map(b => ({
+            id: b.id,
+            name: b.name,
+            shortName: b.shortName,
+            sebiReg: b.sebiReg,
+            researchUrl: b.researchUrl,
+            count: enrichedBrokerTips.filter(t => t.brokerId === b.id).length
+        }));
 
-        // Server-side filter so even 3,200+ NSE scripts load & search at 500ms with tiny payload
+        const snapshot = {
+            ts: Date.now(),
+            optionTipsCount: optionTips.length,
+            commodityTipsCount: commodityRes.length,
+            brokerTipsCount: enrichedBrokerTips.length,
+            nseAllCount: nseAllRes.length,
+            exitCount: exitTipsAll.length,
+            latestExits: exitTipsAll.slice(0, 4),
+            brokerStats,
+            allTips
+        };
+            coreCache = snapshot;
+            return snapshot;
+        } finally {
+            if (coreRefreshInFlight === work) coreRefreshInFlight = null;
+        }
+    })();
+
+    coreRefreshInFlight = work;
+    return work;
+}
+
+export default async function handler(req, res) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Cache-Control', 'no-store, max-age=0');
+
+    if (req.method === 'OPTIONS') {
+        return res.status(200).end();
+    }
+
+    const forceRefresh = String(req.query?.force || '') === '1';
+    const segFilter = String(req.query?.seg || 'all').trim();
+    const brokerFilter = String(req.query?.broker || 'all').trim();
+    const searchQuery = String(req.query?.q || '').trim().toLowerCase();
+    const reqLimit = Math.min(1200, Math.max(20, parseInt(req.query?.limit, 10) || 120));
+
+    const now = Date.now();
+
+    try {
+        if (forceRefresh || coreCache.ts === 0) {
+            await refreshCoreSnapshot(forceRefresh);
+        } else if ((now - coreCache.ts) >= CORE_LIVE_TTL_MS) {
+            await Promise.race([
+                refreshCoreSnapshot(false).catch(() => {}),
+                new Promise(r => setTimeout(r, 650))
+            ]);
+        }
+
+        const snap = coreCache;
+        const allTips = snap.allTips || [];
+
         const filtered = allTips.filter(t => {
             if (segFilter === 'EXIT') {
                 if (!t.exitFlag) return false;
@@ -1545,28 +1784,54 @@ export default async function handler(req, res) {
             return true;
         });
 
-        const limitedTips = filtered.slice(0, reqLimit);
-        const brokerStats = BROKER_DIRECTORY.map(b => ({
-            id: b.id,
-            name: b.name,
-            shortName: b.shortName,
-            sebiReg: b.sebiReg,
-            researchUrl: b.researchUrl,
-            count: brokerTips.filter(t => t.brokerId === b.id).length
-        }));
+        let limitedTips = filtered.slice(0, reqLimit);
+
+        // Ensure top visible NSE_ALL / Equity rows (including filtered/searched scripts) always carry 1s Groww LTP
+        const onDemandSyms = [];
+        const onDemandSeen = new Set();
+        const nowMs = Date.now();
+        for (let i = 0; i < Math.min(limitedTips.length, 40); i++) {
+            const row = limitedTips[i];
+            if (row.segment !== 'NSE_ALL' && row.segment !== 'EQUITY') continue;
+            const sym = String(row.segment === 'NSE_ALL' ? row.scriptName : (row.yahooSymbol || row.chartSymbolHint || ''))
+                .replace(/\.(NS|BO)$/i, '').trim().toUpperCase();
+            if (!sym || /[^A-Z0-9&_-]/.test(sym) || onDemandSeen.has(sym)) continue;
+            onDemandSeen.add(sym);
+            const cached = growwStockQuoteCache.get(sym);
+            if (!cached || (nowMs - cached.ts) >= 700) {
+                onDemandSyms.push(sym);
+            }
+            if (onDemandSyms.length >= 25) break;
+        }
+        if (onDemandSyms.length > 0) {
+            await Promise.race([
+                Promise.allSettled(onDemandSyms.map(sym => fetchGrowwStockPrice(sym))),
+                new Promise(r => setTimeout(r, 250))
+            ]);
+            limitedTips = limitedTips.map(row => {
+                if (row.segment !== 'NSE_ALL' && row.segment !== 'EQUITY') return row;
+                const sym = String(row.segment === 'NSE_ALL' ? row.scriptName : (row.yahooSymbol || row.chartSymbolHint || ''))
+                    .replace(/\.(NS|BO)$/i, '').trim().toUpperCase();
+                const hit = growwStockQuoteCache.get(sym);
+                if (hit?.price > 0 && hit.price !== row.cmp) {
+                    return { ...row, cmp: hit.price };
+                }
+                return row;
+            });
+        }
 
         return res.status(200).json({
             updatedAt: new Date().toISOString(),
             totalTips: allTips.length,
-            optionTipsCount: optionTips.length,
-            commodityTipsCount: commodityTips.length,
-            brokerTipsCount: brokerTips.length,
-            nseAllCount: nseAllTips.length,
-            exitCount: exitTipsAll.length,
-            latestExits: exitTipsAll.slice(0, 4),
+            optionTipsCount: snap.optionTipsCount || 0,
+            commodityTipsCount: snap.commodityTipsCount || 0,
+            brokerTipsCount: snap.brokerTipsCount || 0,
+            nseAllCount: snap.nseAllCount || 0,
+            exitCount: snap.exitCount || 0,
+            latestExits: snap.latestExits || [],
             matchedCount: filtered.length,
             hasMore: filtered.length > limitedTips.length,
-            brokers: brokerStats,
+            brokers: snap.brokerStats || [] ,
             tips: limitedTips
         });
     } catch (err) {

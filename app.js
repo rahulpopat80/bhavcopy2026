@@ -760,7 +760,7 @@ function initEvents() {
             tabOptionTips.classList.add('active');
             optionTipsTabContent.classList.remove('hidden');
             if (typeof window.fetchOptionTipsData === 'function') {
-                window.fetchOptionTipsData(true);
+                window.fetchOptionTipsData(false, true);
             }
         });
     }
@@ -10825,7 +10825,7 @@ function initOptionTipsControls() {
             btn.classList.add('active');
             optionTipsState.segment = btn.dataset.seg || 'all';
             optionTipsState.limit = 120;
-            window.fetchOptionTipsData(true);
+            window.fetchOptionTipsData(false, true);
         });
     }
 
@@ -10834,7 +10834,7 @@ function initOptionTipsControls() {
             optionTipsState.brokerId = brokerSelect.value || 'all';
             optionTipsState.limit = 120;
             renderOptionTipsBrokerDirectory();
-            window.fetchOptionTipsData(true);
+            window.fetchOptionTipsData(false, true);
         });
     }
 
@@ -10844,21 +10844,21 @@ function initOptionTipsControls() {
             optionTipsState.limit = 150;
             clearTimeout(optionTipsState.searchDebounce);
             optionTipsState.searchDebounce = setTimeout(() => {
-                window.fetchOptionTipsData(true);
-            }, 150);
+                window.fetchOptionTipsData(false, true);
+            }, 120);
         });
     }
 
     if (refreshBtn) {
         refreshBtn.addEventListener('click', () => {
-            window.fetchOptionTipsData(true);
+            window.fetchOptionTipsData(true, true);
         });
     }
 
     if (loadMoreBtn) {
         loadMoreBtn.addEventListener('click', () => {
             optionTipsState.limit = Math.min(1200, optionTipsState.limit + 150);
-            window.fetchOptionTipsData(true);
+            window.fetchOptionTipsData(false, true);
         });
     }
 
@@ -10895,14 +10895,16 @@ function initOptionTipsControls() {
                 brokerSelect.value = optionTipsState.brokerId;
             }
             renderOptionTipsBrokerDirectory();
-            window.fetchOptionTipsData(true);
+            window.fetchOptionTipsData(false, true);
         });
     }
 }
 
-window.fetchOptionTipsData = async function(force = false) {
-    if (isOptionTipsInFlight && !force) return;
+let optionTipsReqSeq = 0;
+window.fetchOptionTipsData = async function(force = false, immediate = false) {
+    if (isOptionTipsInFlight && !force && !immediate) return;
     isOptionTipsInFlight = true;
+    const mySeq = ++optionTipsReqSeq;
 
     const refreshBtn = document.getElementById('ot-refresh-btn');
     if (force && refreshBtn) {
@@ -10921,6 +10923,7 @@ window.fetchOptionTipsData = async function(force = false) {
         const res = await fetch(`/api/option-tips?${params.toString()}`, { cache: 'no-store' });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
+        if (mySeq !== optionTipsReqSeq) return;
 
         const nextTips = Array.isArray(data.tips) ? data.tips : [];
         optionTipsState.tips = nextTips;
@@ -10940,7 +10943,7 @@ window.fetchOptionTipsData = async function(force = false) {
                 second: '2-digit',
                 hour12: false
             });
-            timeEl.textContent = `2x/s Live · ${nowStr} IST`;
+            timeEl.textContent = `1s Live · ${nowStr} IST`;
         }
 
         renderOptionTipsSummary(data);
