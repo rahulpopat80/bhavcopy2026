@@ -13,6 +13,7 @@ import optionChainHandler from './api/option-chain.js';
 import liveMarketHandler from './api/live-market.js';
 import optionTipsHandler from './api/option-tips.js';
 import samcoProxyHandler, { validateTargetUrl as validateSamcoUrl } from './api/samco-proxy.js';
+import waProxyHandler, { validateWaTargetUrl as validateWaUrl } from './api/wa-proxy.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -20,13 +21,23 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
-// Mount /api/samco-proxy BEFORE express.json() so encrypted JSON string literals
-// (e.g. "U2FsdGVk...") from web.samco.in GraphQL calls pass through untouched.
+// Mount /api/samco-proxy and /api/wa-proxy BEFORE express.json() so raw/encrypted payloads pass untouched.
 app.all('/api/samco-proxy', async (req, res) => {
   try {
     await samcoProxyHandler(req, res);
   } catch (err) {
     console.error('Error in /api/samco-proxy:', err);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+});
+
+app.all('/api/wa-proxy', async (req, res) => {
+  try {
+    await waProxyHandler(req, res);
+  } catch (err) {
+    console.error('Error in /api/wa-proxy:', err);
     if (!res.headersSent) {
       res.status(500).json({ error: 'Internal server error' });
     }
@@ -146,12 +157,16 @@ server.on('upgrade', (req, socket, head) => {
     return;
   }
 
-  if (reqUrl.pathname !== '/api/samco-ws') {
+  const isSamcoWs = reqUrl.pathname === '/api/samco-ws';
+  const isWaWs = reqUrl.pathname === '/api/wa-ws';
+  if (!isSamcoWs && !isWaWs) {
     socket.destroy();
     return;
   }
 
-  const targetUrl = validateSamcoUrl(reqUrl.searchParams.get('url'), true);
+  const targetUrl = isWaWs
+    ? validateWaUrl(reqUrl.searchParams.get('url'), true)
+    : validateSamcoUrl(reqUrl.searchParams.get('url'), true);
   if (!targetUrl) {
     socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
     socket.destroy();
@@ -161,11 +176,12 @@ server.on('upgrade', (req, socket, head) => {
   const subProtocols = req.headers['sec-websocket-protocol']
     ? String(req.headers['sec-websocket-protocol']).split(',').map(p => p.trim()).filter(Boolean)
     : undefined;
+  const wsOrigin = isWaWs ? 'https://web.whatsapp.com' : 'https://web.samco.in';
 
   wss.handleUpgrade(req, socket, head, (clientWs) => {
     const upstreamWs = new WebSocket(targetUrl.href, subProtocols, {
       headers: {
-        Origin: 'https://web.samco.in',
+        Origin: wsOrigin,
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
       }
     });

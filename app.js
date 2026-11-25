@@ -586,6 +586,7 @@ function initEvents() {
     const tabOptionTips  = document.getElementById('tab-option-tips');
     const tabCandleChart = document.getElementById('tab-candle-chart');
     const tabSamcoWeb    = document.getElementById('tab-samco-web');
+    const tabWhatsappWeb = document.getElementById('tab-whatsapp-web');
     
     const researchTabContent      = document.getElementById('research-tab-content');
     const portfolioTabContent     = document.getElementById('portfolio-tab-content');
@@ -602,23 +603,38 @@ function initEvents() {
     const optionTipsTabContent    = document.getElementById('option-tips-tab-content');
     const candleChartTabContent   = document.getElementById('candle-chart-tab-content');
     const samcoWebTabContent      = document.getElementById('samco-web-tab-content');
+    const whatsappWebTabContent   = document.getElementById('whatsapp-web-tab-content');
 
     let lastNonSamcoTabBtn = tabResearch;
-    const hideAllTabs = (keepSamcoFullscreen = false) => {
+    const hideAllTabs = (activePortal = false) => {
+        const keepSamcoFullscreen = activePortal === true || activePortal === 'samco';
+        const keepWaFullscreen = activePortal === 'wa';
         if (!keepSamcoFullscreen) {
             document.body.classList.remove('samco-fullscreen-mode');
         }
-        [researchTabContent, portfolioTabContent, resultsTabContent, watchlistTabContent, morningPicksTabContent, adviceTabContent, volPromoterTabContent, circuitsTabContent, globalIndicesTabContent, intradayTabContent, masterPieceTabContent, callPutTabContent, optionTipsTabContent, candleChartTabContent, samcoWebTabContent]
+        if (!keepWaFullscreen) {
+            document.body.classList.remove('wa-fullscreen-mode');
+        }
+        [researchTabContent, portfolioTabContent, resultsTabContent, watchlistTabContent, morningPicksTabContent, adviceTabContent, volPromoterTabContent, circuitsTabContent, globalIndicesTabContent, intradayTabContent, masterPieceTabContent, callPutTabContent, optionTipsTabContent, candleChartTabContent, samcoWebTabContent, whatsappWebTabContent]
             .forEach(el => el && el.classList.add('hidden'));
-        [tabResearch, tabPortfolio, tabResults, tabWatchlist, tabMorning, tabAdvice, tabVolPromoter, tabCircuits, tabGlobalIndices, tabIntraday, tabMasterPiece, tabCallPut, tabOptionTips, tabCandleChart, tabSamcoWeb]
+        [tabResearch, tabPortfolio, tabResults, tabWatchlist, tabMorning, tabAdvice, tabVolPromoter, tabCircuits, tabGlobalIndices, tabIntraday, tabMasterPiece, tabCallPut, tabOptionTips, tabCandleChart, tabSamcoWeb, tabWhatsappWeb]
             .forEach(el => el && el.classList.remove('active'));
-        const dock = document.getElementById('samco-minimized-dock');
+        const samcoDock = document.getElementById('samco-minimized-dock');
         const samcoIframe = document.getElementById('samco-web-iframe');
-        if (dock && !keepSamcoFullscreen && samcoIframe && samcoIframe.getAttribute('src')) {
-            dock.classList.remove('hidden');
+        if (samcoDock && !keepSamcoFullscreen && samcoIframe && samcoIframe.getAttribute('src')) {
+            samcoDock.classList.remove('hidden');
+        }
+        const waDock = document.getElementById('wa-minimized-dock');
+        const waIframe = document.getElementById('wa-web-iframe');
+        if (waDock && !keepWaFullscreen && waIframe && waIframe.getAttribute('src')) {
+            waDock.classList.remove('hidden');
         }
     };
     window.__rfActivateLastTabFromSamco = () => {
+        const targetBtn = lastNonSamcoTabBtn || tabResearch;
+        if (targetBtn) targetBtn.click();
+    };
+    window.__rfActivateLastTabFromWa = () => {
         const targetBtn = lastNonSamcoTabBtn || tabResearch;
         if (targetBtn) targetBtn.click();
     };
@@ -786,11 +802,22 @@ function initEvents() {
 
     if (tabSamcoWeb && samcoWebTabContent) {
         tabSamcoWeb.addEventListener('click', () => {
-            hideAllTabs(true);
+            hideAllTabs('samco');
             tabSamcoWeb.classList.add('active');
             samcoWebTabContent.classList.remove('hidden');
             if (typeof initSamcoWebTab === 'function') {
                 initSamcoWebTab();
+            }
+        });
+    }
+
+    if (tabWhatsappWeb && whatsappWebTabContent) {
+        tabWhatsappWeb.addEventListener('click', () => {
+            hideAllTabs('wa');
+            tabWhatsappWeb.classList.add('active');
+            whatsappWebTabContent.classList.remove('hidden');
+            if (typeof initWhatsappWebTab === 'function') {
+                initWhatsappWebTab();
             }
         });
     }
@@ -7719,11 +7746,17 @@ window.openSymbolInCandleChart = function(symbol) {
     if (rmModal) rmModal.classList.add('hidden');
     if (cmModal) cmModal.classList.add('hidden');
     document.body.classList.remove('samco-fullscreen-mode');
+    document.body.classList.remove('wa-fullscreen-mode');
 
     const samcoDock = document.getElementById('samco-minimized-dock');
     const samcoIframe = document.getElementById('samco-web-iframe');
     if (samcoDock && samcoIframe && samcoIframe.getAttribute('src')) {
         samcoDock.classList.remove('hidden');
+    }
+    const waDock = document.getElementById('wa-minimized-dock');
+    const waIframe = document.getElementById('wa-web-iframe');
+    if (waDock && waIframe && waIframe.getAttribute('src')) {
+        waDock.classList.remove('hidden');
     }
 
     if (document.body.classList.contains('cc-fullscreen-mode')) {
@@ -10721,6 +10754,139 @@ window.initSamcoWebTab = function() {
         }
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' && document.body.classList.contains('samco-fullscreen-mode')) {
+                syncFullscreenUi(false);
+            }
+        });
+    }
+};
+
+// ==========================================
+// WHATSAPP WEB EMBEDDED PORTAL TAB (https://web.whatsapp.com/) + FULLSCREEN + MINIMIZE
+// ==========================================
+window.initWhatsappWebTab = function() {
+    const iframe = document.getElementById('wa-web-iframe');
+    const proxyBtn = document.getElementById('wa-proxy-btn');
+    const homeBtn = document.getElementById('wa-home-btn');
+    const reloadBtn = document.getElementById('wa-reload-btn');
+    const expandBtn = document.getElementById('wa-expand-btn');
+    const minimizeBtn = document.getElementById('wa-minimize-btn');
+    const backAppBtn = document.getElementById('wa-back-app-btn');
+    const modeBadge = document.getElementById('wa-mode-badge');
+    const wrap = document.getElementById('wa-iframe-wrap');
+    const dock = document.getElementById('wa-minimized-dock');
+    const dockMaxBtn = document.getElementById('wa-dock-maximize-btn');
+    const dockCloseBtn = document.getElementById('wa-dock-close-btn');
+
+    const directUrl = (iframe && iframe.dataset.src) ? iframe.dataset.src : 'https://web.whatsapp.com/';
+    const proxyUrl = `/api/wa-proxy?url=${encodeURIComponent(directUrl)}`;
+
+    let useProxy = true;
+    try {
+        const saved = sessionStorage.getItem('rf_wa_proxy_mode');
+        if (saved === '0') useProxy = false;
+    } catch (_) { /* ignore */ }
+
+    const getActiveUrl = () => (useProxy ? proxyUrl : directUrl);
+    const syncProxyUi = () => {
+        if (proxyBtn) {
+            proxyBtn.classList.toggle('active', useProxy);
+            proxyBtn.innerHTML = useProxy
+                ? '<i class="fa-solid fa-shield-halved"></i> Server Proxy: ON'
+                : '<i class="fa-solid fa-shield-halved"></i> Direct Mode';
+        }
+        if (modeBadge) {
+            modeBadge.textContent = useProxy ? 'Server Proxy: ON' : 'Direct Mode';
+            modeBadge.style.color = useProxy ? '#4ade80' : '#fbbf24';
+        }
+    };
+
+    const syncFullscreenUi = (isFull) => {
+        document.body.classList.toggle('wa-fullscreen-mode', isFull);
+        if (expandBtn) {
+            expandBtn.innerHTML = isFull
+                ? '<i class="fa-solid fa-compress"></i> Exit Full Screen'
+                : '<i class="fa-solid fa-expand"></i> Full Screen';
+        }
+    };
+
+    // Enter Full Screen Fit immediately when WhatsApp Web tab is opened
+    syncFullscreenUi(true);
+    if (dock) dock.classList.add('hidden');
+    syncProxyUi();
+    if (iframe && !iframe.getAttribute('src')) {
+        iframe.src = getActiveUrl();
+    }
+
+    if (!document.body.dataset.waTabWired) {
+        document.body.dataset.waTabWired = '1';
+
+        const minimizeWaPortal = () => {
+            syncFullscreenUi(false);
+            if (typeof window.__rfActivateLastTabFromWa === 'function') {
+                window.__rfActivateLastTabFromWa();
+            } else {
+                const tabRes = document.getElementById('tab-research');
+                if (tabRes) tabRes.click();
+            }
+            if (dock && iframe && iframe.getAttribute('src')) {
+                dock.classList.remove('hidden');
+            }
+        };
+
+        if (minimizeBtn) {
+            minimizeBtn.addEventListener('click', minimizeWaPortal);
+        }
+        if (backAppBtn) {
+            backAppBtn.addEventListener('click', minimizeWaPortal);
+        }
+        if (dockMaxBtn) {
+            dockMaxBtn.addEventListener('click', () => {
+                const tabWa = document.getElementById('tab-whatsapp-web');
+                if (tabWa) tabWa.click();
+            });
+        }
+        if (dockCloseBtn && dock) {
+            dockCloseBtn.addEventListener('click', () => {
+                dock.classList.add('hidden');
+            });
+        }
+
+        if (proxyBtn && iframe) {
+            proxyBtn.addEventListener('click', () => {
+                useProxy = !useProxy;
+                try {
+                    sessionStorage.setItem('rf_wa_proxy_mode', useProxy ? '1' : '0');
+                } catch (_) { /* ignore */ }
+                syncProxyUi();
+                iframe.src = getActiveUrl();
+            });
+        }
+        if (homeBtn && iframe) {
+            homeBtn.addEventListener('click', () => {
+                iframe.src = getActiveUrl();
+            });
+        }
+        if (reloadBtn && iframe) {
+            reloadBtn.addEventListener('click', () => {
+                const cur = iframe.getAttribute('src') || getActiveUrl();
+                if (useProxy && !cur.startsWith('/api/wa-proxy')) {
+                    iframe.src = proxyUrl;
+                } else if (!useProxy && cur.startsWith('/api/wa-proxy')) {
+                    iframe.src = directUrl;
+                } else {
+                    iframe.src = cur;
+                }
+            });
+        }
+        if (expandBtn && wrap) {
+            expandBtn.addEventListener('click', () => {
+                const nextFull = !document.body.classList.contains('wa-fullscreen-mode');
+                syncFullscreenUi(nextFull);
+                wrap.classList.toggle('wa-frame-expanded', nextFull);
+            });
+        }
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && document.body.classList.contains('wa-fullscreen-mode')) {
                 syncFullscreenUi(false);
             }
         });

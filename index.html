@@ -155,6 +155,9 @@
             <button class="nav-btn" id="tab-samco-web" style="border-color: #10b981; color: #34d399; font-weight: bold;">
                 <i class="fa-solid fa-arrow-up-right-dots"></i> SAMCO Web
             </button>
+            <button class="nav-btn" id="tab-whatsapp-web" style="border-color: #25D366; color: #4ade80; font-weight: bold;">
+                <i class="fa-brands fa-whatsapp"></i> WhatsApp Web
+            </button>
         </nav>
 
         <!-- Tab 1: Stock Research Content -->
@@ -1805,6 +1808,61 @@
                 </div>
             </div>
         </div>
+
+        <!-- Tab 15: WhatsApp Web Embedded Portal (https://web.whatsapp.com/) -->
+        <div id="whatsapp-web-tab-content" class="hidden">
+            <div class="card wa-web-card" id="wa-web-card">
+                <div class="wa-toolbar">
+                    <div class="wa-title-wrap">
+                        <h2 style="color:#4ade80; margin:0; font-size:1.05rem; display:flex; align-items:center; gap:0.45rem;">
+                            <i class="fa-brands fa-whatsapp"></i> WhatsApp Web (web.whatsapp.com)
+                            <span id="wa-mode-badge" class="wa-mode-pill">Server Proxy: ON</span>
+                        </h2>
+                        <p class="wa-subtitle">
+                            <strong>Full Screen Fit</strong> &bull; <strong>Minimize</strong> દબાવી WhatsApp સેશન ચાલુ રાખી અમારું સોફ્ટવેર વાપરી શકો છો.
+                        </p>
+                    </div>
+                    <div class="wa-actions">
+                        <button type="button" id="wa-minimize-btn" class="btn wa-minimize-btn" title="WhatsApp Web ને Minimize કરી સોફ્ટવેરના અન્ય ટેબ વાપરો (લૉગિન ચાલુ રહેશે)">
+                            <i class="fa-solid fa-window-minimize"></i> Minimize (સોફ્ટવેર વાપરો)
+                        </button>
+                        <button type="button" id="wa-back-app-btn" class="btn wa-back-btn" title="Rahul Finance ના ટેબ મેનૂ પર પાછા જાઓ">
+                            <i class="fa-solid fa-arrow-left"></i> Rahul Finance (Tabs)
+                        </button>
+                        <button type="button" id="wa-home-btn" class="btn btn-secondary wa-btn" title="QR Login / Home Page પર જાઓ">
+                            <i class="fa-solid fa-qrcode"></i> QR Login / Home
+                        </button>
+                        <button type="button" id="wa-reload-btn" class="btn btn-secondary wa-btn" title="WhatsApp Web પેજ રિલોડ કરો">
+                            <i class="fa-solid fa-rotate"></i> Reload
+                        </button>
+                        <button type="button" id="wa-proxy-btn" class="btn btn-secondary wa-btn" title="જો કોમ્પ્યુટરમાં web.whatsapp.com બ્લોક હોય તો સર્વર Proxy દ્વારા ખોલો">
+                            <i class="fa-solid fa-shield-halved"></i> Server Proxy: ON
+                        </button>
+                        <button type="button" id="wa-expand-btn" class="btn btn-secondary wa-btn" title="Full Screen / Normal View બદલો">
+                            <i class="fa-solid fa-compress"></i> Exit Full Screen
+                        </button>
+                        <a href="https://web.whatsapp.com/" target="_blank" rel="noopener noreferrer" class="wa-ext-link" title="નવી ટેબમાં web.whatsapp.com ખોલો">
+                            <i class="fa-solid fa-arrow-up-right-from-square"></i> New Tab
+                        </a>
+                    </div>
+                </div>
+                <div class="wa-login-tip" id="wa-login-tip">
+                    <i class="fa-solid fa-circle-info" style="color:#4ade80;"></i>
+                    <span>
+                        <strong>Banned/Blocked PC ઉપાય:</strong> ડિફોલ્ટ <strong>Server Proxy Mode (/api/wa-proxy + /api/wa-ws)</strong> દ્વારા તમારા કોમ્પ્યુટર/ઓફિસ નેટવર્ક પર <code>web.whatsapp.com</code> બ્લોક હોય તો પણ QR સ્કેન કરીને WhatsApp Web ચાલુ રહે છે.
+                    </span>
+                </div>
+                <div class="wa-iframe-wrap" id="wa-iframe-wrap">
+                    <iframe
+                        id="wa-web-iframe"
+                        data-src="https://web.whatsapp.com/"
+                        title="WhatsApp Web Portal"
+                        allow="clipboard-read; clipboard-write; microphone; camera; fullscreen"
+                        referrerpolicy="no-referrer-when-downgrade">
+                    </iframe>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Auto Fetch Modal -->
@@ -2189,22 +2247,42 @@
         </div>
     </div>
 
-    <!-- Floating Minimized SAMCO Dock (keeps SAMCO Web session active while using other tabs) -->
-    <div id="samco-minimized-dock" class="samco-minimized-dock hidden">
-        <div class="samco-dock-info">
-            <span class="live-dot-green"></span>
-            <div>
-                <strong>SAMCO Web (Minimized)</strong>
-                <small>લૉગિન સેશન ચાલુ છે</small>
+    <!-- Floating Minimized Portal Docks (keep SAMCO Web & WhatsApp Web active while using other tabs) -->
+    <div class="portal-dock-stack">
+        <div id="wa-minimized-dock" class="wa-minimized-dock hidden">
+            <div class="wa-dock-info">
+                <span class="live-dot-green"></span>
+                <div>
+                    <strong>WhatsApp Web (Minimized)</strong>
+                    <small>ચેટ સેશન ચાલુ છે</small>
+                </div>
+            </div>
+            <div class="wa-dock-actions">
+                <button type="button" id="wa-dock-maximize-btn" class="wa-dock-btn wa-dock-max" title="WhatsApp Web ફરી Full Screen માં ખોલો">
+                    <i class="fa-solid fa-window-maximize"></i> Maximize
+                </button>
+                <button type="button" id="wa-dock-close-btn" class="wa-dock-btn samco-dock-close" title="Dock છુપાવો">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
             </div>
         </div>
-        <div class="samco-dock-actions">
-            <button type="button" id="samco-dock-maximize-btn" class="samco-dock-btn samco-dock-max" title="SAMCO ફરી Full Screen માં ખોલો">
-                <i class="fa-solid fa-window-maximize"></i> Maximize
-            </button>
-            <button type="button" id="samco-dock-close-btn" class="samco-dock-btn samco-dock-close" title="Dock છુપાવો">
-                <i class="fa-solid fa-xmark"></i>
-            </button>
+
+        <div id="samco-minimized-dock" class="samco-minimized-dock hidden">
+            <div class="samco-dock-info">
+                <span class="live-dot-green"></span>
+                <div>
+                    <strong>SAMCO Web (Minimized)</strong>
+                    <small>લૉગિન સેશન ચાલુ છે</small>
+                </div>
+            </div>
+            <div class="samco-dock-actions">
+                <button type="button" id="samco-dock-maximize-btn" class="samco-dock-btn samco-dock-max" title="SAMCO ફરી Full Screen માં ખોલો">
+                    <i class="fa-solid fa-window-maximize"></i> Maximize
+                </button>
+                <button type="button" id="samco-dock-close-btn" class="samco-dock-btn samco-dock-close" title="Dock છુપાવો">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
         </div>
     </div>
 
